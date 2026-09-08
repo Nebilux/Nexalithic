@@ -9,7 +9,10 @@ import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.executor.BlockingTaskQueue;
 import com.thezeroer.nexalithic.core.infra.executor.FixedTaskExecutor;
 import com.thezeroer.nexalithic.core.infra.executor.TypedThreadFactory;
-import com.thezeroer.nexalithic.core.infra.recyclable.*;
+import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
+import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
+import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
+import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
@@ -75,7 +78,7 @@ public abstract class HandlerCoordinator<
         return new FixedTaskExecutor<>(
                 context.getOption(OPTIONS.FixedTaskExecutor.CoreWorkerSize),
                 context.getOption(OPTIONS.FixedTaskExecutor.MaxWorkerSize),
-                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeNanos),
+                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeMillis),
                 BlockingTaskQueue.of(shared
                         ? new MpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))
                         : new SpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))

@@ -4,6 +4,8 @@ import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * 会话动态限速控制器。基于 EWMA 流量预测的非对称负反馈控制系统
  * <p>根据一个采样周期内的吞吐，判断是否需要下发新的速率值（B/s）。
@@ -43,7 +45,7 @@ public class DynamicRateController {
                 true, OptionValidator.nonNull()
         );
         /** 控制周期（毫秒）。 */
-        public final NexalithicOption<Long> MilliTick = NexalithicOption.create(
+        public final NexalithicOption<Long> TickMillis = NexalithicOption.create(
                 500L, OptionValidator.positive()
         );
         /** 最低下发速率（B/s）。 */
@@ -74,7 +76,7 @@ public class DynamicRateController {
                 0.1D, OptionValidator.unitInterval()
         );
         /** 最小发布间隔（毫秒），限制控制面信令频率。 */
-        public final NexalithicOption<Long> MinPublishMilliInterval = NexalithicOption.create(
+        public final NexalithicOption<Long> MinPublishIntervalMillis = NexalithicOption.create(
                 500L, OptionValidator.positive()
         );
         /** 升速稳定周期数（慢升），降速始终立即生效（快降）。 */
@@ -93,18 +95,18 @@ public class DynamicRateController {
     private final double ewmaAlpha;
     private final double headroom;
     private final double changeThreshold;
-    private final long minPublishNanoInterval;
+    private final long minPublishIntervalNanos;
     private final int increaseStableTicks;
 
     public DynamicRateController(long minRateBps, long maxRateBps, long initialRateBps, double ewmaAlpha, double headroom,
-                                 double changeThreshold, long minPublishNanoInterval, int increaseStableTicks) {
+                                 double changeThreshold, long minPublishIntervalMillis, int increaseStableTicks) {
         this.minRateBps = minRateBps;
         this.maxRateBps = maxRateBps;
         this.initialRateBps = initialRateBps;
         this.ewmaAlpha = ewmaAlpha;
         this.headroom = headroom;
         this.changeThreshold = changeThreshold;
-        this.minPublishNanoInterval = minPublishNanoInterval;
+        this.minPublishIntervalNanos = TimeUnit.MILLISECONDS.toNanos(minPublishIntervalMillis);
         this.increaseStableTicks = increaseStableTicks;
     }
 
@@ -124,7 +126,7 @@ public class DynamicRateController {
             state.upStableTicks = 0;
             return state.lastPublishedRate;
         }
-        if (nowNanos - state.lastPublishedAtNanos < minPublishNanoInterval) {
+        if (nowNanos - state.lastPublishedAtNanos < minPublishIntervalNanos) {
             return -1;
         }
         long target = clamp((long) (state.ewmaBps * headroom), minRateBps, maxRateBps);

@@ -16,7 +16,7 @@ public interface NexalithicChannel {
         Closed,
     }
 
-    void updateLastActiveNanoTime(long lastActiveNanoTime);
-    long getLastActiveNanoTime();
+    void updateLastActiveTimeNanos(long lastActiveTimeNanos);
+    long getLastActiveTimeNanos();
     boolean closeChannel();
 }

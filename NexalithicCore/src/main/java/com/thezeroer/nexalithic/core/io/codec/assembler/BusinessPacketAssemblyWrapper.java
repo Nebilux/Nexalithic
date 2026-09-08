@@ -20,7 +20,7 @@ import java.util.List;
  * @version 1.0.0
  */
 public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<BusinessPacketAssemblyWrapper> {
-    public record Constant(long MaxIdleNanoTime) {}
+    public record Constant(long MaxIdleTimeNanos) {}
     private final Constant CONSTANT;
     private final CodecCallback codecCallback;
     private final PacketBuilder packetBuilder = new PacketBuilder();
@@ -30,7 +30,7 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
     private int packetId;
     private int payloadIndex;
     private boolean headerRead;
-    private long lastActiveNanoTime;
+    private long lastActiveTimeNanos;
 
     public BusinessPacketAssemblyWrapper(GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper> owner,
                                          Constant constant, CodecCallback codecCallback, PayloadRegistry payloadRegistry) {
@@ -153,12 +153,12 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
         return codecCallback;
     }
 
-    public long getExpiryNanoTime() {
-        return lastActiveNanoTime + CONSTANT.MaxIdleNanoTime;
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + CONSTANT.MaxIdleTimeNanos;
     }
 
     void updateLastActiveTime() {
-        lastActiveNanoTime = System.nanoTime();
+        lastActiveTimeNanos = System.nanoTime();
     }
 
     @Override
@@ -170,7 +170,7 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
         packetId = 0;
         headerRead = false;
         payloadIndex = 0;
-        lastActiveNanoTime = -1;
+        lastActiveTimeNanos = -1;
     }
 
     private static class PacketBuilder {

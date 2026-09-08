@@ -3,6 +3,9 @@ package com.thezeroer.nexalithic.core.io.codec.assembler;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
 import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
 import com.thezeroer.nexalithic.core.infra.timer.TimeWheel;
@@ -11,9 +14,6 @@ import com.thezeroer.nexalithic.core.infra.timer.TimerCoordinator;
 import com.thezeroer.nexalithic.core.io.codec.PacketFrame;
 import com.thezeroer.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
@@ -36,9 +35,9 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsAssembler.class);
     public static final class Options extends OptionsDefinition {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
-            protected NexalithicOption<Integer> Slot() {
+            protected NexalithicOption<Integer> SlotCount() {
                 return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
-                                Math.toIntExact(TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.MaxIdleMilliTime), TimeUnit.MILLISECONDS) / context.getOption(OPTIONS.TimeWheel.Tick)) + 1
+                                Math.toIntExact(context.getOption(OPTIONS.MaxIdleTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
@@ -49,14 +48,11 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
         public final NexalithicOption<Integer> PacketQueue_Capacity = NexalithicOption.create(
                 64, OptionValidator.positive()
         );
-        public final NexalithicOption<Long> MaxIdleMilliTime = NexalithicOption.create(
-                MaxIdleMilliTime_DefaultValue(), OptionValidator.positive()
+        public final NexalithicOption<Long> MaxIdleTimeMillis = NexalithicOption.create(
+                30_000L, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
             super(holder);
-        }
-        private Long MaxIdleMilliTime_DefaultValue() {
-            return 3_0000L;
         }
     }
     public static final class Modules implements ModulesDefinition {
@@ -147,8 +143,8 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     }
 
     @Override
-    public long getExpiryNanoTime(TimerContext<BusinessPacketAssemblyWrapper> context) {
-        return context.target().getExpiryNanoTime();
+    public long getExpiryTimeNanos(TimerContext<BusinessPacketAssemblyWrapper> context) {
+        return context.target().getExpiryTimeNanos();
     }
 
     @Override
@@ -162,7 +158,7 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
         if (!target.isActive(context.targetStamp())) {
             return true;
         }
-        if (System.nanoTime() < target.getExpiryNanoTime()) {
+        if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
         assemblingMap.remove(target.getPacketId());

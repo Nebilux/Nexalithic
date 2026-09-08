@@ -23,7 +23,7 @@ public class FixedTaskExecutor<T, TH extends Thread> {
     public static class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> CoreWorkerSize = CoreWorkerSize();
         public final NexalithicOption<Integer> MaxWorkerSize = MaxWorkerSize();
-        public final NexalithicOption<Long> KeepAliveTimeNanos = KeepAliveTimeNanos();
+        public final NexalithicOption<Long> KeepAliveTimeMillis = KeepAliveTimeMillis();
         public final NexalithicOption<Integer> TaskQueue_Capacity = TaskQueue_Capacity();
 
         protected Options(Class<?> holder) {
@@ -35,8 +35,8 @@ public class FixedTaskExecutor<T, TH extends Thread> {
         protected NexalithicOption<Integer> MaxWorkerSize() {
             return NexalithicOption.create(Runtime.getRuntime().availableProcessors(), OptionValidator.positive());
         }
-        protected NexalithicOption<Long> KeepAliveTimeNanos() {
-            return NexalithicOption.create(TimeUnit.MINUTES.toNanos(1), OptionValidator.nonNegative());
+        protected NexalithicOption<Long> KeepAliveTimeMillis() {
+            return NexalithicOption.create(60_000L, OptionValidator.nonNegative());
         }
         protected NexalithicOption<Integer> TaskQueue_Capacity() {
             return NexalithicOption.create(1024, OptionValidator.positive());
@@ -55,12 +55,12 @@ public class FixedTaskExecutor<T, TH extends Thread> {
     private final AtomicInteger workerCount = new AtomicInteger(0);
     private volatile boolean isShutdown = false;
 
-    public FixedTaskExecutor(int coreWorkerSize, int maxWorkerSize, long keepAliveTimeNanos,
+    public FixedTaskExecutor(int coreWorkerSize, int maxWorkerSize, long keepAliveTimeMillis,
                              BlockingTaskQueue<T> taskQueue, TypedThreadFactory<TH> threadFactory,
                              RejectedTaskHandler<T> handler, TaskProcessor<T, TH> processor) {
         this.coreWorkerSize = coreWorkerSize;
         this.maxWorkerSize = maxWorkerSize;
-        this.keepAliveTimeNanos = keepAliveTimeNanos;
+        this.keepAliveTimeNanos = TimeUnit.MILLISECONDS.toNanos(keepAliveTimeMillis);
         this.taskQueue = taskQueue;
         this.threadFactory = threadFactory;
         this.handler = handler;

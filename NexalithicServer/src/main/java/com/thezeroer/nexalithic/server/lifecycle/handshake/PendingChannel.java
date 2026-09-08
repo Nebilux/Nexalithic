@@ -23,7 +23,7 @@ import java.security.PrivateKey;
  * @version 1.0.0
  */
 public class PendingChannel extends SelfStaticRecyclableWrapper<PendingChannel> implements NexalithicChannel {
-    public record Constant(long MaxWaitNanoTime, int readBufferCapacity, int writeBufferCapacity) {}
+    public record Constant(long MaxWaitTimeNanos, int readBufferCapacity, int writeBufferCapacity) {}
     public enum State {
         STEP_1,
         STEP_2,
@@ -41,7 +41,7 @@ public class PendingChannel extends SelfStaticRecyclableWrapper<PendingChannel> 
     private volatile ServerSession session;
     private volatile SessionKey sessionKey;
     private volatile SecretKeyContext signalingSecretContext, businessSecretContext;
-    private volatile long lastActiveNanoTime = -1;
+    private volatile long lastActiveTimeNanos = -1;
 
     public PendingChannel(GenericWrapperPool<PendingChannel, PendingChannel> owner, Constant constant) {
         super(owner);
@@ -54,7 +54,7 @@ public class PendingChannel extends SelfStaticRecyclableWrapper<PendingChannel> 
         this.type = packetType;
         this.socketChannel = socketChannel;
         state = State.STEP_1;
-        lastActiveNanoTime = System.nanoTime();
+        lastActiveTimeNanos = System.nanoTime();
         return this;
     }
 
@@ -129,17 +129,17 @@ public class PendingChannel extends SelfStaticRecyclableWrapper<PendingChannel> 
         return businessSecretContext;
     }
 
-    public long getExpiryNanoTime() {
-        return lastActiveNanoTime + CONSTANT.MaxWaitNanoTime;
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + CONSTANT.MaxWaitTimeNanos;
     }
 
     @Override
-    public void updateLastActiveNanoTime(long lastActiveNanoTime) {
-        this.lastActiveNanoTime = lastActiveNanoTime;
+    public void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
+        this.lastActiveTimeNanos = lastActiveTimeNanos;
     }
     @Override
-    public long getLastActiveNanoTime() {
-        return lastActiveNanoTime;
+    public long getLastActiveTimeNanos() {
+        return lastActiveTimeNanos;
     }
 
     @Override
@@ -175,7 +175,7 @@ public class PendingChannel extends SelfStaticRecyclableWrapper<PendingChannel> 
         sessionKey = null;
         signalingSecretContext = null;
         businessSecretContext = null;
-        lastActiveNanoTime = -1;
+        lastActiveTimeNanos = -1;
     }
 
     @Override

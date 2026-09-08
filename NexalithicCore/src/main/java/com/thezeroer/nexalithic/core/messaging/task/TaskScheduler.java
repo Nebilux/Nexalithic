@@ -26,11 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -69,8 +65,8 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     }
     private TimeWheel<NexalithicTask> initTimeWheel(NexalithicBuilderContext context) {
         TimeWheel<NexalithicTask> timeWheel = new TimeWheel<>(
-                context.getOption(OPTIONS.TimeWheel.Tick),
-                context.getOption(OPTIONS.TimeWheel.Slot),
+                context.getOption(OPTIONS.TimeWheel.TickMillis),
+                context.getOption(OPTIONS.TimeWheel.SlotCount),
                 context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                 context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                 new GenericWrapperPool<>(
@@ -88,7 +84,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
         return new FixedTaskExecutor<>(
                 context.getOption(OPTIONS.FixedTaskExecutor.CoreWorkerSize),
                 context.getOption(OPTIONS.FixedTaskExecutor.MaxWorkerSize),
-                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeNanos),
+                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeMillis),
                 BlockingTaskQueue.of(new MpscArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))),
                 new TypedThreadFactory<>() {
                     private final AtomicInteger counter = new AtomicInteger(1);
@@ -203,8 +199,8 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     }
 
     @Override
-    public long getExpiryNanoTime(TimerContext<NexalithicTask> context) {
-        return context.target().getExpiryNanoTime();
+    public long getExpiryTimeNanos(TimerContext<NexalithicTask> context) {
+        return context.target().getExpiryTimeNanos();
     }
 
     @Override
@@ -215,7 +211,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     @Override
     public boolean onExpiryTrigger(TimerContext<NexalithicTask> context) {
         NexalithicTask target = context.target();
-        if (System.nanoTime() < target.getExpiryNanoTime()) {
+        if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
         schedule(target, TaskEvent.TIMEOUT());

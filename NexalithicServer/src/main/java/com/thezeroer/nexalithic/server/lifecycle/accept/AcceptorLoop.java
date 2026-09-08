@@ -1,15 +1,15 @@
 package com.thezeroer.nexalithic.server.lifecycle.accept;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
 import com.thezeroer.nexalithic.core.io.loop.AbstractLoop;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.security.SecretKeyContext;
 import com.thezeroer.nexalithic.core.security.SecretKeyUtils;
 import com.thezeroer.nexalithic.server.NexalithicServer;
@@ -75,7 +75,7 @@ public class AcceptorLoop extends AbstractLoop {
         super(context, OPTIONS);
         ServerSecurityPolicy securityPolicy = context.getModule(NexalithicServer.Modules.SecurityPolicy);
         PendingChannel.Constant pendingChannelConstant = new PendingChannel.Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(HandshakeLoop.OPTIONS.MaxWaitMilliTime), TimeUnit.MILLISECONDS),
+                TimeUnit.NANOSECONDS.convert(context.getOption(HandshakeLoop.OPTIONS.MaxWaitTimeMillis), TimeUnit.MILLISECONDS),
                 SecretKeyUtils.ECDH_LENGTH + SecretKeyUtils.FINISHED_LENGTH + SecretKeyContext.TAG_LENGTH,
                 Math.max(securityPolicy.certificatesLength() + SecretKeyUtils.ECDH_LENGTH + securityPolicy.signatureLength(),
                         SecretKeyUtils.FINISHED_LENGTH + ServerSession.SESSION_KEY_LENGTH + SecretKeyContext.TAG_LENGTH * 2)

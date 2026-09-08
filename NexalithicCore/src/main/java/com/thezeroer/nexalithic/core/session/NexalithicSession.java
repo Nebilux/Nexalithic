@@ -35,7 +35,7 @@ public abstract class NexalithicSession <
     protected final BC businessChannel;
     protected final TaskCoordinator taskCoordinator;
     protected volatile String sessionName;
-    protected volatile long lastActiveNanoTime = -1;
+    protected volatile long lastActiveTimeNanos = -1;
 
     public NexalithicSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey,
                              ChannelFactory<S, SC, BC> factory, TaskScheduler scheduler) {
@@ -122,8 +122,8 @@ public abstract class NexalithicSession <
         };
     }
 
-    public final void updateLastNanoActiveTime(long lastActiveNanoTime) {
-        this.lastActiveNanoTime = lastActiveNanoTime;
+    public final void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
+        this.lastActiveTimeNanos = lastActiveTimeNanos;
     }
 
     public final void setSessionName(String sessionName) {
@@ -142,8 +142,8 @@ public abstract class NexalithicSession <
     public final long getCreationTime() {
         return creationTime;
     }
-    public final long getLastActiveNanoTime() {
-        return lastActiveNanoTime;
+    public final long getLastActiveTimeNanos() {
+        return lastActiveTimeNanos;
     }
 
     public final void setRemoteBusinessChannelWriteRate(long rate) {
@@ -152,7 +152,7 @@ public abstract class NexalithicSession <
     }
 
     public void close() {
-        lastActiveNanoTime = -1;
+        lastActiveTimeNanos = -1;
         if (signalingChannel != null) {
             signalingChannel.closeChannel();
         }

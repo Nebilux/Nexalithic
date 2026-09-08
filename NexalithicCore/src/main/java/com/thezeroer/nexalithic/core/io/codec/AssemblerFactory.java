@@ -33,7 +33,7 @@ public class AssemblerFactory {
     public AssemblerFactory(NexalithicBuilderContext context) {
         PacketQueue_Capacity_ = context.getOption(BusinessPacketsAssembler.OPTIONS.PacketQueue_Capacity);
         BusinessPacketAssemblyWrapper.Constant businessPacketAssemblyConstant = new BusinessPacketAssemblyWrapper.Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketsAssembler.OPTIONS.MaxIdleMilliTime), TimeUnit.MILLISECONDS)
+                TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketsAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS)
         );
         PayloadRegistry payloadRegistry = context.getModule(BusinessPacketsAssembler.Modules.PayloadRegistry);
         TaskScheduler taskScheduler = context.getModule(NexalithicEndpoint.Modules.TaskScheduler);
@@ -45,8 +45,8 @@ public class AssemblerFactory {
         );
         timeWheel = context.getModule(BusinessPacketsAssembler.Modules.TimeWheel, () -> {
             TimeWheel<BusinessPacketAssemblyWrapper> timeWheel = new TimeWheel<>(
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.Tick),
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.Slot),
+                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickMillis),
+                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.SlotCount),
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(

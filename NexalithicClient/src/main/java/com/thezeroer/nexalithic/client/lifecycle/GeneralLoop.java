@@ -6,7 +6,12 @@ import com.thezeroer.nexalithic.client.lifecycle.session.ClientSessionChannel;
 import com.thezeroer.nexalithic.client.manager.LinkStatusManager;
 import com.thezeroer.nexalithic.client.manager.NetworkRouter;
 import com.thezeroer.nexalithic.client.messaging.ClientHandlerCoordinator;
+import com.thezeroer.nexalithic.client.security.ClientSecurityPolicy;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.rate.DynamicRateController;
 import com.thezeroer.nexalithic.core.io.loop.ChannelLoop;
 import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
@@ -14,15 +19,10 @@ import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.model.packet.signaling.BareSignal;
 import com.thezeroer.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
-import com.thezeroer.nexalithic.core.security.SecretKeyUtils;
 import com.thezeroer.nexalithic.core.security.SecretKeyContext;
-import com.thezeroer.nexalithic.client.security.ClientSecurityPolicy;
+import com.thezeroer.nexalithic.core.security.SecretKeyUtils;
 import com.thezeroer.nexalithic.core.security.SecurityPolicy;
 import com.thezeroer.nexalithic.core.session.SessionKey;
-import com.thezeroer.nexalithic.core.infra.rate.DynamicRateController;
 import com.thezeroer.nexalithic.core.session.channel.NexalithicChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,14 +54,14 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, GeneralLoop.class);
     public static final class Options extends ChannelLoop.Options {
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Long> HeartBeat_MilliInterval = NexalithicOption.create(
+        public final NexalithicOption<Long> HeartBeat_IntervalMillis = NexalithicOption.create(
                 30_000L, OptionValidator.positive()
         );
         public Options(Class<?> holder) {
             super(holder);
         }
     }
-    private record Constant(long HeartBeat_NanoInterval, boolean DynamicRate_Enable, long DynamicRate_NanoTick) {}
+    private record Constant(long HeartBeat_IntervalNanos, boolean DynamicRate_Enable, long DynamicRate_TickNanos) {}
     private static final Logger logger = LoggerFactory.getLogger(GeneralLoop.class);
     private final Constant CONSTANT;
     private final Queue<Runnable> eventQueue;
@@ -71,15 +71,15 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
     private final NetworkRouter networkRouter;
     private final DynamicRateController dynamicRateController;
     private final Function<Object[], ClientSession> sessionFactory;
-    private long lastDynamicRateNanoTick;
+    private long lastDynamicRateTickNanos;
     private volatile ClientSession session;
 
     public GeneralLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         CONSTANT = new Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MilliInterval), TimeUnit.MILLISECONDS),
+                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_IntervalMillis), TimeUnit.MILLISECONDS),
                 context.getOption(OPTIONS.DynamicRateController.Enable),
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.MilliTick), TimeUnit.MILLISECONDS)
+                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS)
         );
         linkStatusManager = context.getModule(NexalithicClient.Modules.LinkStatusManager);
         securityPolicy = context.getModule(NexalithicClient.Modules.SecurityPolicy);
@@ -93,7 +93,7 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
                 context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
                 context.getOption(OPTIONS.DynamicRateController.Headroom),
                 context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.MinPublishMilliInterval), TimeUnit.MILLISECONDS),
+                context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
         ClientSession.ClientChannelFactory channelFactory = new ClientSession.ClientChannelFactory(context, this);
@@ -106,7 +106,7 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
                 taskScheduler,
                 networkRouter
         );
-        lastDynamicRateNanoTick = System.nanoTime();
+        lastDynamicRateTickNanos = System.nanoTime();
     }
 
     public boolean link(AbstractPacket.PacketType packetType, SocketChannel socketChannel, byte[] token) throws IOException,
@@ -209,13 +209,13 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
         }
         if (session != null) {
             long now = System.nanoTime();
-            if (now - session.getLastActiveNanoTime() >= CONSTANT.HeartBeat_NanoInterval) {
+            if (now - session.getLastActiveTimeNanos() >= CONSTANT.HeartBeat_IntervalNanos) {
                 session.pushSignalingPacket(BareSignal.HeartBeat);
-                session.updateLastNanoActiveTime(now);
+                session.updateLastActiveTimeNanos(now);
             }
-            if (CONSTANT.DynamicRate_Enable && now - lastDynamicRateNanoTick >= CONSTANT.DynamicRate_NanoTick) {
-                long interval = now - lastDynamicRateNanoTick;
-                lastDynamicRateNanoTick = now;
+            if (CONSTANT.DynamicRate_Enable && now - lastDynamicRateTickNanos >= CONSTANT.DynamicRate_TickNanos) {
+                long interval = now - lastDynamicRateTickNanos;
+                lastDynamicRateTickNanos = now;
                 ClientSessionChannel<?> businessChannel = session.getBusinessChannel();
                 if (businessChannel.getState() == NexalithicChannel.State.Connected) {
                     long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
@@ -225,7 +225,7 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
                 }
             }
         } else {
-            lastDynamicRateNanoTick = System.nanoTime();
+            lastDynamicRateTickNanos = System.nanoTime();
         }
         return true;
     }

@@ -101,17 +101,17 @@ public class NexalithicTask {
     private final TransferListener responseListener;
     private final Pattern pattern;
     private final Strategy strategy;
-    private final long waitNanoTime;
+    private final long waitTimeNanos;
 
     private final TaskFuture future;
     private final TaskMailbox mailbox;
     private final NexalithicSession<?, ?, ?> owner;
-    private volatile long lastActiveNanoTime = -1;
+    private volatile long lastActiveTimeNanos = -1;
 
     private NexalithicTask(TaskFunction.RequestAction requestAction, TaskFunction.ResponseAction responseAction, TaskFunction.CompleteAction completeAction,
                            TaskFunction.TimeoutAction timeoutAction, TaskFunction.FailedAction failedAction, TaskFunction.CancelAction cancelAction,
                            TaskFunction.FinishAction finishAction, TransferListener requestListener, TransferListener responseListener,
-                           Pattern pattern, Strategy strategy, long waitNanoTime, NexalithicSession<?, ?, ?> owner) {
+                           Pattern pattern, Strategy strategy, long waitTimeNanos, NexalithicSession<?, ?, ?> owner) {
         this.taskId = COUNTER.getAndIncrement();
         this.requestAction = requestAction;
         this.responseAction = responseAction;
@@ -124,7 +124,7 @@ public class NexalithicTask {
         this.responseListener = responseListener;
         this.pattern = pattern;
         this.strategy = strategy;
-        this.waitNanoTime = waitNanoTime;
+        this.waitTimeNanos = waitTimeNanos;
         this.owner = owner;
         future = new TaskFuture(this);
         mailbox = new TaskMailbox();
@@ -235,12 +235,12 @@ public class NexalithicTask {
     public State getState() {
         return state.get();
     }
-    public long getExpiryNanoTime() {
-        return lastActiveNanoTime + waitNanoTime;
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + waitTimeNanos;
     }
 
     void updateLastActiveTime() {
-        lastActiveNanoTime = System.nanoTime();
+        lastActiveTimeNanos = System.nanoTime();
     }
 
     NexalithicTask awaitRequest() {
@@ -275,7 +275,7 @@ public class NexalithicTask {
         private TransferListener responseListener;
         private Pattern pattern = Pattern.REQUEST_RESPONSE;
         private Strategy strategy = Strategy.IMMEDIATE;
-        private long waitNanoTime = TimeUnit.SECONDS.toNanos(3);
+        private long waitTimeNanos = TimeUnit.SECONDS.toNanos(3);
 
         public Builder onRequest(TaskFunction.RequestAction requestAction) {
             this.requestAction = requestAction;
@@ -332,7 +332,7 @@ public class NexalithicTask {
             return this;
         }
         public Builder waitTime(int seconds) {
-            this.waitNanoTime = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS);
+            this.waitTimeNanos = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS);
             return this;
         }
 
@@ -347,7 +347,7 @@ public class NexalithicTask {
                 throw new IllegalArgumentException("strategy is required");
             }
             return new NexalithicTask(requestAction, responseAction, completeAction, timeoutAction, failedAction, cancelAction, finishAction,
-                    requestListener, responseListener, pattern, strategy, waitNanoTime, targetSession);
+                    requestListener, responseListener, pattern, strategy, waitTimeNanos, targetSession);
         }
     }
 }

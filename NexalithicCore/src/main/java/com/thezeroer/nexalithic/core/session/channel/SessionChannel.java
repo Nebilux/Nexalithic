@@ -11,7 +11,6 @@ import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 import com.thezeroer.nexalithic.core.security.SecretKeyContext;
 import com.thezeroer.nexalithic.core.security.SecurityChannel;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
-import com.thezeroer.nexalithic.core.util.TimeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,7 +58,7 @@ public abstract class SessionChannel<
     protected final LongAdder writeBytesWindow = new LongAdder();
     protected LoopBuffer readPlainBuffer, writeCipheBuffer;
     protected LoopBuffer readCipheBuffer, writePlainBuffer;
-    protected volatile long lastActiveNanoTime = -1;
+    protected volatile long lastActiveTimeNanos = -1;
 
     public SessionChannel(AbstractPacket.PacketType packetType, S session, ChannelLoop<?> loop, PacketsFragmenter<P> fragmenter, PacketsAssembler<P> assembler, SecretKeyContext secretKeyContext) {
         super(secretKeyContext);
@@ -280,13 +279,13 @@ public abstract class SessionChannel<
     }
 
     @Override
-    public final void updateLastActiveNanoTime(long lastActiveNanoTime) {
-        this.lastActiveNanoTime = lastActiveNanoTime;
-        session.updateLastNanoActiveTime(lastActiveNanoTime);
+    public final void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
+        this.lastActiveTimeNanos = lastActiveTimeNanos;
+        session.updateLastActiveTimeNanos(lastActiveTimeNanos);
     }
     @Override
-    public final long getLastActiveNanoTime() {
-        return lastActiveNanoTime;
+    public final long getLastActiveTimeNanos() {
+        return lastActiveTimeNanos;
     }
 
     @Override
@@ -322,11 +321,11 @@ public abstract class SessionChannel<
             assembler.clear();
             remoteAddress = null;
             loop = null;
-            lastActiveNanoTime = -1;
+            lastActiveTimeNanos = -1;
             rateState.reset();
             return true;
         }
-        if (session.getLastActiveNanoTime() < 0) {
+        if (session.getLastActiveTimeNanos() < 0) {
             state.set(State.Closed);
         }
         return false;

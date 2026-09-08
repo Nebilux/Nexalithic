@@ -3,6 +3,10 @@ package com.thezeroer.nexalithic.server.lifecycle.service;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.rate.DynamicRateController;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -10,10 +14,6 @@ import com.thezeroer.nexalithic.core.infra.timer.TimeWheel;
 import com.thezeroer.nexalithic.core.infra.timer.TimerContext;
 import com.thezeroer.nexalithic.core.infra.timer.TimerCoordinator;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
-import com.thezeroer.nexalithic.core.infra.rate.DynamicRateController;
 import com.thezeroer.nexalithic.core.session.channel.SessionChannel;
 import com.thezeroer.nexalithic.server.NexalithicServer;
 import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSessionChannel;
@@ -42,15 +42,15 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, WorkerLoop.class);
     public static final class Options extends ServiceLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
-            protected NexalithicOption<Integer> Slot() {
+            protected NexalithicOption<Integer> SlotCount() {
                 return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
-                                Math.toIntExact(TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.MaxIdleMilliTime), TimeUnit.MILLISECONDS) / context.getOption(OPTIONS.TimeWheel.Tick)) + 1
+                                Math.toIntExact(context.getOption(OPTIONS.MaxIdleTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Long> MaxIdleMilliTime = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxIdleTimeMillis = NexalithicOption.create(
                 600_000L, OptionValidator.positive()
         );
         public final NexalithicOption<Integer> RateUpdateQueue_Capacity = NexalithicOption.create(
@@ -68,16 +68,16 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
     private final SpscArrayQueue<ServerSessionChannel<?>> rateUpdateQueue;
     private final DynamicRateController dynamicRateController;
     private final boolean dynamicRateEnable;
-    private final long dynamicRateNanoTick;
-    private long lastDynamicRateNanoTick;
+    private final long dynamicRateTickNanos;
+    private long lastDynamicRateTickNanos;
 
     public WorkerLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         handlerCoordinator = context.getModule(NexalithicServer.Modules.HandlerCoordinator);
         timeWheel = context.getModule(Modules.TimeWheel, () -> {
             TimeWheel<ServerSessionChannel<BusinessPacket>> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.Tick),
-                    context.getOption(OPTIONS.TimeWheel.Slot),
+                    context.getOption(OPTIONS.TimeWheel.TickMillis),
+                    context.getOption(OPTIONS.TimeWheel.SlotCount),
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
@@ -98,12 +98,12 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
                 context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
                 context.getOption(OPTIONS.DynamicRateController.Headroom),
                 context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.MinPublishMilliInterval), TimeUnit.MILLISECONDS),
+                context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
         dynamicRateEnable = context.getOption(OPTIONS.DynamicRateController.Enable);
-        dynamicRateNanoTick = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.MilliTick), TimeUnit.MILLISECONDS);
-        lastDynamicRateNanoTick = System.nanoTime();
+        dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
+        lastDynamicRateTickNanos = System.nanoTime();
     }
 
     @Override
@@ -122,7 +122,7 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
                 if (!businessChannel.fragmenterIsEmpty() && businessChannel.updateChannelInterest(SelectionKey.OP_WRITE, true)) {
                     businessChannel.applyTargetInterest();
                 }
-                businessChannel.updateLastActiveNanoTime(System.nanoTime());
+                businessChannel.updateLastActiveTimeNanos(System.nanoTime());
                 timeWheel.schedule(businessChannel, this);
             } catch (IOException ignored) {
             } finally {
@@ -132,9 +132,9 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
         rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DrainLimit());
         if (dynamicRateEnable) {
             long now = System.nanoTime();
-            if (now - lastDynamicRateNanoTick >= dynamicRateNanoTick) {
-                long interval = now - lastDynamicRateNanoTick;
-                lastDynamicRateNanoTick = now;
+            if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
+                long interval = now - lastDynamicRateTickNanos;
+                lastDynamicRateTickNanos = now;
                 for (SelectionKey key : selector.keys()) {
                     if (!key.isValid() || !(key.attachment() instanceof ServerSessionChannel<?> businessChannel)) {
                         continue;
@@ -189,19 +189,19 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
     }
 
     @Override
-    public long getExpiryNanoTime(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
-        return context.target().getExpiryNanoTime();
+    public long getExpiryTimeNanos(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
+        return context.target().getExpiryTimeNanos();
     }
 
     @Override
     public boolean isCancelled(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
-        return context.target().getLastActiveNanoTime() == -1;
+        return context.target().getLastActiveTimeNanos() == -1;
     }
 
     @Override
     public boolean onExpiryTrigger(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
         ServerSessionChannel<BusinessPacket> target = context.target();
-        if (System.nanoTime() < target.getExpiryNanoTime()) {
+        if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
         closeChannel(target);

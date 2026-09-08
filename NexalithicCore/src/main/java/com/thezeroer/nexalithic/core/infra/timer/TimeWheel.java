@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -36,57 +37,46 @@ public class TimeWheel<T> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, TimeWheel.class);
     /**
      * 时间轮配置项。
-     *
-     * <p>{@code Tick} 与 {@code Slot} 在构造时间轮时会向上规范化为 2 的幂，
-     * 以便使用位移和掩码完成除法、取模与轮数计算。</p>
      */
     public static class Options extends OptionsDefinition {
-        /** 单个 tick 的时长，单位为纳秒。 */
-        public final NexalithicOption<Long> Tick = Tick();
-        /** 时间轮槽位数量。 */
-        public final NexalithicOption<Integer> Slot = Slot();
-
+        /** 单个 tick 的时长，单位为毫秒。
+         *  <p>默认{@code 1_000L}，约{@code 1.074}秒 </p>
+         */
+        public final NexalithicOption<Long> TickMillis = TickMillis();
+        /** 时间轮槽位数量。
+         *  <p>默认{@code 64}</p>
+         */
+        public final NexalithicOption<Integer> SlotCount = SlotCount();
         /**
          * 等待队列转移配额的位移量。
          * 实际配额约为单个 tick 时长的 {@code 1 / (2^shift)}；
          * 例如 {@code 2} 代表 25%，{@code 3} 代表 12.5%。
+         *  <p>默认{@code 2}</p>
          */
         public final NexalithicOption<Integer> TickQuotaShift = TickQuotaShift();
-        /** 等待队列的初始分块大小。 */
-        public final NexalithicOption<Integer> WaitQueue_ChunkSize = WaitQueue_ChunkSize();
-        /** 调度节点池的建议容量。 */
-        public final NexalithicOption<Integer> WrapperPool_Capacity = WrapperPool_Capacity();
-
-        /**
-         * 创建并归属到指定配置持有者。
-         *
-         * @param holder 声明该组配置的类型
+        /** 等待队列的初始分块大小。
+         *  <p>默认{@code 1024}</p>
          */
+        public final NexalithicOption<Integer> WaitQueue_ChunkSize = WaitQueue_ChunkSize();
+        /** 调度节点池的建议容量。
+         *  <p>默认{@code 256}</p>
+         */
+        public final NexalithicOption<Integer> WrapperPool_Capacity = WrapperPool_Capacity();
         protected Options(Class<?> holder) {
             super(holder);
         }
-
-        /** @return tick 时长配置，默认 {@code 2^30} 纳秒，约 1.074 秒 */
-        protected NexalithicOption<Long> Tick() {
-            return NexalithicOption.create(1L << 30, OptionValidator.positive());
+        protected NexalithicOption<Long> TickMillis() {
+            return NexalithicOption.create(1_000L, OptionValidator.positive());
         }
-
-        /** @return 槽位数配置，默认 64 */
-        protected NexalithicOption<Integer> Slot() {
+        protected NexalithicOption<Integer> SlotCount() {
             return NexalithicOption.create(64, OptionValidator.positive());
         }
-
-        /** @return 等待队列转移配额位移配置，默认 2 */
         protected NexalithicOption<Integer> TickQuotaShift() {
             return NexalithicOption.create(2, OptionValidator.range(1, 63));
         }
-
-        /** @return 等待队列初始分块大小配置，默认 1024 */
         protected NexalithicOption<Integer> WaitQueue_ChunkSize() {
             return NexalithicOption.create(1024, OptionValidator.positive());
         }
-
-        /** @return 调度节点池容量配置，默认 256 */
         protected NexalithicOption<Integer> WrapperPool_Capacity() {
             return NexalithicOption.create(256, OptionValidator.positive());
         }
@@ -116,31 +106,31 @@ public class TimeWheel<T> {
     /**
      * 创建时间轮。
      *
-     * <p>{@code tick} 与 {@code slot} 会向上规范化为 2 的幂。例如，1,000,000 纳秒会被规范化为
-     * 1,048,576 纳秒，60 个槽位会被规范化为 64 个槽位。调用方应以规范化后的精度理解实际触发误差。</p>
+     * <p>{@code tickMillis} 与 {@code slotCount} 会向上规范化为 2 的幂。
+     * 调用方应以规范化后的精度理解实际触发误差。</p>
      *
-     * @param tick 单个 tick 的时长，单位为纳秒；小于等于 1 时按 1 处理
-     * @param slot 槽位数量；小于等于 1 时按 1 处理
-     * @param tickQuotaShift 每个 tick 可用于从等待队列转移节点的时间配额位移量
-     * @param waitQueueChunkSize 等待队列的初始分块大小
+     * @param tickMillis 参见{@link Options#TickMillis}
+     * @param slotCount 参见{@link Options#SlotCount}
+     * @param tickQuotaShift 参见{@link Options#TickQuotaShift}
+     * @param waitQueueChunkSize 参见{@link Options#WaitQueue_ChunkSize}
      * @param wrapperPool 调度节点池，不可为空
      * @param defaultCoordinator 默认协调器；允许为空，但此时每次调度都必须显式提供协调器
      * @param name Worker 名称后缀；为空时使用默认名称
-     * @throws IllegalArgumentException 当 {@code tickQuotaShift} 不在有效范围内，或 {@code tick}/{@code slot} 无法向上规范化为正数 2 次幂时抛出
+     * @throws IllegalArgumentException 当 {@code tickQuotaShift} 不在有效范围内，或 {@code tickMillis}/{@code slotCount} 无法向上规范化为正数 2 次幂时抛出
      * @throws NullPointerException 当 {@code wrapperPool} 为空时抛出
      */
     @SuppressWarnings("unchecked")
-    public TimeWheel(long tick, int slot, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, TimerCoordinator<T> defaultCoordinator, String name) {
+    public TimeWheel(long tickMillis, int slotCount, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, TimerCoordinator<T> defaultCoordinator, String name) {
         if (tickQuotaShift < 1 || tickQuotaShift > 63) {
             throw new IllegalArgumentException("tickQuotaShift must be between 1 and 63");
         }
-        long normalizedTick = normalize(tick);
-        int normalizedSlot = normalize(slot);
-        this.tickShift = Long.numberOfTrailingZeros(normalizedTick);
-        this.slotMask = normalizedSlot - 1;
-        this.slotShift = Long.numberOfTrailingZeros(normalizedSlot);
-        this.transferQuotaNanos = Math.max(1L, normalizedTick >> tickQuotaShift);
-        this.buckets = (ScheduleWrapper<T>[]) new ScheduleWrapper[normalizedSlot];
+        long normalizedTickNanos = normalize(TimeUnit.MILLISECONDS.toNanos(tickMillis));
+        int normalizedSlotCount = normalize(slotCount);
+        this.tickShift = Long.numberOfTrailingZeros(normalizedTickNanos);
+        this.slotMask = normalizedSlotCount - 1;
+        this.slotShift = Long.numberOfTrailingZeros(normalizedSlotCount);
+        this.transferQuotaNanos = Math.max(1L, normalizedTickNanos >> tickQuotaShift);
+        this.buckets = (ScheduleWrapper<T>[]) new ScheduleWrapper[normalizedSlotCount];
         this.wrapperPool = Objects.requireNonNull(wrapperPool, "wrapperPool");
         this.waitQueue = new MpscUnboundedArrayQueue<>(waitQueueChunkSize);
         this.defaultCoordinator = defaultCoordinator;
@@ -149,37 +139,33 @@ public class TimeWheel<T> {
     /**
      * 创建使用默认 Worker 名称的时间轮。
      *
-     * @param tick 单个 tick 的时长，单位为纳秒
-     * @param slot 槽位数量
-     * @param tickQuotaShift 等待队列转移配额位移量
-     * @param waitQueueChunkSize MPSC 等待队列的初始分块大小
-     * @param wrapperPool 调度节点池
-     * @param defaultCoordinator 默认协调器
+     * @see #TimeWheel(long, int, int, int, WrapperPool, TimerCoordinator, String)
      */
-    public TimeWheel(long tick, int slot, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, TimerCoordinator<T> defaultCoordinator) {
-        this(tick, slot, tickQuotaShift, waitQueueChunkSize, wrapperPool, defaultCoordinator, null);
+    public TimeWheel(long tickMillis, int slotCount, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, TimerCoordinator<T> defaultCoordinator) {
+        this(tickMillis, slotCount, tickQuotaShift, waitQueueChunkSize, wrapperPool, defaultCoordinator, null);
     }
     /**
-     * @param name Worker 名称后缀；为空时使用默认名称
-     * @see #TimeWheel(long, int, int, int, WrapperPool)
-     */
-    public TimeWheel(long tick, int slot, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, String name) {
-        this(tick, slot, tickQuotaShift, waitQueueChunkSize, wrapperPool, null, name);
-    }
-    /**
+     *
      * 创建不绑定默认协调器的时间轮。
      *
      * <p>使用该构造方法后，只能调用显式接收 {@link TimerCoordinator} 的 {@code schedule} 重载；
      * 调用依赖默认协调器的重载会因为协调器为空而失败。</p>
      *
-     * @param tick 单个 tick 的时长，单位为纳秒
-     * @param slot 槽位数量
-     * @param tickQuotaShift 等待队列转移配额位移量
-     * @param waitQueueChunkSize MPSC 等待队列的初始分块大小
-     * @param wrapperPool 调度节点池
+     * @see #TimeWheel(long, int, int, int, WrapperPool, TimerCoordinator, String)
      */
-    public TimeWheel(long tick, int slot, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool) {
-        this(tick, slot, tickQuotaShift, waitQueueChunkSize, wrapperPool, null, null);
+    public TimeWheel(long tickMillis, int slotCount, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, String name) {
+        this(tickMillis, slotCount, tickQuotaShift, waitQueueChunkSize, wrapperPool, null, name);
+    }
+    /**
+     * 创建不绑定默认协调器并使用默认 Worker 名称的时间轮。
+     *
+     * <p>使用该构造方法后，只能调用显式接收 {@link TimerCoordinator} 的 {@code schedule} 重载；
+     * 调用依赖默认协调器的重载会因为协调器为空而失败。</p>
+     *
+     * @see #TimeWheel(long, int, int, int, WrapperPool, TimerCoordinator, String)
+     */
+    public TimeWheel(long tickMillis, int slotCount, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool) {
+        this(tickMillis, slotCount, tickQuotaShift, waitQueueChunkSize, wrapperPool, null, null);
     }
 
     /**
@@ -356,7 +342,7 @@ public class TimeWheel<T> {
                 if (coordinator.isCancelled(wrapper)) {
                     wrapper.recycle();
                 } else {
-                    long deadlineTick = deadlineTick(coordinator.getExpiryNanoTime(wrapper));
+                    long deadlineTick = deadlineTick(coordinator.getExpiryTimeNanos(wrapper));
                     if (deadlineTick <= tickIndex) {
                         // 已到期节点放入当前槽位，并在本次 tick 随后的槽位遍历中触发。
                         wrapper.remainingRounds = 0;

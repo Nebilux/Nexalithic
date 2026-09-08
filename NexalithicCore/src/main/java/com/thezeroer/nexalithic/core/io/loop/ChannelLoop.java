@@ -63,7 +63,7 @@ public abstract class ChannelLoop<C extends NexalithicChannel> extends AbstractL
             }
             try {
                 C channel = (C) key.attachment();
-                channel.updateLastActiveNanoTime(System.nanoTime());
+                channel.updateLastActiveTimeNanos(System.nanoTime());
                 onReadyEvent(key, channel);
             } catch (Exception e) {
                 logger.warn("[{}] failed to ready event: ", name, e);

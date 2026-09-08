@@ -3,9 +3,13 @@ package com.thezeroer.nexalithic.server.lifecycle.handshake;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.executor.BlockingTaskQueue;
 import com.thezeroer.nexalithic.core.infra.executor.FixedTaskExecutor;
 import com.thezeroer.nexalithic.core.infra.executor.TypedThreadFactory;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -13,19 +17,15 @@ import com.thezeroer.nexalithic.core.infra.timer.TimeWheel;
 import com.thezeroer.nexalithic.core.infra.timer.TimerContext;
 import com.thezeroer.nexalithic.core.infra.timer.TimerCoordinator;
 import com.thezeroer.nexalithic.core.io.loop.AbstractLoop;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
-import com.thezeroer.nexalithic.core.security.SecretKeyUtils;
 import com.thezeroer.nexalithic.core.security.SecretKeyContext;
+import com.thezeroer.nexalithic.core.security.SecretKeyUtils;
 import com.thezeroer.nexalithic.core.security.SecurityPolicy;
 import com.thezeroer.nexalithic.core.session.SessionKey;
 import com.thezeroer.nexalithic.server.NexalithicServer;
 import com.thezeroer.nexalithic.server.lifecycle.ServerLifecycleManager;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
 import com.thezeroer.nexalithic.server.lifecycle.service.ServiceUnit;
+import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
 import com.thezeroer.nexalithic.server.manager.SessionsManager;
 import com.thezeroer.nexalithic.server.security.ServerSecurityPolicy;
 import org.jctools.queues.MpmcArrayQueue;
@@ -44,7 +44,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -59,9 +58,9 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, HandshakeLoop.class);
     public static final class Options extends AbstractLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
-            protected NexalithicOption<Integer> Slot() {
+            protected NexalithicOption<Integer> SlotCount() {
                 return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
-                                Math.toIntExact(TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.MaxWaitMilliTime), TimeUnit.MILLISECONDS) / context.getOption(OPTIONS.TimeWheel.Tick)) + 1
+                                Math.toIntExact(context.getOption(OPTIONS.MaxWaitTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
@@ -74,7 +73,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
         public final NexalithicOption<Integer> DispatchQueue_DrainLimit = NexalithicOption.create(
                 256, OptionValidator.positive()
         );
-        public final NexalithicOption<Long> MaxWaitMilliTime = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxWaitTimeMillis = NexalithicOption.create(
                 3_000L, OptionValidator.positive()
         );
         public final NexalithicOption<Boolean> SharedFixedTaskExecutor = NexalithicOption.create(
@@ -109,8 +108,8 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
         serviceUnitLoadBalancer = context.getModule(ServerLifecycleManager.Modules.ServiceUnitLoadBalancer);
         timeWheel = context.getModule(Modules.TimeWheel, () -> {
             TimeWheel<PendingChannel> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.Tick),
-                    context.getOption(OPTIONS.TimeWheel.Slot),
+                    context.getOption(OPTIONS.TimeWheel.TickMillis),
+                    context.getOption(OPTIONS.TimeWheel.SlotCount),
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
@@ -134,7 +133,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
         return new FixedTaskExecutor<>(
                 context.getOption(OPTIONS.FixedTaskExecutor.CoreWorkerSize),
                 context.getOption(OPTIONS.FixedTaskExecutor.MaxWorkerSize),
-                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeNanos),
+                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeMillis),
                 BlockingTaskQueue.of(shared
                         ? new MpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))
                         : new SpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))
@@ -252,7 +251,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
     @Override
     public void onReadyEvent(SelectionKey key) {
         PendingChannel channel = (PendingChannel) key.attachment();
-        channel.updateLastActiveNanoTime(System.nanoTime());
+        channel.updateLastActiveTimeNanos(System.nanoTime());
         try {
             SocketChannel socketChannel = channel.getSocketChannel();
             if (key.isReadable()) {
@@ -323,8 +322,8 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
     }
 
     @Override
-    public long getExpiryNanoTime(TimerContext<PendingChannel> context) {
-        return context.target().getExpiryNanoTime();
+    public long getExpiryTimeNanos(TimerContext<PendingChannel> context) {
+        return context.target().getExpiryTimeNanos();
     }
 
     @Override
@@ -335,7 +334,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
     @Override
     public boolean onExpiryTrigger(TimerContext<PendingChannel> context) {
         PendingChannel target = context.target();
-        if (System.nanoTime() < target.getExpiryNanoTime()) {
+        if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
         logger.warn("[{}] handshake timeout", target.toString());

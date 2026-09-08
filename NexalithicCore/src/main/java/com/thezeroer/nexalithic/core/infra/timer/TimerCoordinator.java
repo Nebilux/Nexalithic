@@ -34,7 +34,7 @@ public interface TimerCoordinator<T> {
      * @param context 当前调度的临时只读上下文
      * @return 当前注册基于 {@link System#nanoTime()} 的绝对到期时间，单位为纳秒
      */
-    long getExpiryNanoTime(TimerContext<T> context);
+    long getExpiryTimeNanos(TimerContext<T> context);
 
     /**
      * 判断当前注册是否已经取消或失效。

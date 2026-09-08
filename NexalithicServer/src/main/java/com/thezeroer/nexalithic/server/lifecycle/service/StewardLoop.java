@@ -3,6 +3,9 @@ package com.thezeroer.nexalithic.server.lifecycle.service;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -13,9 +16,6 @@ import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 import com.thezeroer.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
-import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.model.packet.signaling.TokenSignal;
 import com.thezeroer.nexalithic.core.session.SessionKey;
 import com.thezeroer.nexalithic.server.NexalithicServer;
@@ -49,14 +49,14 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, StewardLoop.class);
     public static final class Options extends ServiceLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
-            protected NexalithicOption<Integer> Slot() {
+            protected NexalithicOption<Integer> SlotCount() {
                 return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
-                                Math.toIntExact(TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MaxMilliInterval), TimeUnit.MILLISECONDS) / context.getOption(OPTIONS.TimeWheel.Tick)) + 1
+                                Math.toIntExact(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
-        public final NexalithicOption<Long> HeartBeat_MaxMilliInterval = NexalithicOption.create(
+        public final NexalithicOption<Long> HeartBeat_MaxIntervalMillis = NexalithicOption.create(
                 60_000L, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
@@ -78,8 +78,8 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
         networkRouter = context.getModule(NexalithicServer.Modules.NetworkRouter);
         timeWheel = context.getModule(Modules.TimeWheel, () -> {
             TimeWheel<ServerSession> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.Tick),
-                    context.getOption(OPTIONS.TimeWheel.Slot),
+                    context.getOption(OPTIONS.TimeWheel.TickMillis),
+                    context.getOption(OPTIONS.TimeWheel.SlotCount),
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
@@ -95,7 +95,7 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
         ServerSession.ServerChannelFactory channelFactory = new ServerSession.ServerChannelFactory(context, this);
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.Modules.TaskScheduler);
         ServerSession.Constant sessionConstant = context.getConstant(ServerSession.class, ServerSession.Constant.class, () -> new ServerSession.Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MaxMilliInterval), TimeUnit.MILLISECONDS)
+                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis), TimeUnit.MILLISECONDS)
         ));
         sessionFactory = channel -> new ServerSession(
                 channel.getSessionKey(),
@@ -128,7 +128,7 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
                     closeChannel(session.getSignalingChannel());
                     return;
                 }
-                session.updateLastNanoActiveTime(System.nanoTime());
+                session.updateLastActiveTimeNanos(System.nanoTime());
                 timeWheel.schedule(session, this);
             } catch (IOException ignored) {
             } finally {
@@ -169,19 +169,19 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
     }
 
     @Override
-    public long getExpiryNanoTime(TimerContext<ServerSession> context) {
-        return context.target().getExpiryNanoTime();
+    public long getExpiryTimeNanos(TimerContext<ServerSession> context) {
+        return context.target().getExpiryTimeNanos();
     }
 
     @Override
     public boolean isCancelled(TimerContext<ServerSession> context) {
-        return context.target().getLastActiveNanoTime() == -1;
+        return context.target().getLastActiveTimeNanos() == -1;
     }
 
     @Override
     public boolean onExpiryTrigger(TimerContext<ServerSession> context) {
         ServerSession target = context.target();
-        if (System.nanoTime() < target.getExpiryNanoTime()) {
+        if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
         if (logger.isDebugEnabled()) {

@@ -30,7 +30,7 @@ public class ServerSession extends NexalithicSession<
         ServerSessionChannel<SignalingPacket>,
         ServerSessionChannel<BusinessPacket>
     > {
-    public record Constant(long HeartBeat_MaxNanoInterval) {}
+    public record Constant(long HeartBeat_MaxIntervalNanos) {}
     private final Constant CONSTANT;
     private final ServiceUnit serviceUnit;
     private volatile SessionAttachment attachment;
@@ -54,8 +54,8 @@ public class ServerSession extends NexalithicSession<
         return serviceUnit;
     }
 
-    public long getExpiryNanoTime() {
-        return lastActiveNanoTime + CONSTANT.HeartBeat_MaxNanoInterval;
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + CONSTANT.HeartBeat_MaxIntervalNanos;
     }
 
     public void attach(SessionAttachment attachment) {
@@ -91,7 +91,7 @@ public class ServerSession extends NexalithicSession<
             this.assemblerFactory = new AssemblerFactory(context);
             this.loop = loop;
             serverSessionChannelConstant = context.getConstant(ServerSessionChannel.class, ServerSessionChannel.Constant.class, () -> new ServerSessionChannel.Constant(
-                    TimeUnit.NANOSECONDS.convert(context.getOption(WorkerLoop.OPTIONS.MaxIdleMilliTime), TimeUnit.MILLISECONDS))
+                    TimeUnit.NANOSECONDS.convert(context.getOption(WorkerLoop.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS))
             );
         }
 

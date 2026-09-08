@@ -15,7 +15,7 @@ import com.thezeroer.nexalithic.server.lifecycle.service.ServiceLoop;
  * @version 1.0.0
  */
 public class ServerSessionChannel<P extends AbstractPacket> extends SessionChannel<P, ServerSession> {
-    public record Constant(long MaxIdleNanoTime) {}
+    public record Constant(long MaxIdleTimeNanos) {}
     private final Constant CONSTANT;
 
     public ServerSessionChannel(AbstractPacket.PacketType packetType, ServerSession session, ServiceLoop<P> loop, PacketsFragmenter<P> fragmenter,
@@ -24,7 +24,7 @@ public class ServerSessionChannel<P extends AbstractPacket> extends SessionChann
         CONSTANT = constant;
     }
 
-    public long getExpiryNanoTime() {
-        return lastActiveNanoTime + CONSTANT.MaxIdleNanoTime;
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + CONSTANT.MaxIdleTimeNanos;
     }
 }
