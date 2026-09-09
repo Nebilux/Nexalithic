@@ -13,6 +13,8 @@ import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
+import org.jctools.queues.MpmcArrayQueue;
+import org.jctools.queues.MpscArrayQueue;
 import org.jctools.queues.SpmcArrayQueue;
 import org.jctools.queues.SpscArrayQueue;
 
@@ -30,7 +32,7 @@ public class AssemblerFactory {
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
     private final int PacketQueue_Capacity_;
 
-    public AssemblerFactory(NexalithicBuilderContext context) {
+    public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Options options) {
         PacketQueue_Capacity_ = context.getOption(BusinessPacketsAssembler.OPTIONS.PacketQueue_Capacity);
         BusinessPacketAssemblyWrapper.Constant businessPacketAssemblyConstant = new BusinessPacketAssemblyWrapper.Constant(
                 TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketsAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS)
@@ -39,7 +41,12 @@ public class AssemblerFactory {
         TaskScheduler taskScheduler = context.getModule(NexalithicEndpoint.Modules.TaskScheduler);
         //noinspection Convert2Diamond
         wrapperPool = new GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper>(
-                PoolStorageFactory.bounded(SpscArrayQueue::new, context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
+                PoolStorageFactory.bounded(
+                        switch (context.getOption(options.EndpointType)) {
+                            case CLIENT -> MpscArrayQueue::new;
+                            case SERVER -> MpmcArrayQueue::new;
+                        },
+                        context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
                 PoolStrategyFactory.alwaysCreate(),
                 owner -> new BusinessPacketAssemblyWrapper(owner, businessPacketAssemblyConstant, new AssemblyCallback(taskScheduler), payloadRegistry)
         );
@@ -50,7 +57,12 @@ public class AssemblerFactory {
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                            PoolStorageFactory.bounded(
+                                    switch (context.getOption(options.EndpointType)) {
+                                        case CLIENT -> SpscArrayQueue::new;
+                                        case SERVER -> SpmcArrayQueue::new;
+                                    },
+                                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
                             TimeWheel.ScheduleWrapper<BusinessPacketAssemblyWrapper>::new
                     ),

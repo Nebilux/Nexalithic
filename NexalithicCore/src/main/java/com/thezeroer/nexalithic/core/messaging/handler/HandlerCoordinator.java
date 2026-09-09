@@ -38,8 +38,7 @@ public abstract class HandlerCoordinator<
         > {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, HandlerCoordinator.class);
     public static class Options extends OptionsDefinition {
-        public final FixedTaskExecutor.Options FixedTaskExecutor = new FixedTaskExecutor.Options(holder) {
-        };
+        public final FixedTaskExecutor.Options FixedTaskExecutor = new FixedTaskExecutor.Options(holder) {};
         public final NexalithicOption<Integer> HandlerContextPool_Capacity = NexalithicOption.create(
                 HandlerContextPool_Capacity_DefaultValue(), OptionValidator.positive()
         );
@@ -72,16 +71,16 @@ public abstract class HandlerCoordinator<
                 PoolStrategyFactory.alwaysCreate(),
                 this::createRecyclableWrapper
         );
-        executor = createFixedTaskExecutor(context, shared);
+        executor = createFixedTaskExecutor(context, options, shared);
     }
-    private FixedTaskExecutor<HR, ?> createFixedTaskExecutor(NexalithicBuilderContext context, boolean shared) {
+    private FixedTaskExecutor<HR, ?> createFixedTaskExecutor(NexalithicBuilderContext context, Options options, boolean shared) {
         return new FixedTaskExecutor<>(
-                context.getOption(OPTIONS.FixedTaskExecutor.CoreWorkerSize),
-                context.getOption(OPTIONS.FixedTaskExecutor.MaxWorkerSize),
-                context.getOption(OPTIONS.FixedTaskExecutor.KeepAliveTimeMillis),
+                context.getOption(options.FixedTaskExecutor.CoreWorkerSize),
+                context.getOption(options.FixedTaskExecutor.MaxWorkerSize),
+                context.getOption(options.FixedTaskExecutor.KeepAliveTimeMillis),
                 BlockingTaskQueue.of(shared
-                        ? new MpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))
-                        : new SpmcArrayQueue<>(context.getOption(OPTIONS.FixedTaskExecutor.TaskQueue_Capacity))
+                        ? new MpmcArrayQueue<>(context.getOption(options.FixedTaskExecutor.TaskQueue_Capacity))
+                        : new SpmcArrayQueue<>(context.getOption(options.FixedTaskExecutor.TaskQueue_Capacity))
                 ),
                 new TypedThreadFactory<>() {
                     private final AtomicInteger counter = new AtomicInteger(1);
@@ -128,7 +127,9 @@ public abstract class HandlerCoordinator<
                 return;
             }
             recyclable.initTarget(packet, session, handler);
-            executor.submit(recyclable);
+            if (!executor.submit(recyclable)) {
+                recyclable.recycle();
+            }
         }
     }
 }

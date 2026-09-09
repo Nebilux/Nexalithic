@@ -1,20 +1,20 @@
 package com.thezeroer.nexalithic.server;
 
 import com.thezeroer.nexalithic.core.NexalithicEndpoint;
-import com.thezeroer.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.event.NexalithicEventBus;
-import com.thezeroer.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
 import com.thezeroer.nexalithic.core.infra.loadbalance.P2CBalancer;
+import com.thezeroer.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.thezeroer.nexalithic.core.messaging.task.NexalithicTask;
 import com.thezeroer.nexalithic.core.messaging.task.TaskHandle;
 import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
-import com.thezeroer.nexalithic.core.session.SessionAttachment;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
+import com.thezeroer.nexalithic.core.session.SessionAttachment;
 import com.thezeroer.nexalithic.server.lifecycle.ServerLifecycleManager;
 import com.thezeroer.nexalithic.server.lifecycle.accept.AcceptorLoop;
 import com.thezeroer.nexalithic.server.lifecycle.accept.FiltrationStrategy;
@@ -23,8 +23,8 @@ import com.thezeroer.nexalithic.server.lifecycle.service.ServiceUnit;
 import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
 import com.thezeroer.nexalithic.server.manager.NetworkRouter;
 import com.thezeroer.nexalithic.server.manager.SessionsManager;
-import com.thezeroer.nexalithic.server.messaging.ServerHandlerCoordinator;
 import com.thezeroer.nexalithic.server.messaging.ServerHandlerContext;
+import com.thezeroer.nexalithic.server.messaging.ServerHandlerCoordinator;
 import com.thezeroer.nexalithic.server.security.ServerSecurityPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,10 +45,21 @@ import java.util.function.Consumer;
  */
 @SuppressWarnings("UnusedReturnValue")
 public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, NexalithicServer.class);
+    public static final class Options extends NexalithicEndpoint.Options {
+        Options(Class<?> holder) {
+            super(holder);
+        }
+        @Override
+        protected Type EndpointType_Value() {
+            return Type.SERVER;
+        }
+    }
     public static final class Modules extends NexalithicEndpoint.Modules {
         public static final NexalithicModule<SessionsManager> SessionsManager = NexalithicModule.create("NexalithicServer_SessionsManager", SessionsManager.class);
         public static final NexalithicModule<NetworkRouter> NetworkRouter = NexalithicModule.create("NexalithicServer_NetworkRouter", NetworkRouter.class);
     }
+
     private static final Logger logger = LoggerFactory.getLogger(NexalithicServer.class);
     private final SessionsManager sessionsManager;
     private final NetworkRouter networkRouter;
@@ -194,7 +205,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
 
     public static class Builder extends NexalithicEndpointBuilder<Builder, ServerHandlerContext> {
         public Builder() {
-            super(ServerHandlerContext.class);
+            super(ServerHandlerContext.class, OPTIONS);
         }
 
         @Override

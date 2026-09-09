@@ -2,6 +2,8 @@ package com.thezeroer.nexalithic.core;
 
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.event.NexalithicEventBus;
 import com.thezeroer.nexalithic.core.lifecycle.LifecycleManager;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerCoordinator;
@@ -29,12 +31,31 @@ import com.thezeroer.nexalithic.core.security.SecurityPolicy;
  * @since 2026/08/06
  */
 public abstract class NexalithicEndpoint<LM extends LifecycleManager> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, NexalithicEndpoint.class);
+    public static class Options extends OptionsDefinition {
+        public final NexalithicOption<Type> EndpointType = NexalithicOption.create(EndpointType_Value(), value -> {
+            if (value != EndpointType_Value()) {
+                throw new IllegalArgumentException("EndpointType is final");
+            }
+        });
+        protected Options(Class<?> holder) {
+            super(holder);
+        }
+        protected Type EndpointType_Value() {
+            return null;
+        }
+    }
     public static class Modules implements ModulesDefinition {
         public static final NexalithicModule<LifecycleManager> LifecycleManager = NexalithicModule.create("NexalithicEndpoint_LifecycleManager", LifecycleManager.class);
         public static final NexalithicModule<HandlerCoordinator<?, ?, ?>> HandlerCoordinator = NexalithicModule.create("NexalithicEndpoint_BusinessPacketDispatcher", HandlerCoordinator.class);
         public static final NexalithicModule<TaskScheduler> TaskScheduler = NexalithicModule.create("NexalithicEndpoint_TaskScheduler", TaskScheduler.class);
         public static final NexalithicModule<SecurityPolicy> SecurityPolicy = NexalithicModule.create("NexalithicClient_SecurityPolicy", SecurityPolicy.class);
         public static final NexalithicModule<NexalithicEventBus> EventBus = NexalithicModule.create("NexalithicEndpoint_EventBus", NexalithicEventBus.class);
+    }
+
+    public enum Type {
+        CLIENT,
+        SERVER
     }
 
     /**

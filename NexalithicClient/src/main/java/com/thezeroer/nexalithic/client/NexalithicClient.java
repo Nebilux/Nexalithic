@@ -1,13 +1,15 @@
 package com.thezeroer.nexalithic.client;
 
 import com.thezeroer.nexalithic.client.lifecycle.ClientLifecycleManager;
+import com.thezeroer.nexalithic.client.lifecycle.GeneralLoop;
 import com.thezeroer.nexalithic.client.lifecycle.session.ClientSession;
 import com.thezeroer.nexalithic.client.manager.LinkStatusManager;
-import com.thezeroer.nexalithic.client.messaging.ClientHandlerCoordinator;
 import com.thezeroer.nexalithic.client.messaging.ClientHandlerContext;
+import com.thezeroer.nexalithic.client.messaging.ClientHandlerCoordinator;
+import com.thezeroer.nexalithic.client.security.ClientSecurityPolicy;
 import com.thezeroer.nexalithic.core.NexalithicEndpoint;
-import com.thezeroer.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.event.NexalithicEventBus;
@@ -18,8 +20,6 @@ import com.thezeroer.nexalithic.core.messaging.task.TaskHandle;
 import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
-import com.thezeroer.nexalithic.client.lifecycle.GeneralLoop;
-import com.thezeroer.nexalithic.client.security.ClientSecurityPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,9 +45,20 @@ import java.util.concurrent.locks.LockSupport;
  */
 @SuppressWarnings("UnusedReturnValue")
 public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, NexalithicClient.class);
+    public static final class Options extends NexalithicEndpoint.Options {
+        Options(Class<?> holder) {
+            super(holder);
+        }
+        @Override
+        protected Type EndpointType_Value() {
+            return Type.CLIENT;
+        }
+    }
     public static final class Modules extends NexalithicEndpoint.Modules {
         public static final NexalithicModule<LinkStatusManager> LinkStatusManager = NexalithicModule.create("NexalithicClient_LinkStatusManager", LinkStatusManager.class);
     }
+
     private static final Logger logger = LoggerFactory.getLogger(NexalithicClient.class);
     private final LinkStatusManager linkStatusManager;
     private final GeneralLoop generalLoop;
@@ -123,7 +134,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
 
     public static class Builder extends NexalithicEndpointBuilder<Builder, ClientHandlerContext> {
         public Builder() {
-            super(ClientHandlerContext.class);
+            super(ClientHandlerContext.class, OPTIONS);
         }
 
         @Override
