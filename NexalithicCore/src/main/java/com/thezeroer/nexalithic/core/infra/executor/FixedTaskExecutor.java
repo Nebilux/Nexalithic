@@ -19,27 +19,25 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @version 1.0.0
  */
 public class FixedTaskExecutor<T, TH extends Thread> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, FixedTaskExecutor.class);
     public static class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> CoreWorkerSize = CoreWorkerSize();
         public final NexalithicOption<Integer> MaxWorkerSize = MaxWorkerSize();
         public final NexalithicOption<Long> KeepAliveTimeMillis = KeepAliveTimeMillis();
         public final NexalithicOption<Integer> TaskQueue_Capacity = TaskQueue_Capacity();
-
         protected Options(Class<?> holder) {
             super(holder);
         }
         protected NexalithicOption<Integer> CoreWorkerSize() {
-            return NexalithicOption.create(Runtime.getRuntime().availableProcessors(), OptionValidator.nonNegative());
+            return defineOption(Runtime.getRuntime().availableProcessors(), OptionValidator.nonNegative());
         }
         protected NexalithicOption<Integer> MaxWorkerSize() {
-            return NexalithicOption.create(Runtime.getRuntime().availableProcessors(), OptionValidator.positive());
+            return defineOption(Runtime.getRuntime().availableProcessors(), OptionValidator.positive());
         }
         protected NexalithicOption<Long> KeepAliveTimeMillis() {
-            return NexalithicOption.create(60_000L, OptionValidator.nonNegative());
+            return defineOption(60_000L, OptionValidator.nonNegative());
         }
         protected NexalithicOption<Integer> TaskQueue_Capacity() {
-            return NexalithicOption.create(1024, OptionValidator.positive());
+            return defineOption(1024, OptionValidator.positive());
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(FixedTaskExecutor.class);

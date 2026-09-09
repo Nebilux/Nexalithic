@@ -1,6 +1,5 @@
 package com.thezeroer.nexalithic.core.builder;
 
-import com.thezeroer.nexalithic.core.NexalithicEndpoint;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerContext;
 import com.thezeroer.nexalithic.core.messaging.handler.assembly.ControllerHandlerAssembler;
@@ -96,14 +95,13 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      *
      * @param handlerContextType 当前终端使用的 Handler 上下文类型
      */
-    protected NexalithicEndpointBuilder(Class<HC> handlerContextType, NexalithicEndpoint.Options options) {
+    protected NexalithicEndpointBuilder(Class<HC> handlerContextType) {
         this.handlerContextType = handlerContextType;
         controllerHandlerAssemblyBuilder = ControllerHandlerAssembler.builder(handlerContextType);
         payloadRegistryBuilder.payloadConstructors(List.of(
                 TextPayload::new,
                 FilePayload::new
         ));
-        apply(options.EndpointType, options.EndpointType.defaultValue());
     }
 
     /**

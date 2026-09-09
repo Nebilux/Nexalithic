@@ -2,9 +2,9 @@ package com.thezeroer.nexalithic.client.messaging;
 
 import com.thezeroer.nexalithic.client.lifecycle.session.ClientSession;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerCoordinator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 
 /**
  * 客户端业务分发器
@@ -19,9 +19,8 @@ public class ClientHandlerCoordinator extends HandlerCoordinator<
         ClientHandlerContext.Recyclable
         > {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ClientHandlerCoordinator.class);
-
     public static final class Options extends HandlerCoordinator.Options {
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
         protected Integer HandlerContextPool_Capacity_DefaultValue() {

@@ -1,11 +1,11 @@
 package com.thezeroer.nexalithic.core.io.loop;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
-import com.thezeroer.nexalithic.core.io.thread.LoopThread;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
+import com.thezeroer.nexalithic.core.io.thread.LoopThread;
 import com.thezeroer.nexalithic.core.session.channel.NexalithicChannel;
 import com.thezeroer.nexalithic.core.session.channel.SessionChannel;
 import org.slf4j.Logger;
@@ -26,12 +26,11 @@ import java.util.concurrent.atomic.LongAdder;
  * @version 1.0.0
  */
 public abstract class AbstractLoop implements LoadBalanceable, Runnable {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, AbstractLoop.class);
     public static class Options extends OptionsDefinition {
-        public final NexalithicOption<Long> Shutdown_MaxWaitTime = NexalithicOption.create(
+        public final NexalithicOption<Long> Shutdown_MaxWaitTime = defineOption(
                 300000L, OptionValidator.positive()
         );
-        public final NexalithicOption<Long> Selector_Timeout = NexalithicOption.create(
+        public final NexalithicOption<Long> Selector_Timeout = defineOption(
                 3000L, OptionValidator.nonNegative()
         );
         protected Options(Class<?> holder) {

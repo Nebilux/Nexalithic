@@ -29,7 +29,6 @@ import java.nio.channels.SelectionKey;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 
 /**
  * 从属选择器
@@ -43,25 +42,29 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
     public static final class Options extends ServiceLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
-                return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
+                return defineOptionLazy(context ->
                                 Math.toIntExact(context.getOption(OPTIONS.MaxIdleTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Long> MaxIdleTimeMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxIdleTimeMillis = defineOption(
                 600_000L, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> RateUpdateQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> RateUpdateQueue_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
             super(holder);
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<TimeWheel<ServerSessionChannel<BusinessPacket>>> TimeWheel = NexalithicModule.create("WorkerLoop_TimeWheel", TimeWheel.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<TimeWheel<ServerSessionChannel<BusinessPacket>>> TimeWheel = defineModule(TimeWheel.class);
+        private Modules() {
+            super(WorkerLoop.class);
+        }
     }
     private final ServerHandlerCoordinator handlerCoordinator;
     private final TimeWheel<ServerSessionChannel<BusinessPacket>> timeWheel;
@@ -73,8 +76,8 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
 
     public WorkerLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
-        handlerCoordinator = context.getModule(NexalithicServer.Modules.HandlerCoordinator);
-        timeWheel = context.getModule(Modules.TimeWheel, () -> {
+        handlerCoordinator = context.getModule(NexalithicServer.MODULES.HandlerCoordinator);
+        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
             TimeWheel<ServerSessionChannel<BusinessPacket>> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
                     context.getOption(OPTIONS.TimeWheel.SlotCount),

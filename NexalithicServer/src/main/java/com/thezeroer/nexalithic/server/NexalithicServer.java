@@ -45,19 +45,13 @@ import java.util.function.Consumer;
  */
 @SuppressWarnings("UnusedReturnValue")
 public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, NexalithicServer.class);
-    public static final class Options extends NexalithicEndpoint.Options {
-        Options(Class<?> holder) {
-            super(holder);
-        }
-        @Override
-        protected Type EndpointType_Value() {
-            return Type.SERVER;
-        }
-    }
+    public static final Modules MODULES = new Modules();
     public static final class Modules extends NexalithicEndpoint.Modules {
-        public static final NexalithicModule<SessionsManager> SessionsManager = NexalithicModule.create("NexalithicServer_SessionsManager", SessionsManager.class);
-        public static final NexalithicModule<NetworkRouter> NetworkRouter = NexalithicModule.create("NexalithicServer_NetworkRouter", NetworkRouter.class);
+        public final NexalithicModule<SessionsManager> SessionsManager = defineModule(SessionsManager.class);
+        public final NexalithicModule<NetworkRouter> NetworkRouter = defineModule(NetworkRouter.class);
+        private Modules() {
+            super(NexalithicServer.class);
+        }
     }
 
     private static final Logger logger = LoggerFactory.getLogger(NexalithicServer.class);
@@ -65,9 +59,9 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
     private final NetworkRouter networkRouter;
 
     private NexalithicServer(NexalithicBuilderContext context) {
-        super(context.getModule(Modules.LifecycleManager), context.getModule(Modules.EventBus));
-        this.sessionsManager = context.getModule(Modules.SessionsManager);
-        this.networkRouter = context.getModule(Modules.NetworkRouter);
+        super(context.getModule(MODULES.LifecycleManager), context.getModule(MODULES.EventBus));
+        this.sessionsManager = context.getModule(MODULES.SessionsManager);
+        this.networkRouter = context.getModule(MODULES.NetworkRouter);
         System.gc();
     }
 
@@ -205,7 +199,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
 
     public static class Builder extends NexalithicEndpointBuilder<Builder, ServerHandlerContext> {
         public Builder() {
-            super(ServerHandlerContext.class, OPTIONS);
+            super(ServerHandlerContext.class);
         }
 
         @Override
@@ -214,13 +208,13 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
         }
 
         public Builder addRoute(AbstractPacket.PacketType type, String cidr, int port) throws UnknownHostException {
-            NetworkRouter router = context.getModule(Modules.NetworkRouter, NetworkRouter::new);
+            NetworkRouter router = context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
             router.addRoute(type, cidr, port);
             return this;
         }
 
         public Builder securityPolicy(ServerSecurityPolicy securityPolicy) {
-            context.setModule(Modules.SecurityPolicy, securityPolicy);
+            context.setModule(NexalithicServer.MODULES.SecurityPolicy, securityPolicy);
             return this;
         }
 
@@ -233,28 +227,28 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
             }
 
             controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
-            context.setModule(Modules.EventBus, new NexalithicEventBus());
-            context.setModule(Modules.SessionsManager, new SessionsManager(context));
-            context.setModule(BusinessPacketsAssembler.Modules.PayloadRegistry, payloadRegistryBuilder.build());
-            context.setModule(HandlerCoordinator.Modules.HandlerRegistry, handlerRegistryBuilder.build());
+            context.setModule(MODULES.EventBus, new NexalithicEventBus());
+            context.setModule(MODULES.SessionsManager, new SessionsManager(context));
+            context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
+            context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
             ServerHandlerCoordinator handlerCoordinator = new ServerHandlerCoordinator(context);
-            context.setModule(Modules.HandlerCoordinator, handlerCoordinator);
-            context.setModule(Modules.TaskScheduler, new TaskScheduler(context));
+            context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
+            context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
 
             ServiceUnit[] serviceUnits = new ServiceUnit[context.getOption(ServerLifecycleManager.OPTIONS.ServiceUnit_Count)];
             for (int i = 0; i < serviceUnits.length; i++) {
                 serviceUnits[i] = new ServiceUnit(context).addIdToLoopName(String.valueOf(i));
             }
-            context.setModule(ServerLifecycleManager.Modules.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
+            context.setModule(ServerLifecycleManager.MODULES.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
 
             HandshakeLoop[] handshakeLoops = new HandshakeLoop[context.getOption(ServerLifecycleManager.OPTIONS.HandshakeLoop_Count)];
             for (int i = 0; i < handshakeLoops.length; i++) {
                 handshakeLoops[i] = (HandshakeLoop) new HandshakeLoop(context).addIdToName(String.valueOf(i));
             }
-            context.setModule(ServerLifecycleManager.Modules.HandshakeLoopLoadBalancer, new P2CBalancer<>(handshakeLoops));
+            context.setModule(ServerLifecycleManager.MODULES.HandshakeLoopLoadBalancer, new P2CBalancer<>(handshakeLoops));
 
-            context.setModule(ServerLifecycleManager.Modules.AcceptorLoop, (AcceptorLoop) new AcceptorLoop(context).addIdToName("0"));
-            context.setModule(Modules.LifecycleManager, new ServerLifecycleManager(context));
+            context.setModule(ServerLifecycleManager.MODULES.AcceptorLoop, (AcceptorLoop) new AcceptorLoop(context).addIdToName("0"));
+            context.setModule(MODULES.LifecycleManager, new ServerLifecycleManager(context));
             return new NexalithicServer(context);
         }
     }

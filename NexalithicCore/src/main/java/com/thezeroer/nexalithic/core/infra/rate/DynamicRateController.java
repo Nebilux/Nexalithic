@@ -41,50 +41,49 @@ public class DynamicRateController {
      */
     public static class Options extends OptionsDefinition {
         /** 是否启用动态限速。 */
-        public final NexalithicOption<Boolean> Enable = NexalithicOption.create(
+        public final NexalithicOption<Boolean> Enable = defineOption(
                 true, OptionValidator.nonNull()
         );
         /** 控制周期（毫秒）。 */
-        public final NexalithicOption<Long> TickMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> TickMillis = defineOption(
                 500L, OptionValidator.positive()
         );
         /** 最低下发速率（B/s）。 */
-        public final NexalithicOption<Long> MinBps = NexalithicOption.create(
+        public final NexalithicOption<Long> MinBps = defineOption(
                 1024L * 1024, OptionValidator.positive()
         );
         /** 最高下发速率（B/s）。 */
-        public final NexalithicOption<Long> MaxBps = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxBps = defineOption(
                 1024L * 1024 * 64, OptionValidator.positive()
         );
         /**
          * 初始下发速率（B/s）。
          * 首次发布直接使用该值，不从 MinBps 开始慢慢抬升。
          */
-        public final NexalithicOption<Long> InitialBps = NexalithicOption.create(
+        public final NexalithicOption<Long> InitialBps = defineOption(
                 1024L * 1024 * 16, OptionValidator.positive()
         );
         /** EWMA 平滑系数：越大越灵敏，越小越平稳。 */
-        public final NexalithicOption<Double> EwmaAlpha = NexalithicOption.create(
+        public final NexalithicOption<Double> EwmaAlpha = defineOption(
                 0.3D, OptionValidator.unitInterval()
         );
         /** 冗余系数：目标速率 = 平滑吞吐 * Headroom。 */
-        public final NexalithicOption<Double> Headroom = NexalithicOption.create(
+        public final NexalithicOption<Double> Headroom = defineOption(
                 1.3D, OptionValidator.positive()
         );
         /** 相对变化阈值：变化小于该比例不发布。 */
-        public final NexalithicOption<Double> ChangeThreshold = NexalithicOption.create(
+        public final NexalithicOption<Double> ChangeThreshold = defineOption(
                 0.1D, OptionValidator.unitInterval()
         );
         /** 最小发布间隔（毫秒），限制控制面信令频率。 */
-        public final NexalithicOption<Long> MinPublishIntervalMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> MinPublishIntervalMillis = defineOption(
                 500L, OptionValidator.positive()
         );
         /** 升速稳定周期数（慢升），降速始终立即生效（快降）。 */
-        public final NexalithicOption<Integer> IncreaseStableTicks = NexalithicOption.create(
+        public final NexalithicOption<Integer> IncreaseStableTicks = defineOption(
                 3, OptionValidator.positive()
         );
-
-        public Options(Class<?> holder) {
+        protected Options(Class<?> holder) {
             super(holder);
         }
     }

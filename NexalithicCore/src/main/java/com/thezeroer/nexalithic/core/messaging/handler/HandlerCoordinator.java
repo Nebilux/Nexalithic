@@ -39,10 +39,10 @@ public abstract class HandlerCoordinator<
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, HandlerCoordinator.class);
     public static class Options extends OptionsDefinition {
         public final FixedTaskExecutor.Options FixedTaskExecutor = new FixedTaskExecutor.Options(holder) {};
-        public final NexalithicOption<Integer> HandlerContextPool_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> HandlerContextPool_Capacity = defineOption(
                 HandlerContextPool_Capacity_DefaultValue(), OptionValidator.positive()
         );
-        public final NexalithicOption<Double> HandlerContextPool_PrefillRatio = NexalithicOption.create(
+        public final NexalithicOption<Double> HandlerContextPool_PrefillRatio = defineOption(
                 HandlerContextPool_PrefillRatio_DefaultValue(), OptionValidator.unitInterval()
         );
         protected Options(Class<?> holder) {
@@ -55,8 +55,12 @@ public abstract class HandlerCoordinator<
             return 0.5;
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<HandlerRegistry<? extends HandlerContext<?>>> HandlerRegistry = NexalithicModule.create("HandlerCoordinator_HandlerRegistry", HandlerRegistry.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<HandlerRegistry<? extends HandlerContext<?>>> HandlerRegistry = defineModule(HandlerRegistry.class);
+        private Modules() {
+            super(HandlerCoordinator.class);
+        }
     }
 
     protected static final Logger logger = LoggerFactory.getLogger(HandlerCoordinator.class);
@@ -65,7 +69,7 @@ public abstract class HandlerCoordinator<
     protected final FixedTaskExecutor<HR, ?> executor;
 
     protected HandlerCoordinator(NexalithicBuilderContext context, Options options, boolean shared) {
-        handlerRegistry = context.getModule(Modules.HandlerRegistry);
+        handlerRegistry = context.getModule(MODULES.HandlerRegistry);
         wrapperPool = new GenericWrapperPool<>(
                 PoolStorageFactory.bounded(shared ? MpmcArrayQueue::new : MpscArrayQueue::new, context.getOption(options.HandlerContextPool_Capacity)),
                 PoolStrategyFactory.alwaysCreate(),

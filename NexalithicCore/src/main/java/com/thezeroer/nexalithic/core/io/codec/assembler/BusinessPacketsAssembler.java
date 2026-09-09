@@ -1,6 +1,5 @@
 package com.thezeroer.nexalithic.core.io.codec.assembler;
 
-import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
@@ -22,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * 业务包汇编器
@@ -36,28 +34,32 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     public static final class Options extends OptionsDefinition {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
-                return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
+                return defineOptionLazy(context ->
                                 Math.toIntExact(context.getOption(OPTIONS.MaxIdleTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
-        public final NexalithicOption<Integer> WrapperPool_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperPool_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> PacketQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> PacketQueue_Capacity = defineOption(
                 64, OptionValidator.positive()
         );
-        public final NexalithicOption<Long> MaxIdleTimeMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxIdleTimeMillis = defineOption(
                 30_000L, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
             super(holder);
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<PayloadRegistry> PayloadRegistry = NexalithicModule.create("BusinessPacketsAssembler_PayloadRegistry", PayloadRegistry.class);
-        public static final NexalithicModule<TimeWheel<BusinessPacketAssemblyWrapper>> TimeWheel = NexalithicModule.create("BusinessPacketsAssembler_TimeWheel", TimeWheel.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<PayloadRegistry> PayloadRegistry = defineModule(PayloadRegistry.class);
+        public final NexalithicModule<TimeWheel<BusinessPacketAssemblyWrapper>> TimeWheel = defineModule(TimeWheel.class);
+        private Modules() {
+            super(BusinessPacketsAssembler.class);
+        }
     }
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsAssembler.class);
     private final NexalithicSession<?, ?, ?> owner;

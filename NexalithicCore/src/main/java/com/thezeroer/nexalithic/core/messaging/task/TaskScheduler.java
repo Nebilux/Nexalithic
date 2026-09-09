@@ -41,10 +41,10 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     public static final class Options extends OptionsDefinition {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {};
         public final FixedTaskExecutor.Options FixedTaskExecutor = new FixedTaskExecutor.Options(holder) {};
-        public final NexalithicOption<Long> ProgressPoller_Delay = NexalithicOption.create(
+        public final NexalithicOption<Long> ProgressPoller_Delay = defineOption(
                 500L, OptionValidator.positive()
         );
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }

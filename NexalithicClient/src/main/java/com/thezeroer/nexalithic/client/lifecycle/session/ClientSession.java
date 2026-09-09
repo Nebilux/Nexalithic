@@ -3,6 +3,7 @@ package com.thezeroer.nexalithic.client.lifecycle.session;
 import com.thezeroer.nexalithic.client.NexalithicClient;
 import com.thezeroer.nexalithic.client.lifecycle.GeneralLoop;
 import com.thezeroer.nexalithic.client.manager.NetworkRouter;
+import com.thezeroer.nexalithic.core.NexalithicEndpoint;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.io.codec.AssemblerFactory;
 import com.thezeroer.nexalithic.core.io.codec.FragmenterFactory;
@@ -72,14 +73,13 @@ public class ClientSession extends NexalithicSession<
             ClientSessionChannel<SignalingPacket>,
             ClientSessionChannel<BusinessPacket>
             > {
-
         private final GeneralLoop loop;
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;
 
         public ClientChannelFactory(NexalithicBuilderContext context, GeneralLoop loop) {
-            this.fragmenterFactory = new FragmenterFactory(context);
-            this.assemblerFactory = new AssemblerFactory(context, NexalithicClient.OPTIONS);
+            this.fragmenterFactory = new FragmenterFactory(context, NexalithicClient.MODULES);
+            this.assemblerFactory = new AssemblerFactory(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
             this.loop = loop;
         }
 

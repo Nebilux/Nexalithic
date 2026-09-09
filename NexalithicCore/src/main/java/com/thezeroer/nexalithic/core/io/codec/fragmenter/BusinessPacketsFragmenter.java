@@ -1,9 +1,9 @@
 package com.thezeroer.nexalithic.core.io.codec.fragmenter;
 
-import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
 import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
@@ -24,17 +24,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsFragmenter.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> WrapperQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperQueue_Capacity = defineOption(
                 64, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> WrapperLinked_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperLinked_Capacity = defineOption(
                 64, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> WrapperPool_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperPool_Capacity = defineOption(
                 4096, OptionValidator.positive()
         );
-
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }

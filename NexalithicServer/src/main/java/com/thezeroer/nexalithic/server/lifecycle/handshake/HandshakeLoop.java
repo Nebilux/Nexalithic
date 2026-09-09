@@ -45,7 +45,6 @@ import java.nio.channels.SocketChannel;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 
 /**
  * 握手选择器
@@ -59,7 +58,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
     public static final class Options extends AbstractLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
-                return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
+                return defineOptionLazy(context ->
                                 Math.toIntExact(context.getOption(OPTIONS.MaxWaitTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
@@ -67,25 +66,29 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
         };
         public final FixedTaskExecutor.Options FixedTaskExecutor = new FixedTaskExecutor.Options(holder) {
         };
-        public final NexalithicOption<Integer> DispatchQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> DispatchQueue_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> DispatchQueue_DrainLimit = NexalithicOption.create(
+        public final NexalithicOption<Integer> DispatchQueue_DrainLimit = defineOption(
                 256, OptionValidator.positive()
         );
-        public final NexalithicOption<Long> MaxWaitTimeMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> MaxWaitTimeMillis = defineOption(
                 3_000L, OptionValidator.positive()
         );
-        public final NexalithicOption<Boolean> SharedFixedTaskExecutor = NexalithicOption.create(
+        public final NexalithicOption<Boolean> SharedFixedTaskExecutor = defineOption(
                 true, OptionValidator.nonNull()
         );
         private Options(Class<?> holder) {
             super(holder);
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<TimeWheel<PendingChannel>> TimeWheel = NexalithicModule.create("HandshakeLoop_TimeWheel", TimeWheel.class);
-        public static final NexalithicModule<FixedTaskExecutor<PendingChannel, ExecutorThread>> FixedTaskExecutor = NexalithicModule.create("HandshakeLoop_FixedTaskExecutor", FixedTaskExecutor.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<TimeWheel<PendingChannel>> TimeWheel = defineModule(TimeWheel.class);
+        public final NexalithicModule<FixedTaskExecutor<PendingChannel, ExecutorThread>> FixedTaskExecutor = defineModule(FixedTaskExecutor.class);
+        private Modules() {
+            super(HandshakeLoop.class);
+        }
     }
     public record Constant(int DrainLimit) {}
     private static final Logger logger = LoggerFactory.getLogger(HandshakeLoop.class);
@@ -103,10 +106,10 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
         CONSTANT = context.getConstant(this.getClass(), Constant.class, () -> new Constant(
                 context.getOption(OPTIONS.DispatchQueue_DrainLimit))
         );
-        sessionsManager = context.getModule(NexalithicServer.Modules.SessionsManager);
-        securityPolicy = context.getModule(NexalithicServer.Modules.SecurityPolicy);
-        serviceUnitLoadBalancer = context.getModule(ServerLifecycleManager.Modules.ServiceUnitLoadBalancer);
-        timeWheel = context.getModule(Modules.TimeWheel, () -> {
+        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
+        securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
+        serviceUnitLoadBalancer = context.getModule(ServerLifecycleManager.MODULES.ServiceUnitLoadBalancer);
+        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
             TimeWheel<PendingChannel> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
                     context.getOption(OPTIONS.TimeWheel.SlotCount),
@@ -123,7 +126,7 @@ public class HandshakeLoop extends AbstractLoop implements TimerCoordinator<Pend
             return timeWheel;
         });
         if (context.getOption(OPTIONS.SharedFixedTaskExecutor)) {
-            executor = context.getModule(Modules.FixedTaskExecutor, () -> createFixedTaskExecutor(context, true));
+            executor = context.getModule(MODULES.FixedTaskExecutor, () -> createFixedTaskExecutor(context, true));
         } else {
             executor = createFixedTaskExecutor(context,false);
         }

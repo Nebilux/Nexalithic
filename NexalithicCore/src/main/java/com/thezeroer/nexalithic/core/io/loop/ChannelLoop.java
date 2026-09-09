@@ -3,7 +3,6 @@ package com.thezeroer.nexalithic.core.io.loop;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.session.channel.NexalithicChannel;
 import com.thezeroer.nexalithic.core.session.channel.SessionChannel;
 import org.jctools.queues.MpscUnboundedArrayQueue;
@@ -21,9 +20,8 @@ import java.util.Iterator;
  * @version 1.0.0
  */
 public abstract class ChannelLoop<C extends NexalithicChannel> extends AbstractLoop {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ChannelLoop.class);
     public static class Options extends AbstractLoop.Options {
-        public final NexalithicOption<Integer> InterestQueue_ChunkSize = NexalithicOption.create(
+        public final NexalithicOption<Integer> InterestQueue_ChunkSize = defineOption(
                 1024, OptionValidator.positive()
         );
         protected Options(Class<?> holder) {

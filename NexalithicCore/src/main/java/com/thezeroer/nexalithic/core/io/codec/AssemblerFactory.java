@@ -32,17 +32,17 @@ public class AssemblerFactory {
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
     private final int PacketQueue_Capacity_;
 
-    public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Options options) {
+    public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules, NexalithicEndpoint.Type endpointType) {
         PacketQueue_Capacity_ = context.getOption(BusinessPacketsAssembler.OPTIONS.PacketQueue_Capacity);
         BusinessPacketAssemblyWrapper.Constant businessPacketAssemblyConstant = new BusinessPacketAssemblyWrapper.Constant(
                 TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketsAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS)
         );
-        PayloadRegistry payloadRegistry = context.getModule(BusinessPacketsAssembler.Modules.PayloadRegistry);
-        TaskScheduler taskScheduler = context.getModule(NexalithicEndpoint.Modules.TaskScheduler);
+        PayloadRegistry payloadRegistry = context.getModule(BusinessPacketsAssembler.MODULES.PayloadRegistry);
+        TaskScheduler taskScheduler = context.getModule(modules.TaskScheduler);
         //noinspection Convert2Diamond
         wrapperPool = new GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper>(
                 PoolStorageFactory.bounded(
-                        switch (context.getOption(options.EndpointType)) {
+                        switch (endpointType) {
                             case CLIENT -> MpscArrayQueue::new;
                             case SERVER -> MpmcArrayQueue::new;
                         },
@@ -50,7 +50,7 @@ public class AssemblerFactory {
                 PoolStrategyFactory.alwaysCreate(),
                 owner -> new BusinessPacketAssemblyWrapper(owner, businessPacketAssemblyConstant, new AssemblyCallback(taskScheduler), payloadRegistry)
         );
-        timeWheel = context.getModule(BusinessPacketsAssembler.Modules.TimeWheel, () -> {
+        timeWheel = context.getModule(BusinessPacketsAssembler.MODULES.TimeWheel, () -> {
             TimeWheel<BusinessPacketAssemblyWrapper> timeWheel = new TimeWheel<>(
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickMillis),
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.SlotCount),
@@ -58,7 +58,7 @@ public class AssemblerFactory {
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
                             PoolStorageFactory.bounded(
-                                    switch (context.getOption(options.EndpointType)) {
+                                    switch (endpointType) {
                                         case CLIENT -> SpscArrayQueue::new;
                                         case SERVER -> SpmcArrayQueue::new;
                                     },

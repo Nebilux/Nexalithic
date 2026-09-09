@@ -66,19 +66,19 @@ public class TimeWheel<T> {
             super(holder);
         }
         protected NexalithicOption<Long> TickMillis() {
-            return NexalithicOption.create(1_000L, OptionValidator.positive());
+            return defineOption(1_000L, OptionValidator.positive());
         }
         protected NexalithicOption<Integer> SlotCount() {
-            return NexalithicOption.create(64, OptionValidator.positive());
+            return defineOption(64, OptionValidator.positive());
         }
         protected NexalithicOption<Integer> TickQuotaShift() {
-            return NexalithicOption.create(2, OptionValidator.range(1, 63));
+            return defineOption(2, OptionValidator.range(1, 63));
         }
         protected NexalithicOption<Integer> WaitQueue_ChunkSize() {
-            return NexalithicOption.create(1024, OptionValidator.positive());
+            return defineOption(1024, OptionValidator.positive());
         }
         protected NexalithicOption<Integer> WrapperPool_Capacity() {
-            return NexalithicOption.create(256, OptionValidator.positive());
+            return defineOption(256, OptionValidator.positive());
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(TimeWheel.class);

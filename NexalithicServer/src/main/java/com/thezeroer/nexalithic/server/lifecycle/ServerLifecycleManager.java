@@ -8,6 +8,7 @@ import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.lifecycle.LifecycleManager;
+import com.thezeroer.nexalithic.server.NexalithicServer;
 import com.thezeroer.nexalithic.server.lifecycle.accept.AcceptorLoop;
 import com.thezeroer.nexalithic.server.lifecycle.handshake.HandshakeLoop;
 import com.thezeroer.nexalithic.server.lifecycle.service.ServiceUnit;
@@ -23,20 +24,24 @@ import com.thezeroer.nexalithic.server.lifecycle.service.WorkerLoop;
 public class ServerLifecycleManager extends LifecycleManager {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServerLifecycleManager.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> HandshakeLoop_Count = NexalithicOption.create(
+        public final NexalithicOption<Integer> HandshakeLoop_Count = defineOption(
                 1, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> ServiceUnit_Count = NexalithicOption.create(
+        public final NexalithicOption<Integer> ServiceUnit_Count = defineOption(
                 1, OptionValidator.positive()
         );
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<AcceptorLoop> AcceptorLoop = NexalithicModule.create("LifecycleManager_AcceptorLoop", AcceptorLoop.class);
-        public static final NexalithicModule<LoadBalancer<Void, HandshakeLoop>> HandshakeLoopLoadBalancer = NexalithicModule.create("LifecycleManager_HandshakeLoopLoadBalancer", LoadBalancer.class);
-        public static final NexalithicModule<LoadBalancer<Void, ServiceUnit>> ServiceUnitLoadBalancer = NexalithicModule.create("LifecycleManager_ServiceUnitLoadBalancer", LoadBalancer.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<AcceptorLoop> AcceptorLoop = defineModule(AcceptorLoop.class);
+        public final NexalithicModule<LoadBalancer<Void, HandshakeLoop>> HandshakeLoopLoadBalancer = defineModule(LoadBalancer.class, HandshakeLoop.class.getSimpleName());
+        public final NexalithicModule<LoadBalancer<Void, ServiceUnit>> ServiceUnitLoadBalancer = defineModule(LoadBalancer.class, ServiceUnit.class.getSimpleName());
+        private Modules() {
+            super(ServerLifecycleManager.class);
+        }
     }
 
     private final AcceptorLoop acceptorLoop;
@@ -44,10 +49,10 @@ public class ServerLifecycleManager extends LifecycleManager {
     private final LoadBalancer<Void, ServiceUnit> serviceUnitLoadBalancer;
 
     public ServerLifecycleManager(NexalithicBuilderContext context) {
-        super("NexalithicServer");
-        this.acceptorLoop = context.getModule(Modules.AcceptorLoop);
-        this.handshakeLoopLoadBalancer = context.getModule(Modules.HandshakeLoopLoadBalancer);
-        this.serviceUnitLoadBalancer = context.getModule(Modules.ServiceUnitLoadBalancer);
+        super(NexalithicServer.class.getSimpleName());
+        this.acceptorLoop = context.getModule(MODULES.AcceptorLoop);
+        this.handshakeLoopLoadBalancer = context.getModule(MODULES.HandshakeLoopLoadBalancer);
+        this.serviceUnitLoadBalancer = context.getModule(MODULES.ServiceUnitLoadBalancer);
     }
 
     @Override

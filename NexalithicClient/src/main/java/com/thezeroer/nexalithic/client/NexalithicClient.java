@@ -45,18 +45,12 @@ import java.util.concurrent.locks.LockSupport;
  */
 @SuppressWarnings("UnusedReturnValue")
 public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, NexalithicClient.class);
-    public static final class Options extends NexalithicEndpoint.Options {
-        Options(Class<?> holder) {
-            super(holder);
-        }
-        @Override
-        protected Type EndpointType_Value() {
-            return Type.CLIENT;
-        }
-    }
+    public static final Modules MODULES = new Modules();
     public static final class Modules extends NexalithicEndpoint.Modules {
-        public static final NexalithicModule<LinkStatusManager> LinkStatusManager = NexalithicModule.create("NexalithicClient_LinkStatusManager", LinkStatusManager.class);
+        public final NexalithicModule<LinkStatusManager> LinkStatusManager = defineModule(LinkStatusManager.class);
+        private Modules() {
+            super(NexalithicClient.class);
+        }
     }
 
     private static final Logger logger = LoggerFactory.getLogger(NexalithicClient.class);
@@ -64,9 +58,9 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
     private final GeneralLoop generalLoop;
 
     private NexalithicClient(NexalithicBuilderContext context) {
-        super(context.getModule(Modules.LifecycleManager), context.getModule(Modules.EventBus));
-        this.linkStatusManager = context.getModule(Modules.LinkStatusManager);
-        this.generalLoop = context.getModule(ClientLifecycleManager.Modules.GeneralLoop);
+        super(context.getModule(MODULES.LifecycleManager), context.getModule(MODULES.EventBus));
+        this.linkStatusManager = context.getModule(MODULES.LinkStatusManager);
+        this.generalLoop = context.getModule(ClientLifecycleManager.MODULES.GeneralLoop);
         System.gc();
     }
     public static NexalithicClient unsafeCreate(NexalithicBuilderContext context) {
@@ -134,7 +128,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
 
     public static class Builder extends NexalithicEndpointBuilder<Builder, ClientHandlerContext> {
         public Builder() {
-            super(ClientHandlerContext.class, OPTIONS);
+            super(ClientHandlerContext.class);
         }
 
         @Override
@@ -143,7 +137,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
         }
 
         public Builder securityPolicy(ClientSecurityPolicy securityPolicy) {
-            context.setModule(Modules.SecurityPolicy, securityPolicy);
+            context.setModule(NexalithicClient.MODULES.SecurityPolicy, securityPolicy);
             return this;
         }
 
@@ -156,15 +150,15 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
             }
 
             controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
-            context.setModule(Modules.EventBus, new NexalithicEventBus());
-            context.setModule(HandlerCoordinator.Modules.HandlerRegistry, handlerRegistryBuilder.build());
-            context.setModule(BusinessPacketsAssembler.Modules.PayloadRegistry, payloadRegistryBuilder.build());
+            context.setModule(MODULES.EventBus, new NexalithicEventBus());
+            context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
+            context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
             ClientHandlerCoordinator handlerCoordinator = new ClientHandlerCoordinator(context);
-            context.setModule(Modules.HandlerCoordinator, handlerCoordinator);
-            context.setModule(Modules.TaskScheduler, new TaskScheduler(context));
-            context.setModule(Modules.LinkStatusManager, new LinkStatusManager(context));
-            context.setModule(ClientLifecycleManager.Modules.GeneralLoop, new GeneralLoop(context));
-            context.setModule(Modules.LifecycleManager, new ClientLifecycleManager(context));
+            context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
+            context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
+            context.setModule(MODULES.LinkStatusManager, new LinkStatusManager(context));
+            context.setModule(ClientLifecycleManager.MODULES.GeneralLoop, new GeneralLoop(context));
+            context.setModule(MODULES.LifecycleManager, new ClientLifecycleManager(context));
 
             return new NexalithicClient(context);
         }

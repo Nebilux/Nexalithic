@@ -1,12 +1,12 @@
 package com.thezeroer.nexalithic.server.lifecycle.service;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
-import com.thezeroer.nexalithic.core.infra.loadbalance.P2CBalancer;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
+import com.thezeroer.nexalithic.core.infra.loadbalance.P2CBalancer;
 import com.thezeroer.nexalithic.core.session.SessionAttachment;
 
 import java.io.IOException;
@@ -21,11 +21,10 @@ import java.io.IOException;
 public class ServiceUnit implements LoadBalanceable, SessionAttachment {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServiceUnit.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> WorkerLoop_Count = NexalithicOption.create(
+        public final NexalithicOption<Integer> WorkerLoop_Count = defineOption(
                 Runtime.getRuntime().availableProcessors(), OptionValidator.positive()
         );
-
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }

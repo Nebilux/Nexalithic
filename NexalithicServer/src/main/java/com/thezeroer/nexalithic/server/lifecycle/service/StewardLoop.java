@@ -50,21 +50,25 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
     public static final class Options extends ServiceLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
-                return NexalithicOption.create((Function<NexalithicBuilderContext, Integer>) context ->
+                return defineOptionLazy(context ->
                                 Math.toIntExact(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
-        public final NexalithicOption<Long> HeartBeat_MaxIntervalMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> HeartBeat_MaxIntervalMillis = defineOption(
                 60_000L, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
             super(holder);
         }
     }
-    public static final class Modules implements ModulesDefinition {
-        public static final NexalithicModule<TimeWheel<ServerSession>> TimeWheel = NexalithicModule.create("StewardLoop_TimeWheel", TimeWheel.class);
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<TimeWheel<ServerSession>> TimeWheel = defineModule(TimeWheel.class);
+        private Modules() {
+            super(StewardLoop.class);
+        }
     }
     private final SessionsManager sessionsManager;
     private final NetworkRouter networkRouter;
@@ -74,9 +78,9 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
 
     public StewardLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
         super(context, OPTIONS);
-        sessionsManager = context.getModule(NexalithicServer.Modules.SessionsManager);
-        networkRouter = context.getModule(NexalithicServer.Modules.NetworkRouter);
-        timeWheel = context.getModule(Modules.TimeWheel, () -> {
+        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
+        networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
+        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
             TimeWheel<ServerSession> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
                     context.getOption(OPTIONS.TimeWheel.SlotCount),
@@ -93,7 +97,7 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
             return timeWheel;
         });
         ServerSession.ServerChannelFactory channelFactory = new ServerSession.ServerChannelFactory(context, this);
-        TaskScheduler taskScheduler = context.getModule(NexalithicServer.Modules.TaskScheduler);
+        TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
         ServerSession.Constant sessionConstant = context.getConstant(ServerSession.class, ServerSession.Constant.class, () -> new ServerSession.Constant(
                 TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis), TimeUnit.MILLISECONDS)
         ));

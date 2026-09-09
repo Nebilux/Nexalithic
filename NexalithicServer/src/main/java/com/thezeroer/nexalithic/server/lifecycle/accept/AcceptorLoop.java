@@ -42,26 +42,25 @@ import java.util.concurrent.TimeUnit;
 public class AcceptorLoop extends AbstractLoop {
     public static final Options OPTIONS = Options.initOptions(Options.class, AcceptorLoop.class);
     public static final class Options extends AbstractLoop.Options {
-        public final NexalithicOption<Integer> FiltrationContextPool_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> FiltrationContextPool_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> FiltrationContextPool_Limit = NexalithicOption.create(
+        public final NexalithicOption<Integer> FiltrationContextPool_Limit = defineOption(
                 FiltrationContextPool_Capacity.defaultValue() * 2, OptionValidator.positive()
         );
-        public final NexalithicOption<Double> FiltrationContextPool_PrefillRatio = NexalithicOption.create(
+        public final NexalithicOption<Double> FiltrationContextPool_PrefillRatio = defineOption(
                 0.5, OptionValidator.unitInterval()
         );
-        public final NexalithicOption<Integer> PendingChannelPool_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> PendingChannelPool_Capacity = defineOption(
                 4096, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> PendingChannelPool_Limit = NexalithicOption.create(
+        public final NexalithicOption<Integer> PendingChannelPool_Limit = defineOption(
                 PendingChannelPool_Capacity.defaultValue() * 2, OptionValidator.positive()
         );
-        public final NexalithicOption<Double> PendingChannelPool_PrefillRatio = NexalithicOption.create(
+        public final NexalithicOption<Double> PendingChannelPool_PrefillRatio = defineOption(
                 0.5, OptionValidator.unitInterval()
         );
-
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
@@ -73,14 +72,14 @@ public class AcceptorLoop extends AbstractLoop {
 
     public AcceptorLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
-        ServerSecurityPolicy securityPolicy = context.getModule(NexalithicServer.Modules.SecurityPolicy);
+        ServerSecurityPolicy securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
         PendingChannel.Constant pendingChannelConstant = new PendingChannel.Constant(
                 TimeUnit.NANOSECONDS.convert(context.getOption(HandshakeLoop.OPTIONS.MaxWaitTimeMillis), TimeUnit.MILLISECONDS),
                 SecretKeyUtils.ECDH_LENGTH + SecretKeyUtils.FINISHED_LENGTH + SecretKeyContext.TAG_LENGTH,
                 Math.max(securityPolicy.certificatesLength() + SecretKeyUtils.ECDH_LENGTH + securityPolicy.signatureLength(),
                         SecretKeyUtils.FINISHED_LENGTH + ServerSession.SESSION_KEY_LENGTH + SecretKeyContext.TAG_LENGTH * 2)
         );
-        handshakeLoopBalancer = context.getModule(ServerLifecycleManager.Modules.HandshakeLoopLoadBalancer);
+        handshakeLoopBalancer = context.getModule(ServerLifecycleManager.MODULES.HandshakeLoopLoadBalancer);
         pendingChannelPool = new GenericWrapperPool<PendingChannel, PendingChannel>(
                 PoolStorageFactory.bounded(MpscArrayQueue::new, context.getOption(OPTIONS.PendingChannelPool_Capacity)),
                 PoolStrategyFactory.blocking(context.getOption(OPTIONS.PendingChannelPool_Limit)),

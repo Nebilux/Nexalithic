@@ -1,9 +1,9 @@
 package com.thezeroer.nexalithic.server.messaging;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerCoordinator;
-import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.server.NexalithicServer;
 import com.thezeroer.nexalithic.server.lifecycle.ServerLifecycleManager;
 import com.thezeroer.nexalithic.server.lifecycle.service.ServiceUnit;
@@ -23,9 +23,8 @@ public class ServerHandlerCoordinator extends HandlerCoordinator<
         ServerHandlerContext.Recyclable
         > {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServerHandlerCoordinator.class);
-
     public static final class Options extends HandlerCoordinator.Options {
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
@@ -33,7 +32,7 @@ public class ServerHandlerCoordinator extends HandlerCoordinator<
 
     public ServerHandlerCoordinator(NexalithicBuilderContext context) {
         super(context, OPTIONS, context.getOption(ServerLifecycleManager.OPTIONS.ServiceUnit_Count) != 1 || context.getOption(ServiceUnit.OPTIONS.WorkerLoop_Count) != 1);
-        sessionsManager = context.getModule(NexalithicServer.Modules.SessionsManager);
+        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
         init(context, OPTIONS);
     }
 

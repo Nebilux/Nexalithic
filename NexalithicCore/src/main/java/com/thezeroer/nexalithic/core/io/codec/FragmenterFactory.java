@@ -24,11 +24,11 @@ public class FragmenterFactory {
     private final int SignalingPacketsFragmenter_WrapperQueue_Capacity_, BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_;
     private final WrapperPool<BusinessPacketFragmentWrapper> businessPacketWrapperPool;
 
-    public FragmenterFactory(NexalithicBuilderContext context) {
+    public FragmenterFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules) {
         SignalingPacketsFragmenter_WrapperQueue_Capacity_ = context.getOption(SignalingPacketsFragmenter.OPTIONS.WrapperQueue_Capacity);
         BusinessPacketsFragmenter_WrapperQueue_Capacity_ = context.getOption(BusinessPacketsFragmenter.OPTIONS.WrapperQueue_Capacity);
         WrapperLinked_Capacity_ = context.getOption(BusinessPacketsFragmenter.OPTIONS.WrapperLinked_Capacity);
-        TaskScheduler taskScheduler = context.getModule(NexalithicEndpoint.Modules.TaskScheduler);
+        TaskScheduler taskScheduler = context.getModule(modules.TaskScheduler);
         //noinspection Convert2Diamond
         businessPacketWrapperPool = new GenericWrapperPool<BusinessPacket, BusinessPacketFragmentWrapper>(
                 PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(BusinessPacketsFragmenter.OPTIONS.WrapperPool_Capacity)),

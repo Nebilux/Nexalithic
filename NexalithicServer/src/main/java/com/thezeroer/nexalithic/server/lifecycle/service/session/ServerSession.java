@@ -1,5 +1,6 @@
 package com.thezeroer.nexalithic.server.lifecycle.service.session;
 
+import com.thezeroer.nexalithic.core.NexalithicEndpoint;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.io.codec.AssemblerFactory;
 import com.thezeroer.nexalithic.core.io.codec.FragmenterFactory;
@@ -88,8 +89,8 @@ public class ServerSession extends NexalithicSession<
         private final ServerSessionChannel.Constant serverSessionChannelConstant;
 
         public ServerChannelFactory(NexalithicBuilderContext context, StewardLoop loop) {
-            this.fragmenterFactory = new FragmenterFactory(context);
-            this.assemblerFactory = new AssemblerFactory(context, NexalithicServer.OPTIONS);
+            this.fragmenterFactory = new FragmenterFactory(context, NexalithicServer.MODULES);
+            this.assemblerFactory = new AssemblerFactory(context, NexalithicServer.MODULES, NexalithicEndpoint.Type.SERVER);
             this.loop = loop;
             serverSessionChannelConstant = context.getConstant(ServerSessionChannel.class, ServerSessionChannel.Constant.class, () -> new ServerSessionChannel.Constant(
                     TimeUnit.NANOSECONDS.convert(context.getOption(WorkerLoop.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS))

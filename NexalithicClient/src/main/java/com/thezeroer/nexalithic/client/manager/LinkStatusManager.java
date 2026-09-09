@@ -83,7 +83,7 @@ public class LinkStatusManager {
     private final Events events;
 
     public LinkStatusManager(NexalithicBuilderContext context) {
-        NexalithicEventBus eventBus = context.getModule(NexalithicClient.Modules.EventBus);
+        NexalithicEventBus eventBus = context.getModule(NexalithicClient.MODULES.EventBus);
         events = new Events(
                 eventBus.registerTopic(Events.StatusTransition.class)
         );

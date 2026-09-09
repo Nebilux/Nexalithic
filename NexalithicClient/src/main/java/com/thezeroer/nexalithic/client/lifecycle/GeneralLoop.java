@@ -54,10 +54,10 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, GeneralLoop.class);
     public static final class Options extends ChannelLoop.Options {
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Long> HeartBeat_IntervalMillis = NexalithicOption.create(
+        public final NexalithicOption<Long> HeartBeat_IntervalMillis = defineOption(
                 30_000L, OptionValidator.positive()
         );
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
@@ -81,9 +81,9 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
                 context.getOption(OPTIONS.DynamicRateController.Enable),
                 TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS)
         );
-        linkStatusManager = context.getModule(NexalithicClient.Modules.LinkStatusManager);
-        securityPolicy = context.getModule(NexalithicClient.Modules.SecurityPolicy);
-        handlerCoordinator = context.getModule(NexalithicClient.Modules.HandlerCoordinator);
+        linkStatusManager = context.getModule(NexalithicClient.MODULES.LinkStatusManager);
+        securityPolicy = context.getModule(NexalithicClient.MODULES.SecurityPolicy);
+        handlerCoordinator = context.getModule(NexalithicClient.MODULES.HandlerCoordinator);
         networkRouter = new NetworkRouter();
         eventQueue = new ConcurrentLinkedQueue<>();
         dynamicRateController = new DynamicRateController(
@@ -97,7 +97,7 @@ public class GeneralLoop extends ChannelLoop<ClientSessionChannel<?>> {
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
         ClientSession.ClientChannelFactory channelFactory = new ClientSession.ClientChannelFactory(context, this);
-        TaskScheduler taskScheduler = context.getModule(NexalithicClient.Modules.TaskScheduler);
+        TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
         sessionFactory = objects -> new ClientSession(
                 (SessionKey) objects[0],
                 (SecretKeyContext) objects[1],
