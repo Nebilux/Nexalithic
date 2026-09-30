@@ -7,7 +7,7 @@ package com.thezeroer.nexalithic.core.exception;
  * @since 2026/04/02
  * @version 1.0.0
  */
-public class NexalithicOptionException extends NexalithicException {
+public final class NexalithicOptionException extends NexalithicException {
     public NexalithicOptionException(String optionName, String detail) {
         super("Option error at [" + optionName + "]: " + detail, true);
     }

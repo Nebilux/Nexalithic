@@ -1,6 +1,7 @@
 package com.thezeroer.nexalithic.core.infra.buffer;
 
-import com.thezeroer.nexalithic.core.infra.recyclable.SelfStaticWrapperPool;
+import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
+import com.thezeroer.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -19,7 +20,7 @@ import java.nio.channels.ScatteringByteChannel;
  * @since 2026/02/13
  */
 @SuppressWarnings("UnusedReturnValue")
-public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<LoopBuffer> {
+public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     /** 原始底层缓冲区 */
     private final ByteBuffer buffer;
     /** 复用的可读段视图（处理回绕时包含两段） */
@@ -39,7 +40,8 @@ public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<
      * @param buffer 外部分配的底层缓冲区，其 {@code remaining()} 必须为 2 的幂。
      * @throws IllegalArgumentException 如果容量不是 2 的幂。
      */
-    public LoopBuffer(ByteBuffer buffer) {
+    public LoopBuffer(GenericWrapperPool<LoopBuffer, LoopBuffer> owner, ByteBuffer buffer) {
+        super(owner);
         this.capacity = buffer.remaining();
         if ((capacity & (capacity - 1)) != 0) {
             throw new IllegalArgumentException("Capacity must be a power of 2");
@@ -274,6 +276,8 @@ public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<
     public void clear() {
         tail = 0;
         head = 0;
+        markedHead = -1;
+        markedTail = -1;
     }
 
     public LoopBuffer put(byte value) {
@@ -419,20 +423,14 @@ public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<
         unsafePut(Double.doubleToLongBits(value));
     }
     public void unsafePut(byte[] value, int length) {
-        int writePos = (int) (tail & mask);
-        int firstPartLen = Math.min(length, capacity - writePos);
-        buffer.put(writePos, value, 0, firstPartLen);
-        if (length > firstPartLen) {
-            buffer.put(0, value, firstPartLen, length - firstPartLen);
-        }
-        tail += length;
+        unsafePut(value, 0, length);
     }
     public void unsafePut(byte[] value, int offset, int length) {
         int writePos = (int) (tail & mask);
         int firstPartLen = Math.min(length, capacity - writePos);
         buffer.put(writePos, value, offset, firstPartLen);
         if (length > firstPartLen) {
-            buffer.put(0, value, firstPartLen, length - firstPartLen);
+            buffer.put(0, value, offset + firstPartLen, length - firstPartLen);
         }
         tail += length;
     }
@@ -493,13 +491,7 @@ public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<
         return value;
     }
     public void unsafeGetBytes(byte[] dst, int length) {
-        int readPos = (int) (head & mask);
-        int firstPartLen = Math.min(length, capacity - readPos);
-        buffer.get(readPos, dst, 0, firstPartLen);
-        if (length > firstPartLen) {
-            buffer.get(0, dst, firstPartLen, length - firstPartLen);
-        }
-        head += length;
+        unsafeGetBytes(dst, 0, length);
     }
     public void unsafeGetBytes(byte[] dst, int offset, int length) {
         int readPos = (int) (head & mask);
@@ -512,8 +504,17 @@ public class LoopBuffer extends SelfStaticWrapperPool.InteriorRecyclableWrapper<
     }
 
     @Override
-    protected void onRecycle() {
+    protected void onReset() {
         clear();
+    }
+
+    @Override
+    protected void onDiscard() {
+        buffer.clear();
+        readViews[0] = null;
+        readViews[1] = null;
+        writeViews[0] = null;
+        writeViews[1] = null;
     }
 
     /**

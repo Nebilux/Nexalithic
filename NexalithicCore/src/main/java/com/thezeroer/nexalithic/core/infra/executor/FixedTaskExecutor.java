@@ -19,27 +19,25 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @version 1.0.0
  */
 public class FixedTaskExecutor<T, TH extends Thread> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, FixedTaskExecutor.class);
     public static class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> CoreWorkerSize = CoreWorkerSize();
         public final NexalithicOption<Integer> MaxWorkerSize = MaxWorkerSize();
-        public final NexalithicOption<Long> KeepAliveTimeNanos = KeepAliveTimeNanos();
+        public final NexalithicOption<Long> KeepAliveTimeMillis = KeepAliveTimeMillis();
         public final NexalithicOption<Integer> TaskQueue_Capacity = TaskQueue_Capacity();
-
         protected Options(Class<?> holder) {
             super(holder);
         }
         protected NexalithicOption<Integer> CoreWorkerSize() {
-            return NexalithicOption.create(Runtime.getRuntime().availableProcessors(), OptionValidator.nonNegative());
+            return defineOption(Runtime.getRuntime().availableProcessors(), OptionValidator.nonNegative());
         }
         protected NexalithicOption<Integer> MaxWorkerSize() {
-            return NexalithicOption.create(Runtime.getRuntime().availableProcessors(), OptionValidator.positive());
+            return defineOption(Runtime.getRuntime().availableProcessors(), OptionValidator.positive());
         }
-        protected NexalithicOption<Long> KeepAliveTimeNanos() {
-            return NexalithicOption.create(TimeUnit.MINUTES.toNanos(1), OptionValidator.nonNegative());
+        protected NexalithicOption<Long> KeepAliveTimeMillis() {
+            return defineOption(60_000L, OptionValidator.nonNegative());
         }
         protected NexalithicOption<Integer> TaskQueue_Capacity() {
-            return NexalithicOption.create(1024, OptionValidator.positive());
+            return defineOption(1024, OptionValidator.positive());
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(FixedTaskExecutor.class);
@@ -55,41 +53,42 @@ public class FixedTaskExecutor<T, TH extends Thread> {
     private final AtomicInteger workerCount = new AtomicInteger(0);
     private volatile boolean isShutdown = false;
 
-    public FixedTaskExecutor(int coreWorkerSize, int maxWorkerSize, long keepAliveTimeNanos,
+    public FixedTaskExecutor(int coreWorkerSize, int maxWorkerSize, long keepAliveTimeMillis,
                              BlockingTaskQueue<T> taskQueue, TypedThreadFactory<TH> threadFactory,
                              RejectedTaskHandler<T> handler, TaskProcessor<T, TH> processor) {
         this.coreWorkerSize = coreWorkerSize;
         this.maxWorkerSize = maxWorkerSize;
-        this.keepAliveTimeNanos = keepAliveTimeNanos;
+        this.keepAliveTimeNanos = TimeUnit.MILLISECONDS.toNanos(keepAliveTimeMillis);
         this.taskQueue = taskQueue;
         this.threadFactory = threadFactory;
         this.handler = handler;
         this.processor = processor;
     }
 
-    public void submit(T target) {
+    public boolean submit(T target) {
         if (isShutdown || target == null) {
-            return;
+            return false;
         }
         if (workerCount.get() < coreWorkerSize) {
             if (addWorker(target, true)) {
-                return;
+                return true;
             }
         }
         if (taskQueue.offer(target)) {
             if (workerCount.get() == 0 && !isShutdown) {
                 addWorker(null, false);
             }
-            return;
+            return true;
         }
-        if (!addWorker(target, false)) {
-            handler.rejectedExecution(target, this);
+        if (addWorker(target, false)) {
+            return true;
         }
+        handler.rejectedExecution(target, this);
+        return false;
     }
 
     public void shutdown() {
         isShutdown = true;
-        taskQueue.clear();
         for (Worker worker : workers) {
             worker.stop();
         }

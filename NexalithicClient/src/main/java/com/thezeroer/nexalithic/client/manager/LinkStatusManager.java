@@ -6,8 +6,6 @@ import com.thezeroer.nexalithic.core.event.EventDefinition;
 import com.thezeroer.nexalithic.core.event.EventTopic;
 import com.thezeroer.nexalithic.core.event.NexalithicEvent;
 import com.thezeroer.nexalithic.core.event.NexalithicEventBus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -85,7 +83,7 @@ public class LinkStatusManager {
     private final Events events;
 
     public LinkStatusManager(NexalithicBuilderContext context) {
-        NexalithicEventBus eventBus = context.getModule(NexalithicClient.Modules.EventBus);
+        NexalithicEventBus eventBus = context.getModule(NexalithicClient.MODULES.EventBus);
         events = new Events(
                 eventBus.registerTopic(Events.StatusTransition.class)
         );

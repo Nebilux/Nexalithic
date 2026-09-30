@@ -1,13 +1,15 @@
 package com.thezeroer.nexalithic.core.messaging.task;
 
-import com.thezeroer.nexalithic.core.messaging.Dispatchable;
 import com.thezeroer.nexalithic.core.messaging.handler.NexalithicHandler;
+import com.thezeroer.nexalithic.core.messaging.task.event.TaskMailbox;
+import com.thezeroer.nexalithic.core.messaging.task.future.TaskFuture;
+import com.thezeroer.nexalithic.core.messaging.task.visual.TransferListener;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
-import com.thezeroer.nexalithic.core.infra.timer.Expirable;
 import com.thezeroer.nexalithic.core.session.NexalithicSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -25,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 2026/03/15
  * @see NexalithicHandler
  */
-public class NexalithicTask implements Expirable, Dispatchable {
+public class NexalithicTask {
     public enum Pattern {
         /** 只有请求，无回执。发送完即销毁。 */
         ONE_WAY,
@@ -36,52 +38,53 @@ public class NexalithicTask implements Expirable, Dispatchable {
         /** 流模式。持续接收回执，直到手动取消。 */
         STREAM
     }
+    /**
+     * 任务提交策略。
+     * 默认为{@link Strategy#IMMEDIATE}
+     */
     public enum Strategy {
-        /** 默认：异步提交，立即返回。 */
-        ASYNC,
-
-        /** 阻塞：提交后线程等待回执。 */
-        SYNC_WAIT,
-
-        /** 队列：严格按序提交，前一个完成才发下一个。 */
-        SEQUENTIAL_QUEUE
+        IMMEDIATE,
+        SEQUENTIAL
     }
     public enum State {
-        /** 任务已创建，初始状态 */
-        NEW,
+        NEW(Phase.CREATED),
+        ENQUEUED(Phase.QUEUED),
 
-        /** 策略相关：正在排队等待发送（Strategy.SEQUENTIAL_QUEUE 特有） */
-        ENQUEUED,
+        REQUESTING(Phase.REQUEST),
+        SENDING(Phase.REQUEST),
 
-        /** 正在生成请求包 */
-        REQUESTING,
+        WAITING(Phase.WAITING),
+        STREAMING(Phase.WAITING),
 
-        /** 正在发送或已提交至网络缓冲区 */
-        SENDING,
+        RESPONDING(Phase.RESPONSE),
 
-        /** 模式相关：已发出，正在等待对端回执（ONE_WAY 模式通常跳过此状态） */
-        WAITING,
+        COMPLETED(Phase.TERMINAL),
+        TIMEOUT(Phase.TERMINAL),
+        FAILED(Phase.TERMINAL),
+        CANCELLED(Phase.TERMINAL);
 
-        /** 模式相关：流处理中，已接收过数据但尚未结束（Pattern.STREAM 特有） */
-        STREAMING,
+        private final Phase phase;
 
-        /** 已收到响应包，正在执行 ResponseAction 业务逻辑 */
-        RESPONDING,
+        State(Phase phase) {
+            this.phase = phase;
+        }
 
-        /** 执行完响应 */
-        COMPLETED,
+        public Phase phase() {
+            return phase;
+        }
 
-        /** 未收到响应，超时 */
-        TIMEOUT,
+        public boolean isTerminal() {
+            return phase == Phase.TERMINAL;
+        }
 
-        /** 其他过程中出现异常 */
-        FAILED,
-
-        /** 任务取消 */
-        CANCELLED,
-
-        /** 结束 */
-        FINISHED,
+        public enum Phase {
+            CREATED,
+            QUEUED,
+            REQUEST,
+            WAITING,
+            RESPONSE,
+            TERMINAL
+        }
     }
     private static final Logger logger = LoggerFactory.getLogger(NexalithicTask.class);
     private static final AtomicLong COUNTER = new AtomicLong(0);
@@ -89,41 +92,49 @@ public class NexalithicTask implements Expirable, Dispatchable {
     private final AtomicReference<State> state = new  AtomicReference<>(State.NEW);
     private final TaskFunction.RequestAction requestAction;
     private final TaskFunction.ResponseAction responseAction;
-    private final TaskFunction.FinishAction finishAction;
+    private final TaskFunction.CompleteAction completeAction;
     private final TaskFunction.TimeoutAction timeoutAction;
-    private final TaskFunction.CancelAction cancelAction;
     private final TaskFunction.FailedAction failedAction;
+    private final TaskFunction.CancelAction cancelAction;
+    private final TaskFunction.FinishAction finishAction;
+    private final TransferListener requestListener;
+    private final TransferListener responseListener;
     private final Pattern pattern;
     private final Strategy strategy;
-    private final long waitTime;
+    private final long waitTimeNanos;
 
     private final TaskFuture future;
-    private volatile NexalithicSession<?, ?, ?, ?, ?> targetSession;
-    private volatile BusinessPacket responsePacket;
-    private volatile long lastResponseTime = -1;
+    private final TaskMailbox mailbox;
+    private final NexalithicSession<?> owner;
+    private volatile long lastActiveTimeNanos = -1;
 
-    private NexalithicTask(TaskFunction.RequestAction requestAction, TaskFunction.ResponseAction responseAction,
-                           TaskFunction.FinishAction finishAction, TaskFunction.TimeoutAction timeoutAction,
-                           TaskFunction.CancelAction cancelAction, TaskFunction.FailedAction failedAction,
-                           Pattern pattern, Strategy strategy, long waitTime, TaskTracer tracer) {
+    private NexalithicTask(TaskFunction.RequestAction requestAction, TaskFunction.ResponseAction responseAction, TaskFunction.CompleteAction completeAction,
+                           TaskFunction.TimeoutAction timeoutAction, TaskFunction.FailedAction failedAction, TaskFunction.CancelAction cancelAction,
+                           TaskFunction.FinishAction finishAction, TransferListener requestListener, TransferListener responseListener,
+                           Pattern pattern, Strategy strategy, long waitTimeNanos, NexalithicSession<?> owner) {
         this.taskId = COUNTER.getAndIncrement();
         this.requestAction = requestAction;
         this.responseAction = responseAction;
-        this.finishAction = finishAction;
+        this.completeAction = completeAction;
         this.timeoutAction = timeoutAction;
-        this.cancelAction = cancelAction;
         this.failedAction = failedAction;
+        this.cancelAction = cancelAction;
+        this.finishAction = finishAction;
+        this.requestListener = requestListener;
+        this.responseListener = responseListener;
         this.pattern = pattern;
         this.strategy = strategy;
-        this.waitTime = waitTime;
-        future = new TaskFuture(this, tracer);
+        this.waitTimeNanos = waitTimeNanos;
+        this.owner = owner;
+        future = new TaskFuture(this);
+        mailbox = new TaskMailbox();
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public final BusinessPacket request() {
+    public BusinessPacket request() {
         if (state.get() == State.NEW || state.get() == State.ENQUEUED) {
             state.set(State.REQUESTING);
         } else {
@@ -131,141 +142,140 @@ public class NexalithicTask implements Expirable, Dispatchable {
         }
         return requestAction.execute();
     }
-    public final void response(BusinessPacket packet) {
+    public void response(BusinessPacket packet) {
         if (pattern == Pattern.REQUEST_RESPONSE) {
             if (state.compareAndSet(State.WAITING, State.RESPONDING)) {
-                try {
-                    responseAction.execute(packet, future);
-                    state.compareAndSet(State.RESPONDING, State.COMPLETED);
-                } catch (Exception e) {
-                    failed(e);
-                } finally {
-                    finish();
-                }
+                responseAction.execute(packet, future);
+                complete();
             }
         } else {
-            lastResponseTime = System.currentTimeMillis();
-            try {
-                if (state.get() == State.WAITING) {
-                    state.set(State.STREAMING);
-                    responseAction.execute(packet, future);
-                } else if (state.get() == State.STREAMING) {
-                    responseAction.execute(packet, future);
-                }
-            } catch (Exception e) {
-                failed(e);
+            if (state.get() == State.STREAMING || state.compareAndSet(State.WAITING, State.STREAMING)) {
+                responseAction.execute(packet, future);
             }
         }
     }
-    public final void finish() {
-        if (state.get() != State.FINISHED) {
-            state.set(State.FINISHED);
-            finishAction.execute();
+    public void complete() {
+        if (state.get().isTerminal()) {
+            return;
         }
-        future.internalComplete();
+        state.set(State.COMPLETED);
+        try {
+            completeAction.execute();
+        } finally {
+            finish();
+        }
     }
-    public final void timeout() {
-        if (state.compareAndSet(State.WAITING, State.TIMEOUT)) {
+    public void timeout() {
+        if (state.get().isTerminal()) {
+            return;
+        }
+        state.set(State.TIMEOUT);
+        try {
             timeoutAction.execute();
+        } finally {
+            finish();
         }
-        finish();
     }
-    public final void cancel() {
-        if (state.get() != State.CANCELLED) {
-            state.set(State.CANCELLED);
+    public void cancel() {
+        if (state.get().isTerminal()) {
+            return;
+        }
+        state.set(State.CANCELLED);
+        try {
             cancelAction.execute();
+        } finally {
+            finish();
         }
-        finish();
     }
-    public final void failed(Exception e) {
-        if (state.get() != State.FAILED) {
-            state.set(State.FAILED);
-            failedAction.execute(e);
+    public void failed(Exception exception) {
+        if (state.get().isTerminal()) {
+            return;
         }
-        finish();
+        state.set(State.FAILED);
+        try {
+            failedAction.execute(exception);
+        } finally {
+            finish();
+        }
+    }
+    public void finish() {
+        try {
+            finishAction.execute();
+        } finally {
+            future.internalComplete();
+        }
     }
 
-    public final void setTargetSession(NexalithicSession<?, ?, ?, ?, ?> targetSession) {
-        this.targetSession = targetSession;
+    public TransferListener getRequestListener() {
+        return requestListener;
     }
-    public final NexalithicSession<?, ?, ?, ?, ?> getTargetSession() {
-        return targetSession;
-    }
-    public final void setResponsePacket(BusinessPacket responsePacket) {
-        this.responsePacket = responsePacket;
-    }
-    public final BusinessPacket getResponsePacket() {
-        return responsePacket;
+    public TransferListener getResponseListener() {
+        return responseListener;
     }
 
-    public final void transitTo(State newState) {
-        state.set(newState);
+    public NexalithicSession<?> getOwner() {
+        return owner;
     }
-    public final TaskFuture getFuture() {
+    public TaskFuture getFuture() {
         return future;
     }
+    public TaskMailbox getMailbox() {
+        return mailbox;
+    }
 
-    public final long getTaskId() {
+    public long getTaskId() {
         return taskId;
     }
-    public final Pattern getPattern() {
+    public Pattern getPattern() {
         return pattern;
     }
-    public final Strategy getStrategy() {
+    public Strategy getStrategy() {
         return strategy;
     }
-    public final State getState() {
+    public State getState() {
         return state.get();
     }
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + waitTimeNanos;
+    }
 
-    @Override
-    public long getExpiryTime() {
-        if (lastResponseTime == -1) {
-            return System.currentTimeMillis() + waitTime;
-        } else {
-            return lastResponseTime + waitTime;
+    void updateLastActiveTime() {
+        lastActiveTimeNanos = System.nanoTime();
+    }
+
+    NexalithicTask awaitRequest() {
+        if (!state.compareAndSet(State.NEW, State.ENQUEUED)) {
+            throw new IllegalStateException("State " + state.get() + " is not in NEW state");
         }
+        return this;
     }
-
-    @Override
-    public boolean onExpiryTriggered() {
-        return System.currentTimeMillis() > lastResponseTime + waitTime;
-    }
-
-    @Override
-    public boolean isCancelled() {
-        return future.isDone();
-    }
-
-    @Override
-    public final Type type() {
-        return Type.Task;
+    NexalithicTask awaitResponse() {
+        if (pattern == Pattern.ONE_WAY) {
+            return this;
+        }
+        if (!state.compareAndSet(State.REQUESTING, State.WAITING)) {
+            throw new IllegalStateException("State " + state.get() + " is not in REQUESTING state");
+        }
+        return this;
     }
 
     public static class Builder {
         private TaskFunction.RequestAction requestAction;
-        private TaskFunction.ResponseAction responseAction;
-        private TaskFunction.FinishAction finishAction;
-        private TaskFunction.TimeoutAction timeoutAction;
-        private TaskFunction.CancelAction cancelAction;
-        private TaskFunction.FailedAction failedAction;
-        private Pattern pattern;
-        private Strategy strategy;
-        private long waitTime = 3000;
-
-        public Builder() {
-            pattern = Pattern.REQUEST_RESPONSE;
-            strategy = Strategy.ASYNC;
-            responseAction = (packet, future) -> {};
-            finishAction = () -> {};
-            timeoutAction = () -> {};
-            cancelAction = () -> {};
-            failedAction = exception -> {
-                if (exception != null) {
-                    logger.error("Exception in NexalithicTask", exception);
-                }
-            };
-        }
+        private TaskFunction.ResponseAction responseAction = (packet, future) -> {};
+        private TaskFunction.CompleteAction completeAction = () -> {};
+        private TaskFunction.TimeoutAction timeoutAction = () -> {};
+        private TaskFunction.FailedAction failedAction = exception -> {
+            if (exception != null) {
+                logger.warn("Exception in NexalithicTask", exception);
+            }
+        };
+        private TaskFunction.CancelAction cancelAction = () -> {};
+        private TaskFunction.FinishAction finishAction = () -> {};
+        private TransferListener requestListener;
+        private TransferListener responseListener;
+        private Pattern pattern = Pattern.REQUEST_RESPONSE;
+        private Strategy strategy = Strategy.IMMEDIATE;
+        private long waitTimeNanos = TimeUnit.SECONDS.toNanos(3);
 
         public Builder onRequest(TaskFunction.RequestAction requestAction) {
             this.requestAction = requestAction;
@@ -283,42 +293,61 @@ public class NexalithicTask implements Expirable, Dispatchable {
             this.responseAction = (packet, future) -> responseAction.execute(packet);
             return this;
         }
-        public Builder onFinish(TaskFunction.FinishAction finishAction) {
-            this.finishAction = finishAction;
+        public Builder onComplete(TaskFunction.CompleteAction completeAction) {
+            this.completeAction = completeAction;
             return this;
         }
         public Builder onTimeout(TaskFunction.TimeoutAction timeoutAction) {
             this.timeoutAction = timeoutAction;
             return this;
         }
-        public Builder onCancel(TaskFunction.CancelAction cancelAction) {
-            this.cancelAction = cancelAction;
-            return this;
-        }
         public Builder onFailed(TaskFunction.FailedAction failedAction) {
             this.failedAction = failedAction;
             return this;
         }
+        public Builder onCancel(TaskFunction.CancelAction cancelAction) {
+            this.cancelAction = cancelAction;
+            return this;
+        }
+        public Builder onFinish(TaskFunction.FinishAction finishAction) {
+            this.finishAction = finishAction;
+            return this;
+        }
 
-        public Builder setPattern(Pattern pattern) {
+        public Builder requestListener(TransferListener requestListener) {
+            this.requestListener = requestListener;
+            return this;
+        }
+        public Builder responseListener(TransferListener responseListener) {
+            this.responseListener = responseListener;
+            return this;
+        }
+
+        public Builder pattern(Pattern pattern) {
             this.pattern = pattern;
             return this;
         }
-        public Builder setStrategy(Strategy strategy) {
+        public Builder strategy(Strategy strategy) {
             this.strategy = strategy;
             return this;
         }
-        public Builder setWaitTime(int seconds) {
-            this.waitTime = seconds * 1000L;
+        public Builder waitTime(int seconds) {
+            this.waitTimeNanos = TimeUnit.NANOSECONDS.convert(seconds, TimeUnit.SECONDS);
             return this;
         }
 
-        public NexalithicTask build(TaskTracer tracer) {
+        public NexalithicTask build(NexalithicSession<?> targetSession) {
             if (requestAction == null) {
                 throw new IllegalArgumentException("requestAction is required");
             }
-            return new NexalithicTask(requestAction, responseAction, finishAction, timeoutAction, cancelAction, failedAction,
-                    pattern, strategy, waitTime, tracer);
+            if (pattern == null) {
+                throw new IllegalArgumentException("pattern is required");
+            }
+            if (strategy == null) {
+                throw new IllegalArgumentException("strategy is required");
+            }
+            return new NexalithicTask(requestAction, responseAction, completeAction, timeoutAction, failedAction, cancelAction, finishAction,
+                    requestListener, responseListener, pattern, strategy, waitTimeNanos, targetSession);
         }
     }
 }

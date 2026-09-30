@@ -19,7 +19,7 @@ public class NetworkRouter {
 
     public void setServerAddress(InetSocketAddress serverAddress) {
         this.serverAddress = serverAddress;
-        ports.put(AbstractPacket.PacketType.SIGNALING, serverAddress.getPort());
+        ports.put(AbstractPacket.PacketType.Signaling, serverAddress.getPort());
     }
     public InetSocketAddress getServerAddress() {
         return serverAddress;

@@ -11,7 +11,7 @@ import com.thezeroer.nexalithic.core.event.NexalithicEventBus;
 import com.thezeroer.nexalithic.core.session.SessionAttachment;
 import com.thezeroer.nexalithic.core.session.SessionKey;
 import com.thezeroer.nexalithic.server.NexalithicServer;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
+import com.thezeroer.nexalithic.server.session.ServerSession;
 
 import java.nio.ByteBuffer;
 import java.util.Collection;
@@ -30,16 +30,16 @@ import java.util.function.Consumer;
 public class SessionsManager {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SessionsManager.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> Sessions_Initial_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> Sessions_Initial_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> Tokens_Initial_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> Tokens_Initial_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> Sessions_Lock_Stripes = NexalithicOption.create(
+        public final NexalithicOption<Integer> Sessions_Lock_Stripes = defineOption(
                 1024, OptionValidator.powerOfTwo()
         );
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
@@ -61,7 +61,7 @@ public class SessionsManager {
     private final Events events;
 
     public SessionsManager(NexalithicBuilderContext context) {
-        NexalithicEventBus eventBus = context.getModule(NexalithicServer.Modules.EventBus);
+        NexalithicEventBus eventBus = context.getModule(NexalithicServer.MODULES.EventBus);
         events = new Events(
                 eventBus.registerTopic(Events.NamedSession.class),
                 eventBus.registerTopic(Events.RemovedSession.class)

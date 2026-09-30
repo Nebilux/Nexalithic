@@ -1,7 +1,6 @@
 package com.thezeroer.nexalithic.core.model.packet.signaling;
 
 import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
-import com.thezeroer.nexalithic.core.io.codec.fragmenter.FragmentWrapper;
 import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 
 import java.lang.reflect.Field;
@@ -13,7 +12,7 @@ import java.lang.reflect.Field;
  * @since 2026/02/02
  * @version 1.0.0
  */
-public abstract class SignalingPacket extends AbstractPacket implements FragmentWrapper<SignalingPacket> {
+public abstract class SignalingPacket extends AbstractPacket {
     public static class Signal {
         public static final byte HeartBeat = 0x0;
         public static final byte BusinessChannelToken_Request = -0x1;
@@ -95,6 +94,6 @@ public abstract class SignalingPacket extends AbstractPacket implements Fragment
 
     @Override
     public PacketType packetType() {
-        return PacketType.SIGNALING;
+        return PacketType.Signaling;
     }
 }

@@ -1,6 +1,6 @@
 package com.thezeroer.nexalithic.server.manager;
 
-import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
+import com.thezeroer.nexalithic.core.io.channel.NexalithicChannel;
 
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -22,19 +22,19 @@ import java.util.*;
  * @version 1.0.0
  */
 public class NetworkRouter {
-    private final Map<AbstractPacket.PacketType, RouteTable> routingTables = new EnumMap<>(AbstractPacket.PacketType.class);
+    private final Map<NexalithicChannel.Kind, RouteTable> routingTables = new EnumMap<>(NexalithicChannel.Kind.class);
 
     /**
      * 添加单条路由规则。
-     * <p>注意：由于涉及数组拷贝与重排序，在高频批量添加场景下建议使用 {@link #addRoutes(AbstractPacket.PacketType, RouteEntry...)}。</p>
+     * <p>注意：由于涉及数组拷贝与重排序，在高频批量添加场景下建议使用 {@link #addRoutes(NexalithicChannel.Kind, RouteEntry...)}。</p>
      *
-     * @param type 数据包协议类型
+     * @param kind 数据协议类型
      * @param cidr CIDR 格式网段 (如: 192.168.1.0/24)
      * @param port 目标后端端口
      * @throws UnknownHostException 当 CIDR 地址解析失败时抛出
      */
-    public synchronized void addRoute(AbstractPacket.PacketType type, String cidr, int port) throws UnknownHostException {
-        RouteTable table = routingTables.computeIfAbsent(type, k -> new RouteTable());
+    public synchronized void addRoute(NexalithicChannel.Kind kind, String cidr, int port) throws UnknownHostException {
+        RouteTable table = routingTables.computeIfAbsent(kind, k -> new RouteTable());
         RouteEntry entry = new RouteEntry(cidr, port);
         RouteEntry[] oldArray = entry.isV4() ? table.v4 : table.v6;
         RouteEntry[] newArray = Arrays.copyOf(oldArray, oldArray.length + 1);
@@ -51,11 +51,11 @@ public class NetworkRouter {
      * 批量添加路由规则。
      * <p>采用统一排序策略，相比单条循环添加能显著减少 CPU 排序开销。排序逻辑遵循起始地址升序，同地址下掩码越长（范围越小）越靠后。</p>
      *
-     * @param type 数据包协议类型
+     * @param kind 数据协议类型
      * @param routes 路由条目变长数组
      */
-    public synchronized void addRoutes(AbstractPacket.PacketType type, RouteEntry... routes) {
-        RouteTable table = routingTables.computeIfAbsent(type, k -> new RouteTable());
+    public synchronized void addRoutes(NexalithicChannel.Kind kind, RouteEntry... routes) {
+        RouteTable table = routingTables.computeIfAbsent(kind, k -> new RouteTable());
         List<RouteEntry> v4List = new ArrayList<>(Arrays.asList(table.v4));
         List<RouteEntry> v6List = new ArrayList<>(Arrays.asList(table.v6));
         for (RouteEntry entry : routes) {
@@ -76,12 +76,12 @@ public class NetworkRouter {
      * 移除特定网段的路由。
      * <p>采用过滤模式重构数组，移除后数组依然保持原有顺序，无需重新排序。</p>
      *
-     * @param type 数据包协议类型
+     * @param kind 数据协议类型
      * @param cidr 待移除的 CIDR 网段
      * @throws UnknownHostException 地址解析失败
      */
-    public synchronized void removeRoute(AbstractPacket.PacketType type, String cidr) throws UnknownHostException {
-        RouteTable table = routingTables.get(type);
+    public synchronized void removeRoute(NexalithicChannel.Kind kind, String cidr) throws UnknownHostException {
+        RouteTable table = routingTables.get(kind);
         if (table == null) {
             return;
         }
@@ -103,8 +103,8 @@ public class NetworkRouter {
      *
      * @return 目标端口号，若未匹配到任何路由则返回 -1
      */
-    public int choosePort(AbstractPacket.PacketType type, InetAddress remoteAddress) {
-        RouteTable table = routingTables.get(type);
+    public int choosePort(NexalithicChannel.Kind kind, InetAddress remoteAddress) {
+        RouteTable table = routingTables.get(kind);
         if (table == null) {
             return -1;
         }

@@ -82,7 +82,10 @@ public class SecretKeyContext {
     public byte[] encrypt(ByteBuffer input) throws InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         writeCipher.init(Cipher.ENCRYPT_MODE, writeKey, new GCMParameterSpec(TAG_LENGTH * Byte.SIZE, nextWriteNonce()));
         if (input.hasArray()) {
-            return writeCipher.doFinal(input.array(), input.position(), input.remaining());
+            int offset = input.arrayOffset() + input.position();
+            byte[] result = writeCipher.doFinal(input.array(), offset, input.remaining());
+            input.position(input.limit());
+            return result;
         } else {
             byte[] bytes = new byte[input.remaining()];
             input.get(bytes);
@@ -92,7 +95,10 @@ public class SecretKeyContext {
     public byte[] decrypt(ByteBuffer input) throws InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         readCipher.init(Cipher.DECRYPT_MODE, readKey, new GCMParameterSpec(TAG_LENGTH * Byte.SIZE, nextReadNonce()));
         if (input.hasArray()) {
-            return readCipher.doFinal(input.array(), input.position(), input.remaining());
+            int offset = input.arrayOffset() + input.position();
+            byte[] result = readCipher.doFinal(input.array(), offset, input.remaining());
+            input.position(input.limit());
+            return result;
         } else {
             byte[] bytes = new byte[input.remaining()];
             input.get(bytes);

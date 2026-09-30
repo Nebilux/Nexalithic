@@ -2,7 +2,6 @@ package com.thezeroer.nexalithic.core.event;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.function.Consumer;
 
 /**
  * 活动主题

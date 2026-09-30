@@ -1,10 +1,10 @@
 package com.thezeroer.nexalithic.core.io.codec.fragmenter;
 
-import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
-import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
+import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,11 +19,10 @@ import org.slf4j.LoggerFactory;
 public class SignalingPacketsFragmenter implements PacketsFragmenter<SignalingPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SignalingPacketsFragmenter.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> WrapperQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperQueue_Capacity = defineOption(
                 256, OptionValidator.positive()
         );
-
-        public Options(Class<?> holder) {
+        private Options(Class<?> holder) {
             super(holder);
         }
     }

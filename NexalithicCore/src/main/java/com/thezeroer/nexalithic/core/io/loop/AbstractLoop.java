@@ -1,270 +1,371 @@
 package com.thezeroer.nexalithic.core.io.loop;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
-import com.thezeroer.nexalithic.core.io.thread.LoopThread;
-import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
-import com.thezeroer.nexalithic.core.session.channel.NexalithicChannel;
-import com.thezeroer.nexalithic.core.session.channel.SessionChannel;
+import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
+import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalanceable;
+import com.thezeroer.nexalithic.core.io.thread.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BooleanSupplier;
 
 /**
  * 抽象循环
  *
  * @author tbrtz647@outlook.com
- * @since 2026/02/06
  * @version 1.0.0
+ * @since 2026/02/06
  */
-public abstract class AbstractLoop implements LoadBalanceable, Runnable {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, AbstractLoop.class);
+public abstract class AbstractLoop implements LoadBalanceable {
     public static class Options extends OptionsDefinition {
-        public final NexalithicOption<Long> Shutdown_MaxWaitTime = NexalithicOption.create(
-                300000L, OptionValidator.positive()
-        );
-        public final NexalithicOption<Long> Selector_Timeout = NexalithicOption.create(
-                3000L, OptionValidator.nonNegative()
+        public final NexalithicOption<Long> ShutdownTimeoutMillis = defineOption(
+                300_000L, OptionValidator.positive()
         );
         protected Options(Class<?> holder) {
             super(holder);
         }
     }
-    public record Constant(long Shutdown_MaxWaitTime, long Selector_Timeout) {}
-    private final Constant CONSTANT;
-    protected enum State {
+    public enum State {
+        /** 已构造，但尚未启动。 */
         NEW,
+        /** 执行线程启动中，可能失败 */
         STARTING,
-        WORKING,
-        WAITING,
-        STOPPING,
-        SHUTTING_DOWN,
-        TERMINATED
+        /** 正常处理事件，并接受新事件。 */
+        RUNNING,
+        /** 拒绝新事件，继续处理已接受的事件。 */
+        DRAINING,
+        /** 不再处理事件，正在退出并释放资源。 */
+        TERMINATING,
+        /** 已退出，所有资源已经释放。 */
+        TERMINATED;
+
+        public boolean isTerminatingOrTerminated() {
+            return this == TERMINATING || this == TERMINATED;
+        }
     }
-    protected static final Logger logger = LoggerFactory.getLogger(AbstractLoop.class);
-    protected static final int MAX_EPOLL = 512;
-    protected final AtomicReference<State> state = new AtomicReference<>(State.NEW);
+    private static final Logger logger = LoggerFactory.getLogger(AbstractLoop.class);
+    private enum TerminationAction {
+        NONE,
+        SYNC,
+        ASYNC
+    }
+    private record Constant(long ShutdownTimeoutNanos) {}
+    private final Constant CONSTANT;
+    private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
+    private final AtomicBoolean signaled = new AtomicBoolean(false);
+    private final AtomicBoolean sealed = new AtomicBoolean(false);
+    private final AtomicBoolean cleaning = new AtomicBoolean(false);
+    private final LoopThread thread;
+    private final Object lifecycleLock = new Object();
+    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+    private final List<BooleanSupplier> isDrainConditions = new ArrayList<>(4);
+    private volatile long shutdownStartedNanos;
+    protected final String name;
     protected final LongAdder loadScore = new LongAdder();
-    protected volatile Selector selector;
 
-    protected final LoopThread thread;
-    protected volatile String name = getClass().getSimpleName();
-
-    public AbstractLoop(NexalithicBuilderContext context, Options options) throws IOException {
-        CONSTANT = context.getConstant(this.getClass(), Constant.class, () -> new Constant(
-                context.getOption(options.Shutdown_MaxWaitTime),
-                context.getOption(options.Selector_Timeout)
+    public AbstractLoop(NexalithicBuilderContext context, Options options) {
+        Class<?> loopType = getClass();
+        CONSTANT = context.getConstant(loopType, Constant.class, () -> new Constant(
+                TimeUnit.MILLISECONDS.toNanos(context.getOption(options.ShutdownTimeoutMillis))
         ));
-        selector = Selector.open();
-        thread = new LoopThread(context, this);
+        name = loopType.getSimpleName() + "-" + context.nextOrdinal(AbstractLoop.class, loopType);
+        thread = new LoopThread(context, this::run);
         thread.setDaemon(false);
+        thread.setName("LoopThread-" + name);
     }
 
-    public final void start() {
-        synchronized (this) {
-            if (!state.compareAndSet(State.NEW, State.STARTING)) {
-                throw new IllegalStateException("Loop already [%s]".formatted(state.get()));
+    public final void start() throws IllegalStateException {
+        synchronized (lifecycleLock) {
+            transition(State.NEW, State.STARTING);
+            try {
+                thread.start();
+            } catch (Throwable throwable) {
+                terminate(throwable);
+                throw throwable;
             }
-            thread.setName(name);
-            thread.start();
+        }
+    }
+    public final CompletionStage<Void> stop() throws IllegalStateException {
+        TerminationAction terminationAction = TerminationAction.NONE;
+        synchronized (lifecycleLock) {
+            while (true) {
+                State current = state.get();
+                if (current.isTerminatingOrTerminated()) {
+                    break;
+                }
+                if (!state.compareAndSet(current, State.TERMINATING)) {
+                    continue;
+                }
+                seal();
+                terminationAction = current == State.NEW ? TerminationAction.SYNC : TerminationAction.ASYNC;
+            }
+        }
+        switch (terminationAction) {
+            case NONE -> {}
+            case SYNC -> terminate(null);
+            case ASYNC -> wakeupLoop();
+        }
+        return terminationFuture.minimalCompletionStage();
+    }
+    public final CompletionStage<Void> shutdown() throws IllegalStateException {
+        TerminationAction terminationAction = TerminationAction.NONE;
+        synchronized (lifecycleLock) {
+            while (true) {
+                State current = state.get();
+                if (current == State.DRAINING || current == State.TERMINATING || current == State.TERMINATED) {
+                    break;
+                }
+                shutdownStartedNanos = System.nanoTime();
+                if (!state.compareAndSet(current, current == State.NEW ? State.TERMINATING : State.DRAINING)) {
+                    continue;
+                }
+                seal();
+                terminationAction = current == State.NEW ? TerminationAction.SYNC : TerminationAction.ASYNC;
+            }
+        }
+        switch (terminationAction) {
+            case NONE -> {}
+            case SYNC -> terminate(null);
+            case ASYNC -> wakeupLoop();
+        }
+        return terminationFuture.minimalCompletionStage();
+    }
+
+    public final void wakeup() {
+        if (signaled.compareAndSet(false, true)) {
+            try {
+                wakeupLoop();
+            } catch (Exception exception) {
+                logger.error("Loop [{}] wakeupLoop() failed", name, exception);
+            }
         }
     }
 
-    public final void stop() {
-        synchronized (this) {
-            if (state.get() == State.STOPPING || state.get() == State.TERMINATED) {
-                throw new IllegalStateException("Loop already [%s]".formatted(state.get()));
-            }
-            state.set(State.STOPPING);
-            selector.wakeup();
-        }
-    }
-
-    public final void shutdown() {
-        synchronized (this) {
-            if (state.get() == State.SHUTTING_DOWN || state.get() == State.STOPPING || state.get() == State.TERMINATED) {
-                throw new IllegalStateException("Loop already [%s]".formatted(state.get()));
-            }
-            state.set(State.SHUTTING_DOWN);
-            selector.wakeup();
-        }
+    public final LoopBuffer aquireLoopBuffer() {
+        return thread.aquireLoopBuffer();
     }
 
     /**
-     * 需要时叫醒，只有当 Selector 真的在睡觉（WAITING）时，才将其叫醒并设为 WORKING
-     *
+     * 判断当前线程是否为该 Loop 的所属线程。
      */
-    public final void wakeupIfNeeded() {
-        if (state.compareAndSet(State.WAITING, State.WORKING)) {
-            selector.wakeup();
-        }
+    public final boolean inEventLoop() {
+        return Thread.currentThread() == thread;
     }
-
-    @Override
-    public final long getLoadScore() {
-        return loadScore.sum();
+    /**
+     * 已接受的事件、待写数据及其他异步操作是否均已完成。
+     */
+    public final boolean isDrained() {
+        for (BooleanSupplier condition : isDrainConditions) {
+            if (!condition.getAsBoolean()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public final String getName() {
         return name;
     }
-    public final AbstractLoop addIdToName(String id) {
-        name = name + "-" + id;
-        return this;
+    public final State getState() {
+        return state.get();
     }
-
-    protected abstract boolean onAsyncEvent();
-    protected abstract void onReadyEvent(SelectionKey selectionKey) throws IOException;
-    protected void onShuttingDown() {}
-    protected void onTerminated() {}
-    protected void onSelectorError(IOException error) {}
 
     @Override
-    public final void run() {
-        Selector localSelector = this.selector;
-        int emptyCount = 0, readyCount;
-        long start = 0, end = 0;
-        boolean running = true;
-        state.compareAndSet(State.STARTING, State.WORKING);
-        logger.debug("[{}] started", name);
-        while (running) {
-            switch (state.get()) {
-                case WORKING -> {
-                    try {
-                        if (asyncEvent()) {
-                            if (state.compareAndSet(State.WORKING, State.WAITING)) {
-                                start = System.currentTimeMillis();
-                                // 再次检查 asyncEvent，防止在 CAS 之后、select 之前有新任务进来
-                                if (!onAsyncEvent()) {
-                                    state.set(State.WORKING);
-                                    readyCount = localSelector.selectNow();
-                                } else {
-                                    readyCount = localSelector.select(CONSTANT.Selector_Timeout);
-                                }
-                                state.compareAndSet(State.WAITING, State.WORKING);
-                                end = System.currentTimeMillis();
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            readyCount = localSelector.selectNow();
-                        }
-                        if (readyCount > 0) {
-                            emptyCount = 0;
-                            readyEvent(localSelector);
-                        } else if (start != 0) {
-                            if (end - start < CONSTANT.Selector_Timeout / 2) {
-                                if (++emptyCount > MAX_EPOLL) {
-                                    logger.warn("[{}] Epoll bug detected, rebuilding selector...", name);
-                                    localSelector = rebuildSelector();
-                                    emptyCount = 0;
-                                }
-                            } else {
-                                emptyCount = 0;
-                            }
-                            start = 0;
-                            end = 0;
-                        }
-                    } catch (IOException e) {
-                        logger.error(e.getMessage(), e);
-                        onSelectorError(e);
-                    }
-                }
-                case SHUTTING_DOWN -> {
-                    if (start == 0) {
-                        onShuttingDown();
-                        start = System.currentTimeMillis();
-                    }
-                    try {
-                        if (localSelector.selectNow() > 0) {
-                            readyEvent(localSelector);
-                        }
-                    } catch (IOException ignored) {}
-                    if (localSelector.keys().isEmpty()) {
-                        try {
-                            localSelector.close();
-                        } catch (IOException e) {
-                            logger.error("[{}] Error closing loop", name, e);
-                        }
-                        logger.debug("[{}] shutdown", name);
-                    } else if (System.currentTimeMillis() - start > CONSTANT.Shutdown_MaxWaitTime) {
-                        logger.warn("[{}] max shutdown time exceeded, forcing stop.", name);
-                        state.set(State.STOPPING);
-                    }
-                }
-                case STOPPING -> {
-                    for (SelectionKey key : localSelector.keys()) {
-                        try {
-                            key.channel().close();
-                        } catch (IOException ignored) {}
-                    }
-                    try {
-                        localSelector.close();
-                    } catch (IOException e) {
-                        logger.error("[{}] Error closing loop", name, e);
-                    }
-                    logger.debug("[{}] stopped", name);
-                    running = false;
-                }
-                default -> running = false;
-            }
+    public long getLoadScore() {
+        return loadScore.sum();
+    }
+
+    protected void initLoop() {}
+    protected abstract void wakeupLoop();
+    /**
+     * 封闭当前 Loop 的外部工作入口。
+     * <p>该方法最多执行一次。</p>
+     * <p>该方法可能由任意线程调用。子类必须通过
+     * {@link #inEventLoop()} 判断是否可以直接操作 Loop 所属资源。</p>
+     *
+     * <p>非 Loop 线程不得直接修改 SelectionKey、Selector 状态或
+     * 其他仅归 Loop 线程所有的数据；可以设置线程安全标志，
+     * 实际操作由后续 runIteration 完成。</p>
+     */
+    protected abstract void sealLoop();
+    /**
+     * 释放当前 Loop 持有的全部资源。
+     * <p>该方法最多执行一次。</p>
+     * <ul>
+     *     <li>若 {@link #inEventLoop()} 为 true，则由所属 Loop 线程清理。</li>
+     *     <li>若为 false，则表示 LoopThread 尚未成功启动，不存在并发的所有者线程。</li>
+     * </ul>
+     *
+     * <p>该方法必须同步完成清理；返回后 terminationFuture 将被完成。</p>
+     */
+    protected abstract void clearLoop();
+    /**
+     * 执行一次完整且有界的 Loop 迭代。
+     *
+     * <p>实现必须在有限时间内返回，不得执行无限队列排空、
+     * 无期限阻塞 I/O、Thread.sleep 或不可控的用户回调。</p>
+     *
+     * @param draining 当前是否正在优雅关闭
+     * @param maxWaitNanos 本次迭代最多允许用于阻塞等待的时间，非 draining 状态下可忽略
+     */
+    protected abstract void runIteration(boolean draining, long maxWaitNanos) throws Exception;
+
+    protected final void isDrainCondition(BooleanSupplier condition) throws IllegalStateException {
+        if (getState() != State.NEW) {
+            throw new IllegalStateException(
+                    "isDrainConditions can only be registered before the loop starts"
+            );
         }
-        onTerminated();
-        state.set(State.TERMINATED);
+        isDrainConditions.add(condition);
     }
-    protected boolean asyncEvent() {
-        return onAsyncEvent();
+    protected final boolean acknowledgeWakeup() {
+        return signaled.getAndSet(false);
     }
-    protected void readyEvent(Selector selector) throws IOException {
-        Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
-        while (iterator.hasNext()) {
-            SelectionKey key = iterator.next();
-            iterator.remove();
-            try {
-                onReadyEvent(key);
-            } catch (Exception e) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("[{}] failed to ready event: ", name, e);
-                }
-                if (key.attachment() instanceof NexalithicChannel channel) {
-                    if (channel.closeChannel()) {
-                        loadScore.decrement();
-                    }
-                }
-            }
+    protected final boolean isSealed() {
+        return sealed.get();
+    }
+
+    private void run() {
+        if (!inEventLoop()) {
+            throw new IllegalStateException("Loop must be executed by its owner thread");
         }
-    }
-    protected final Selector rebuildSelector() throws IOException {
+        Throwable failure = null;
         try {
-            Selector newSelector = Selector.open();
-            Selector oldSelector = this.selector;
-            for (SelectionKey oldKey : oldSelector.keys()) {
-                if (!oldKey.isValid()) continue;
-                Object attachment = oldKey.attachment();
-                try {
-                    SelectionKey newKey = oldKey.channel().register(newSelector, oldKey.interestOps(), attachment);
-                    if (attachment instanceof SessionChannel<?, ?, ?> sessionChannel) {
-                        sessionChannel.updateChannel(newKey);
-                    }
-                } catch (Exception e) {
-                    logger.error("[{}] Failed to migrate key for channel", name, e);
+            synchronized (lifecycleLock) {
+                State current = state.get();
+                if (current.isTerminatingOrTerminated()) {
+                    return;
+                }
+                if (current != State.STARTING && current != State.DRAINING) {
+                    throw new IllegalStateException(
+                            "Loop [%s] cannot initialize in state %s"
+                                    .formatted(name, current)
+                    );
                 }
             }
-            this.selector = newSelector;
-            oldSelector.close();
-            logger.info("[{}] Selector rebuild successfully completed", name);
-            return this.selector;
-        } catch (IOException e) {
-            logger.error("[{}] Failed to rebuild selector", name, e);
-            throw e;
+            initLoop();
+            synchronized (lifecycleLock) {
+                State current = state.get();
+                switch (current) {
+                    case STARTING -> transition(State.STARTING, State.RUNNING);
+                    case DRAINING -> {}
+                    case TERMINATING, TERMINATED -> {
+                        return;
+                    }
+                    default -> throw new IllegalStateException(
+                            "Loop [%s] initialized in unexpected state %s"
+                                    .formatted(name, current)
+                    );
+                }
+            }
+            runLoop();
+        } catch (Throwable throwable) {
+            if (!(throwable instanceof InterruptedException)) {
+                failure = throwable;
+            }
+        } finally {
+            terminate(failure);
         }
+    }
+    private void runLoop() throws Exception {
+        while (true) {
+            State current = state.get();
+            switch (current) {
+                case RUNNING -> runIteration(false, Long.MAX_VALUE);
+                case DRAINING -> {
+                    if (isDrained()) {
+                        return;
+                    }
+                    long remainingNanos = CONSTANT.ShutdownTimeoutNanos() - (System.nanoTime() - shutdownStartedNanos);
+                    if (remainingNanos <= 0) {
+                        return;
+                    }
+                    runIteration(true, remainingNanos);
+                }
+                case TERMINATING, TERMINATED -> {
+                    return;
+                }
+                default -> throw new IllegalStateException(
+                        "Loop [%s] entered processing loop in state %s"
+                                .formatted(name, current)
+                );
+            }
+        }
+    }
+
+    private void terminate(Throwable failure) {
+        while (true) {
+            State current = state.get();
+            if (current == State.TERMINATED) {
+                return;
+            }
+            if (current == State.TERMINATING || state.compareAndSet(current,State.TERMINATING)) {
+                break;
+            }
+        }
+        if (!cleaning.compareAndSet(false, true)) {
+            return;
+        }
+        Throwable terminalFailure = failure;
+        if (sealed.compareAndSet(false, true)) {
+            try {
+                sealLoop();
+            } catch (Throwable throwable) {
+                terminalFailure = mergeThrowable(terminalFailure, throwable);
+            }
+        }
+        try {
+            clearLoop();
+        } catch (Throwable throwable) {
+            terminalFailure = mergeThrowable(terminalFailure, throwable);
+        } finally {
+            state.set(State.TERMINATED);
+        }
+        if (terminalFailure == null) {
+            terminationFuture.complete(null);
+        } else {
+            terminationFuture.completeExceptionally(terminalFailure);
+        }
+    }
+    private void seal() {
+        if (sealed.compareAndSet(false, true)) {
+            try {
+                sealLoop();
+            } catch (Exception exception) {
+                logger.error("Loop [{}] sealLoop() failed", name, exception);
+            }
+            sealLoop();
+        }
+    }
+
+    private void transition(State expected, State targeted) {
+        State actual = state.compareAndExchange(expected, targeted);
+        if (actual != expected) {
+            throw new IllegalStateException(
+                    "Loop [%s] state transition failed: expected=%s, actual=%s, targeted=%s"
+                            .formatted(name, expected, actual, targeted)
+            );
+        }
+    }
+
+    protected static Throwable mergeThrowable(Throwable previous, Throwable current) {
+        Throwable result = previous;
+        if (previous == null) {
+            result = current;
+        } else if (current != null) {
+            previous.addSuppressed(current);
+        }
+        return result;
     }
 }

@@ -3,18 +3,16 @@ package com.thezeroer.nexalithic.core.infra.recyclable;
 /**
  * 池化资源的可回收包装器 (Recyclable Wrapper)
  *
- * <p>作为底层资源与业务逻辑之间的“隔离带”和“生命周期凭证”。通过池化技术规避 JVM 对象分配开销，
- * 采用 <b>递归泛型</b> 确保包装器与所属池的类型精确匹配。</p>
- *
  * @param <T> 被包装的底层资源类型
  * @author tbrtz647@outlook.com
  * @since 2026/02/10
+ * @version 1.0.0
  */
-public interface RecyclableWrapper<T> extends AutoCloseable {
+public interface RecyclableWrapper<T> {
     /**
      * 显式回收包装器。
      * <p>根据实现类不同，可能执行不同的重置逻辑（如 {@code target.clear()} 或 {@code target = null}）。</p>
-     * <p><b>幂等性要求：</b> 必须确保多次调用不会导致池数据损坏。</p>
+     * <p><b>幂等性要求</b></p>
      */
     void recycle();
 
@@ -24,12 +22,4 @@ public interface RecyclableWrapper<T> extends AutoCloseable {
      * @return 内部对象引用
      */
     T unwrap();
-
-    /**
-     * 默认支持 try-with-resources。
-     */
-    @Override
-    default void close() {
-        recycle();
-    }
 }

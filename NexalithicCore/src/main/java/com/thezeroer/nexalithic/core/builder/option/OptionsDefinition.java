@@ -8,6 +8,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * 选项集定义
@@ -16,11 +18,18 @@ import java.util.List;
  * @since 2026/04/02
  * @version 1.0.0
  */
-public class OptionsDefinition {
+public abstract class OptionsDefinition {
     protected final Class<?> holder;
 
     protected OptionsDefinition(Class<?> holder) {
-        this.holder = holder;
+        this.holder = Objects.requireNonNull(holder, "holder");
+    }
+
+    protected <T> NexalithicOption<T> defineOption(T defaultValue, OptionValidator<T> validator) {
+        return new NexalithicOption<>(defaultValue, null, validator);
+    }
+    protected <T> NexalithicOption<T> defineOptionLazy(Function<NexalithicBuilderContext, T> defaultValueLazy, OptionValidator<T> validator) {
+        return new NexalithicOption<>(null, defaultValueLazy, validator);
     }
 
     public static <T extends OptionsDefinition> T initOptions(Class<T> options, Class<?> holder) {
@@ -96,6 +105,7 @@ public class OptionsDefinition {
         }
         return sb.toString();
     }
+
     private void buildString(StringBuilder sb, int indent, NexalithicBuilderContext context) {
         String prefix = "  ".repeat(indent);
         Class<?> clazz = this.getClass();
@@ -150,7 +160,7 @@ public class OptionsDefinition {
             clazz = clazz.getSuperclass();
         }
     }
-    private String getValueString(NexalithicOption<?> opt, NexalithicBuilderContext context) {
+    private static String getValueString(NexalithicOption<?> opt, NexalithicBuilderContext context) {
         StringBuilder vsb = new StringBuilder();
         vsb.append("(default=").append(opt.defaultValue(context));
         if (context != null) {

@@ -1,9 +1,12 @@
 package com.thezeroer.nexalithic.core.io.codec.fragmenter;
 
-import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
 import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
 import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
 import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
+import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
+import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
+import com.thezeroer.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,44 +21,62 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 2026/02/10
  * @version 1.0.0
  */
-public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPacketFragmentWrapper> {
+public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsFragmenter.class);
     public static final class Options extends OptionsDefinition {
-        public final NexalithicOption<Integer> WrapperQueue_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperQueue_Capacity = defineOption(
                 64, OptionValidator.positive()
         );
-        public final NexalithicOption<Integer> WrapperLinked_Capacity = NexalithicOption.create(
+        public final NexalithicOption<Integer> WrapperLinked_Capacity = defineOption(
                 64, OptionValidator.positive()
         );
-
-        public Options(Class<?> holder) {
+        public final NexalithicOption<Integer> WrapperPool_Capacity = defineOption(
+                4096, OptionValidator.positive()
+        );
+        private Options(Class<?> holder) {
             super(holder);
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsFragmenter.class);
+    private final WrapperPool<BusinessPacketFragmentWrapper> wrapperPool;
+    private final NexalithicSession<?> owner;
     private final int WrapperLinked_Capacity_;
     private final MpscArrayQueue<BusinessPacketFragmentWrapper> packets;
     private final AtomicInteger currentLinkedCount = new AtomicInteger(0);
     private BusinessPacketFragmentWrapper head, last;
 
-    public BusinessPacketsFragmenter(int WrapperQueue_Capacity_, int WrapperLinked_Capacity_) {
+    public BusinessPacketsFragmenter(NexalithicSession<?> owner,
+                                     WrapperPool<BusinessPacketFragmentWrapper> wrapperPool,
+                                     int WrapperQueue_Capacity_, int WrapperLinked_Capacity_) {
+        this.owner = owner;
+        this.wrapperPool = wrapperPool;
         this.WrapperLinked_Capacity_ = WrapperLinked_Capacity_;
         packets = new MpscArrayQueue<>(WrapperQueue_Capacity_);
     }
 
     @Override
-    public boolean feed(BusinessPacketFragmentWrapper wrapper) {
+    public boolean feed(BusinessPacket packet) {
         if (currentLinkedCount.get() >= WrapperLinked_Capacity_) {
             return false;
         }
-        return packets.offer(wrapper);
+        BusinessPacketFragmentWrapper wrapper = wrapperPool.acquire();
+        if (wrapper == null) {
+            return false;
+        }
+        wrapper.getCodecCallback().bind(owner);
+        wrapper.wrap(packet.seal());
+        if (!packets.offer(wrapper)) {
+            wrapper.recycle();
+            return false;
+        }
+        return true;
     }
 
     @Override
-    public int fill(BusinessPacketFragmentWrapper... wrappers) {
-        int count = wrappers.length;
-        for (BusinessPacketFragmentWrapper wrapper : wrappers) {
-            if (feed(wrapper)) {
+    public int fill(BusinessPacket... packets) {
+        int count = packets.length;
+        for (BusinessPacket packet : packets) {
+            if (feed(packet)) {
                 count--;
             } else {
                 break;
@@ -126,7 +147,10 @@ public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPack
 
     @Override
     public void clear() {
-        packets.clear();
+        BusinessPacketFragmentWrapper queued;
+        while ((queued = packets.poll()) != null) {
+            queued.recycle();
+        }
         BusinessPacketFragmentWrapper wrapper = head;
         while (wrapper != null) {
             BusinessPacketFragmentWrapper next = wrapper.removeSelfAndGetNext();

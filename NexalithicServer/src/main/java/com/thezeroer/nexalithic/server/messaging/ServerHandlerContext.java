@@ -1,9 +1,10 @@
 package com.thezeroer.nexalithic.server.messaging;
 
+import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerContext;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.session.SessionAttachment;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
+import com.thezeroer.nexalithic.server.session.ServerSession;
 import com.thezeroer.nexalithic.server.manager.SessionsManager;
 
 import java.net.InetAddress;
@@ -16,12 +17,18 @@ import java.net.InetAddress;
  * @version 1.0.0
  */
 public class ServerHandlerContext extends HandlerContext<ServerSession> {
-    private final ServerBusinessPacketDispatcher dispatcher;
     private final SessionsManager sessionsManager;
 
-    public ServerHandlerContext(ServerBusinessPacketDispatcher dispatcher, SessionsManager sessionsManager) {
-        this.dispatcher = dispatcher;
+    public ServerHandlerContext(SessionsManager sessionsManager) {
         this.sessionsManager = sessionsManager;
+    }
+
+    public boolean push(String sessionName, BusinessPacket packet) {
+        ServerSession session = sessionsManager.getSession(sessionName);
+        if (session == null) {
+            return false;
+        }
+        return session.pushBusinessPacket(packet);
     }
 
     public void forceSetSessionName(String sessionName) {
@@ -48,17 +55,12 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
         return session.getSignalingChannel().getRemoteAddress().getAddress();
     }
 
-    @Override
-    public boolean pushResponse(BusinessPacket response) {
-        return dispatcher.egress(session, response.setTaskId(request.getTaskId()));
-    }
-
     public void broadcastToOthers(BusinessPacket packet) {
         packet.seal();
         String currentSessionName = session.getSessionName();
         sessionsManager.forEachNamedSession(s -> {
             if (!s.getSessionName().equals(currentSessionName)) {
-                dispatcher.egress(s, packet.duplicate());
+                s.pushBusinessPacket(packet.duplicate());
             }
         });
     }
@@ -68,8 +70,8 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
             ServerHandlerContext,
             Recyclable
         > {
-        public Recyclable(ServerHandlerContext target) {
-            super(target);
+        public Recyclable(GenericWrapperPool<ServerHandlerContext, Recyclable> owner, ServerHandlerContext target) {
+            super(owner, target);
         }
     }
 }

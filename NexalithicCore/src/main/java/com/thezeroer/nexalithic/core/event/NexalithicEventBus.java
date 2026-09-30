@@ -2,7 +2,6 @@ package com.thezeroer.nexalithic.core.event;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 /**
  * Nexalithic 事件总线

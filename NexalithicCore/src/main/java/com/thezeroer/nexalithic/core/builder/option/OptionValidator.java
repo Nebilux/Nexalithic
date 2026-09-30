@@ -51,11 +51,24 @@ public interface OptionValidator<T> {
     /**
      * 验证数值在闭区间 [min, max] 内
      */
-    static <T extends Number> OptionValidator<T> range(double min, double max) {
+    static <T extends Number> OptionValidator<T> closedInterval(double min, double max) {
         return value -> {
             if (value == null || value.doubleValue() < min || value.doubleValue() > max) {
                 throw new IllegalArgumentException(
-                        String.format("Value must be in range [%.2f, %.2f], but got: %s", min, max, value)
+                        String.format("Value must be in range [%s, %s], but got: %s", min, max, value)
+                );
+            }
+        };
+    }
+
+    /**
+     * 验证数值在开区间 (min, max) 内
+     */
+    static <T extends Number> OptionValidator<T> openInterval(double min, double max) {
+        return value -> {
+            if (value == null || value.doubleValue() <= min || value.doubleValue() >= max) {
+                throw new IllegalArgumentException(
+                        String.format("Value must be in range (%s, %s), but got: %s", min, max, value)
                 );
             }
         };
@@ -65,7 +78,7 @@ public interface OptionValidator<T> {
      * 专门针对百分比或概率的验证 [0, 1]
      */
     static <T extends Number> OptionValidator<T> unitInterval() {
-        return range(0.0, 1.0);
+        return closedInterval(0.0, 1.0);
     }
 
     /**
@@ -108,7 +121,7 @@ public interface OptionValidator<T> {
     /**
      * 区间验证：必须在 [min, max] 之间
      */
-    static <T extends Comparable<T>> OptionValidator<T> range(T min, T max) {
+    static <T extends Comparable<T>> OptionValidator<T> closedInterval(T min, T max) {
         return value -> {
             if (value == null || value.compareTo(min) < 0 || value.compareTo(max) > 0) {
                 throw new IllegalArgumentException(

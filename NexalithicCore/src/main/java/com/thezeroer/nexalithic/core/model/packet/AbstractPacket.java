@@ -14,8 +14,8 @@ import java.nio.charset.StandardCharsets;
 public abstract class AbstractPacket implements AbstractModel {
     public static final int MAX_PAYLOAD_COUNT = Byte.MAX_VALUE;
     public enum PacketType {
-        /** 信令包 */ SIGNALING,
-        /** 业务包 */ BUSINESS,
+        /** 信令包 */ Signaling,
+        /** 业务包 */ Business,
     }
 
     /**

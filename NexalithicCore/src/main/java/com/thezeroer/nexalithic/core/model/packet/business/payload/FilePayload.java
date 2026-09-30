@@ -1,7 +1,7 @@
 package com.thezeroer.nexalithic.core.model.packet.business.payload;
 
 import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
-import com.thezeroer.nexalithic.core.messaging.visual.TransferSnapshot;
+import com.thezeroer.nexalithic.core.messaging.task.visual.TransferSnapshot;
 
 import java.io.File;
 import java.io.FileNotFoundException;

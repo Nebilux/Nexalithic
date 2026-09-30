@@ -14,46 +14,46 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public abstract class LifecycleManager {
     /**
-     * Nexalithic服务器的生命周期状态枚举。
-     * <p>定义了服务器从创建到终止的完整状态转换过程，用于控制服务器的生命周期管理。</p>
+     * Nexalithic终端的生命周期状态枚举。
+     * <p>定义了终端从创建到终止的完整状态转换过程，用于控制终端的生命周期管理。</p>
      * <p><b>状态转换流程：</b><br>
      * {@link #NEW} → {@link #STARTING} → {@link #RUNNING} → ({@link #STOPPING} 或 {@link #SHUTTING_DOWN}) → {@link #TERMINATED}<br>
      * 任何状态都可能直接转换为 {@link #ERROR}（发生异常时）</p>
      */
     public enum State {
         /**
-         * 服务器的初始状态。
-         * <p>服务器刚创建但尚未调用{@link #start()}方法时的状态。</p>
+         * 终端的初始状态。
+         * <p>终端刚创建但尚未调用{@link #start()}方法时的状态。</p>
          */
         NEW,
         /**
-         * 服务器正在启动中的状态。
-         * <p>调用{@link #start()}方法后，服务器开始启动各个组件时的状态。</p>
+         * 终端正在启动中的状态。
+         * <p>调用{@link #start()}方法后，终端开始启动各个组件时的状态。</p>
          */
         STARTING,
         /**
-         * 服务器正常运行的状态。
-         * <p>所有核心组件都已成功启动，服务器能够正常处理请求时的状态。</p>
+         * 终端正常运行的状态。
+         * <p>所有核心组件都已成功启动，终端能够正常处理请求时的状态。</p>
          */
         RUNNING,
         /**
-         * 服务器正在停止中的状态。
-         * <p>调用{@link #stop()}方法后，服务器开始停止各个组件时的状态。</p>
+         * 终端正在停止中的状态。
+         * <p>调用{@link #stop()}方法后，终端开始停止各个组件时的状态。</p>
          */
         STOPPING,
         /**
-         * 服务器正在优雅关闭中的状态。
-         * <p>调用{@link #shutdown()}方法后，服务器开始优雅关闭各个组件时的状态。</p>
+         * 终端正在优雅关闭中的状态。
+         * <p>调用{@link #shutdown()}方法后，终端开始优雅关闭各个组件时的状态。</p>
          */
         SHUTTING_DOWN,
         /**
-         * 服务器已终止的状态。
-         * <p>服务器成功调用{@link #stop()}或{@link #shutdown()}方法后，所有组件都已关闭时的状态。</p>
+         * 终端已终止的状态。
+         * <p>终端成功调用{@link #stop()}或{@link #shutdown()}方法后，所有组件都已关闭时的状态。</p>
          */
         TERMINATED,
         /**
-         * 服务器发生错误的状态。
-         * <p>服务器在启动、运行或关闭过程中发生异常时的状态。</p>
+         * 终端发生错误的状态。
+         * <p>终端在启动、运行或关闭过程中发生异常时的状态。</p>
          */
         ERROR,
     }

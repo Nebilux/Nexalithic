@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 public class PayloadRegistry {
     private final PayloadConstructorStorage constructors;
 
-    public PayloadRegistry(PayloadConstructorStorage constructors) {
+    private PayloadRegistry(PayloadConstructorStorage constructors) {
         this.constructors = constructors;
     }
 
@@ -34,21 +34,31 @@ public class PayloadRegistry {
 
     public static class Builder {
         private final Map<Long, Supplier<? extends AbstractPayload<?>>> map = new ConcurrentHashMap<>();
-        private PayloadConstructorStorage storage = new PayloadConstructorStorage.ArrayPayloadStorage();
+        private Supplier<PayloadConstructorStorage> storageSupplier = PayloadConstructorStorage.ArrayPayloadStorage::new;
 
-        public void register(Supplier<? extends AbstractPayload<?>> constructor) {
+        public Builder payloadConstructor(Supplier<? extends AbstractPayload<?>> constructor) {
             AbstractPayload<?> payload = constructor.get();
             if (map.putIfAbsent(payload.getPayloadUID(),  constructor) instanceof AbstractPayload<?> existing) {
                 throw new PayloadCollisionException(payload.getPayloadUID(), existing.getClass(), payload.getClass());
             }
+            return this;
         }
 
-        public void withStorage(PayloadConstructorStorage storage) {
-            this.storage = storage;
+        public Builder payloadConstructors(Collection<Supplier<? extends AbstractPayload<?>>> constructors) {
+            for (Supplier<? extends AbstractPayload<?>> constructor : constructors) {
+                payloadConstructor(constructor);
+            }
+            return this;
         }
+
+        public Builder PayloadConstructorStorageSupplier(Supplier<PayloadConstructorStorage> storageSupplier) {
+            this.storageSupplier = storageSupplier;
+            return this;
+        }
+
 
         public PayloadRegistry build() {
-            return new PayloadRegistry(storage.freeze(map));
+            return new PayloadRegistry(storageSupplier.get().freeze(map));
         }
     }
 }

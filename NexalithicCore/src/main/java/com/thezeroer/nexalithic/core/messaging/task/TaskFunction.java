@@ -1,5 +1,6 @@
 package com.thezeroer.nexalithic.core.messaging.task;
 
+import com.thezeroer.nexalithic.core.messaging.task.future.TaskFuture;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 
 /**
@@ -10,11 +11,13 @@ import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
  * <b>生命周期流向：</b>
  * <pre>
  * [提交任务] -> request() -> (网络传输) -> [等待响应/超时/异常]
- * |--> 正常响应: response(BusinessPacket) -> finish()
+ * |--> 正常响应: response() -> complete() -> finish()
  * |--> 触发超时: timeout() -> finish()
- * |--> 运行异常: exception(FailedAction) -> finish()
  * |--> 主动取消: cancel() -> finish()
+ * |--> 运行异常: failed() -> finish()
  * </pre>
+ *
+ * failed()仅在request()/response()产生异常时才触发
  *
  * @author tbrtz647@outlook.com
  * @since 2026/03/21
@@ -34,7 +37,7 @@ public interface TaskFunction {
         void execute(BusinessPacket packet);
     }
     @FunctionalInterface
-    interface FinishAction extends TaskFunction {
+    interface CompleteAction extends TaskFunction {
         void execute();
     }
     @FunctionalInterface
@@ -48,5 +51,9 @@ public interface TaskFunction {
     @FunctionalInterface
     interface FailedAction extends TaskFunction {
         void execute(Exception e);
+    }
+    @FunctionalInterface
+    interface FinishAction extends TaskFunction {
+        void execute();
     }
 }

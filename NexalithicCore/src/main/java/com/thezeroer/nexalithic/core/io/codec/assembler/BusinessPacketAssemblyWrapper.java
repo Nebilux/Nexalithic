@@ -1,15 +1,12 @@
 package com.thezeroer.nexalithic.core.io.codec.assembler;
 
 import com.thezeroer.nexalithic.core.infra.buffer.LoopBuffer;
+import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
+import com.thezeroer.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
+import com.thezeroer.nexalithic.core.io.codec.CodecCallback;
 import com.thezeroer.nexalithic.core.messaging.payload.PayloadRegistry;
-import com.thezeroer.nexalithic.core.messaging.visual.TransferListener;
-import com.thezeroer.nexalithic.core.messaging.visual.TransferListenerGroup;
-import com.thezeroer.nexalithic.core.messaging.visual.TransferSnapshot;
-import com.thezeroer.nexalithic.core.messaging.visual.TransferTracer;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.model.packet.business.payload.AbstractPayload;
-import com.thezeroer.nexalithic.core.infra.recyclable.SelfStaticWrapperPool;
-import com.thezeroer.nexalithic.core.infra.timer.Expirable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,25 +19,25 @@ import java.util.List;
  * @since 2026/03/15
  * @version 1.0.0
  */
-public class BusinessPacketAssemblyWrapper extends SelfStaticWrapperPool.InteriorRecyclableWrapper<BusinessPacketAssemblyWrapper> implements AssemblyWrapper<BusinessPacket>, Expirable {
-    public record Constant(long MaxIdleTime) {}
+public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<BusinessPacketAssemblyWrapper> {
+    public record Constant(long MaxIdleTimeNanos) {}
     private final Constant CONSTANT;
+    private final CodecCallback codecCallback;
     private final PacketBuilder packetBuilder = new PacketBuilder();
     private final PayloadRegistry payloadRegistry;
-    private final TransferTracer transferTracer;
-    private TransferListener listener;
-    private TransferSnapshot snapshot;
     private BusinessPacket packet;
     private long remaining;
     private int packetId;
     private int payloadIndex;
     private boolean headerRead;
-    private long lastActiveTime;
+    private long lastActiveTimeNanos;
 
-    public BusinessPacketAssemblyWrapper(Constant constant, PayloadRegistry payloadRegistry, TransferTracer transferTracer) {
+    public BusinessPacketAssemblyWrapper(GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper> owner,
+                                         Constant constant, CodecCallback codecCallback, PayloadRegistry payloadRegistry) {
+        super(owner);
         CONSTANT = constant;
+        this.codecCallback = codecCallback;
         this.payloadRegistry = payloadRegistry;
-        this.transferTracer = transferTracer;
     }
 
     public boolean hasFrame() {
@@ -48,15 +45,13 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticWrapperPool.Interio
             return true;
         } else {
             packet = packetBuilder.build();
-            if (listener != null) {
-                transferTracer.onFinish(listener);
-            }
+            codecCallback.complete();
             return false;
         }
     }
 
     public int onFrame(LoopBuffer input, int quota, boolean isStartFrame) throws IOException {
-        lastActiveTime = System.currentTimeMillis();
+        updateLastActiveTime();
         int total = 0;
         if (!headerRead) {
             if (!isStartFrame) {
@@ -64,15 +59,9 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticWrapperPool.Interio
                 return quota;
             }
             total += readPacketHeader(input);
+            codecCallback.prepare(packetBuilder.taskId, PacketBuilder.WAYS[packetBuilder.way]);
+            codecCallback.start(remaining);
             headerRead = true;
-            TransferListenerGroup visualizer = transferTracer.removeVisualizer(packetBuilder.taskId);
-            if (visualizer != null) {
-                listener = visualizer.responseTransferListener();
-                if (listener != null) {
-                    snapshot = new TransferSnapshot(remaining);
-                    transferTracer.onStart(listener, snapshot);
-                }
-            }
         }
         List<AbstractPayload<?>> payloads = packetBuilder.payloads;
         int read;
@@ -100,9 +89,7 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticWrapperPool.Interio
             }
         }
         remaining -= total;
-        if (snapshot != null) {
-            snapshot.updateRemaining(remaining);
-        }
+        codecCallback.update(remaining);
         return total;
     }
     private int readPacketHeader(LoopBuffer input) throws IOException {
@@ -162,31 +149,28 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticWrapperPool.Interio
         return packet;
     }
 
+    public CodecCallback getCodecCallback() {
+        return codecCallback;
+    }
+
+    public long getExpiryTimeNanos() {
+        return lastActiveTimeNanos + CONSTANT.MaxIdleTimeNanos;
+    }
+
+    void updateLastActiveTime() {
+        lastActiveTimeNanos = System.nanoTime();
+    }
+
     @Override
-    protected void onRecycle() {
+    protected void onReset() {
+        codecCallback.clear();
         packetBuilder.clear();
         packet = null;
+        remaining = 0;
         packetId = 0;
         headerRead = false;
         payloadIndex = 0;
-        lastActiveTime = -1;
-        listener = null;
-        snapshot = null;
-    }
-
-    @Override
-    public long getExpiryTime() {
-        return lastActiveTime + CONSTANT.MaxIdleTime;
-    }
-
-    @Override
-    public boolean onExpiryTriggered() {
-        return System.currentTimeMillis() > lastActiveTime + CONSTANT.MaxIdleTime;
-    }
-
-    @Override
-    public boolean isCancelled() {
-        return isRecycled();
+        lastActiveTimeNanos = -1;
     }
 
     private static class PacketBuilder {
