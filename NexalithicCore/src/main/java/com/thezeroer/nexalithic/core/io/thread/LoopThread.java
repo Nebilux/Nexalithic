@@ -11,7 +11,6 @@ import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.WrapperPool;
-import com.thezeroer.nexalithic.core.io.loop.AbstractLoop;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.SpscArrayQueue;
 
@@ -59,8 +58,8 @@ public class LoopThread extends Thread {
     private final WrapperPool<LoopBuffer> globalLoopBufferPool;
     private final WrapperPool<LoopBuffer> localLoopBufferPool;
 
-    public LoopThread(NexalithicBuilderContext context, AbstractLoop loop) {
-        super(loop);
+    public LoopThread(NexalithicBuilderContext context, Runnable runnable) {
+        super(runnable);
         int bufferCapacity = context.getOption(OPTIONS.LoopBuffer_Capacity);
         globalLoopBufferPool = context.getModule(MODULES.GlobalLoopBufferPool, () -> new GenericWrapperPool<LoopBuffer, LoopBuffer>(
                 PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.GlobalLoopBufferPool_Capacity)),

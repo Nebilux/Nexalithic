@@ -243,7 +243,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
             }
         } while (mailbox.check());
     }
-    private void executeRequest(NexalithicTask task, NexalithicSession<?, ?, ?> session) {
+    private void executeRequest(NexalithicTask task, NexalithicSession<?> session) {
         BusinessPacket request;
         try {
             request = task.request();

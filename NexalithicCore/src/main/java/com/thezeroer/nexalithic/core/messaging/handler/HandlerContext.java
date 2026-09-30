@@ -21,7 +21,7 @@ import com.thezeroer.nexalithic.core.session.NexalithicSession;
  * @since 2026/03/16
  * @version 1.0.0
  */
-public abstract class HandlerContext<S extends NexalithicSession<?, ?, ?>> {
+public abstract class HandlerContext<S extends NexalithicSession<?>> {
     /** 当前请求所属的会话。 */
     protected volatile S session;
 
@@ -47,14 +47,8 @@ public abstract class HandlerContext<S extends NexalithicSession<?, ?, ?>> {
         return session.pushBusinessPacket(response.setTaskId(request.getTaskId()));
     }
 
-    public static class Recyclable<
-            S extends NexalithicSession<?, ?, ?>,
-            T extends HandlerContext<S>,
-            W extends Recyclable<S, T, W>
-        > extends TargetStaticRecyclableWrapper<T, W> {
-
+    public static class Recyclable<S extends NexalithicSession<?>, T extends HandlerContext<S>, W extends Recyclable<S, T, W>> extends TargetStaticRecyclableWrapper<T, W> {
         private volatile NexalithicHandler<T> handler;
-
         public Recyclable(GenericWrapperPool<T, W> owner, T target) {
             super(owner, target);
         }

@@ -16,7 +16,7 @@ import com.thezeroer.nexalithic.core.session.NexalithicSession;
  */
 public abstract class TaskCodecCallback implements CodecCallback {
     protected final TaskScheduler taskScheduler;
-    protected NexalithicSession<?, ?, ?> session;
+    protected NexalithicSession<?> session;
     protected NexalithicTask task;
     protected TransferListener transferListener;
     protected TransferSnapshot transferSnapshot;
@@ -27,7 +27,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
     }
 
     @Override
-    public void bind(NexalithicSession<?, ?, ?> session) {
+    public void bind(NexalithicSession<?> session) {
         this.session = session;
     }
 

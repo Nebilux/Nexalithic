@@ -39,13 +39,13 @@ public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPack
     }
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsFragmenter.class);
     private final WrapperPool<BusinessPacketFragmentWrapper> wrapperPool;
-    private final NexalithicSession<?, ?, ?> owner;
+    private final NexalithicSession<?> owner;
     private final int WrapperLinked_Capacity_;
     private final MpscArrayQueue<BusinessPacketFragmentWrapper> packets;
     private final AtomicInteger currentLinkedCount = new AtomicInteger(0);
     private BusinessPacketFragmentWrapper head, last;
 
-    public BusinessPacketsFragmenter(NexalithicSession<?, ?, ?> owner,
+    public BusinessPacketsFragmenter(NexalithicSession<?> owner,
                                      WrapperPool<BusinessPacketFragmentWrapper> wrapperPool,
                                      int WrapperQueue_Capacity_, int WrapperLinked_Capacity_) {
         this.owner = owner;

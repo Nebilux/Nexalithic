@@ -11,7 +11,7 @@ import com.thezeroer.nexalithic.core.session.NexalithicSession;
  * @since 2026/08/14
  */
 public interface CodecCallback {
-    void bind(NexalithicSession<?, ?, ?> session);
+    void bind(NexalithicSession<?> session);
 
     void prepare(long taskId, BusinessPacket.Way way);
     void start(long total);

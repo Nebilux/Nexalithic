@@ -1,6 +1,7 @@
 package com.thezeroer.nexalithic.client.lifecycle;
 
 import com.thezeroer.nexalithic.client.NexalithicClient;
+import com.thezeroer.nexalithic.client.io.session.ClientSessionLoop;
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
 import com.thezeroer.nexalithic.core.builder.module.NexalithicModule;
@@ -16,31 +17,31 @@ import com.thezeroer.nexalithic.core.lifecycle.LifecycleManager;
 public class ClientLifecycleManager extends LifecycleManager {
     public static final Modules MODULES = new Modules();
     public static final class Modules extends ModulesDefinition {
-        public final NexalithicModule<GeneralLoop> GeneralLoop = defineModule(GeneralLoop.class);
+        public final NexalithicModule<ClientSessionLoop> SessionLoop = defineModule(ClientSessionLoop.class);
         private Modules() {
             super(ClientLifecycleManager.class);
         }
     }
 
-    private final GeneralLoop generalLoop;
+    private final ClientSessionLoop sessionLoop;
 
     public ClientLifecycleManager(NexalithicBuilderContext context) {
         super(NexalithicClient.class.getSimpleName());
-        generalLoop = context.getModule(MODULES.GeneralLoop);
+        sessionLoop = context.getModule(MODULES.SessionLoop);
     }
 
     @Override
     public void onStart() {
-        generalLoop.start();
+        sessionLoop.start();
     }
 
     @Override
     public void onStop() {
-        generalLoop.stop();
+        sessionLoop.stop();
     }
 
     @Override
     public void onShutdown() {
-        generalLoop.shutdown();
+        sessionLoop.shutdown();
     }
 }

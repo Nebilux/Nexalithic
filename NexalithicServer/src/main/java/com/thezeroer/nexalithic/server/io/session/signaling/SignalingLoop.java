@@ -1,4 +1,4 @@
-package com.thezeroer.nexalithic.server.lifecycle.service;
+package com.thezeroer.nexalithic.server.io.session.signaling;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
@@ -11,77 +11,85 @@ import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.thezeroer.nexalithic.core.infra.timer.TimeWheel;
 import com.thezeroer.nexalithic.core.infra.timer.TimerContext;
-import com.thezeroer.nexalithic.core.infra.timer.TimerCoordinator;
+import com.thezeroer.nexalithic.core.io.channel.NexalithicChannel;
 import com.thezeroer.nexalithic.core.messaging.task.TaskScheduler;
-import com.thezeroer.nexalithic.core.model.packet.AbstractPacket;
 import com.thezeroer.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.thezeroer.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.thezeroer.nexalithic.core.model.packet.signaling.TokenSignal;
+import com.thezeroer.nexalithic.core.session.SessionChannel;
 import com.thezeroer.nexalithic.core.session.SessionKey;
 import com.thezeroer.nexalithic.server.NexalithicServer;
-import com.thezeroer.nexalithic.server.lifecycle.handshake.PendingChannel;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSessionChannel;
+import com.thezeroer.nexalithic.server.io.handshake.HandshakeContext;
+import com.thezeroer.nexalithic.server.io.session.ServerSessionLoop;
+import com.thezeroer.nexalithic.server.io.session.ServiceUnit;
 import com.thezeroer.nexalithic.server.manager.NetworkRouter;
 import com.thezeroer.nexalithic.server.manager.SessionsManager;
+import com.thezeroer.nexalithic.server.session.ServerChannelFactory;
+import com.thezeroer.nexalithic.server.session.ServerSession;
 import org.jctools.queues.SpmcArrayQueue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.SecureRandom;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
- * 主选择器
+ * 信令循环
  *
  * @author tbrtz647@outlook.com
  * @since 2026/02/06
  * @version 1.0.0
  */
-public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCoordinator<ServerSession> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, StewardLoop.class);
-    public static final class Options extends ServiceLoop.Options {
+public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SignalingLoop.class);
+    public static final class Options extends ServerSessionLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
                 return defineOptionLazy(context ->
-                                Math.toIntExact(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
+                                Math.toIntExact(context.getOption(OPTIONS.MaxIdleTimeMillis) / context.getOption(OPTIONS.TimeWheel.TickMillis)) + 1
                         , OptionValidator.positive()
                 );
             }
         };
-        public final NexalithicOption<Long> HeartBeat_MaxIntervalMillis = defineOption(
-                60_000L, OptionValidator.positive()
-        );
         private Options(Class<?> holder) {
             super(holder);
         }
-    }
-    public static final Modules MODULES = new Modules();
-    public static final class Modules extends ModulesDefinition {
-        public final NexalithicModule<TimeWheel<ServerSession>> TimeWheel = defineModule(TimeWheel.class);
-        private Modules() {
-            super(StewardLoop.class);
+        @Override
+        protected long MaxIdleTimeMillis_Value() {
+            return 60_000L;
         }
     }
+    private static final Modules MODULES = new Modules();
+    private static final class Modules extends ModulesDefinition {
+        private final NexalithicModule<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> TimeWheel = defineModule(TimeWheel.class);
+        private Modules() {
+            super(SignalingLoop.class);
+        }
+    }
+
+    private static final Logger logger = LoggerFactory.getLogger(SignalingLoop.class);
     private final SessionsManager sessionsManager;
     private final NetworkRouter networkRouter;
-    private final TimeWheel<ServerSession> timeWheel;
+    private final TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel;
     private final SecureRandom secureRandom = new SecureRandom();
-    private final Function<PendingChannel, ServerSession> sessionFactory;
+    private final Function<HandshakeContext, ServerSession> sessionFactory;
 
-    public StewardLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
+    public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
         super(context, OPTIONS);
         sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
         networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
         timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<ServerSession> timeWheel = new TimeWheel<>(
+            TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
                     context.getOption(OPTIONS.TimeWheel.SlotCount),
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
@@ -89,140 +97,124 @@ public class StewardLoop extends ServiceLoop<SignalingPacket> implements TimerCo
                     new GenericWrapperPool<>(
                             PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<ServerSession>::new
+                            TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
                     ),
-                    StewardLoop.class.getSimpleName()
+                    SignalingLoop.class.getSimpleName()
             );
             timeWheel.start();
             return timeWheel;
         });
-        ServerSession.ServerChannelFactory channelFactory = new ServerSession.ServerChannelFactory(context, this);
+        ServerChannelFactory channelFactory = new ServerChannelFactory(context, unit);
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
-        ServerSession.Constant sessionConstant = context.getConstant(ServerSession.class, ServerSession.Constant.class, () -> new ServerSession.Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.HeartBeat_MaxIntervalMillis), TimeUnit.MILLISECONDS)
-        ));
         sessionFactory = channel -> new ServerSession(
-                channel.getSessionKey(),
-                channel.getSignalingSecretContext(),
-                channel.getBusinessSecretContext(),
+                channel.takeSessionKey(),
+                channel.takeSignalingSecretContext(),
+                channel.takeBusinessSecretContext(),
                 channelFactory,
                 taskScheduler,
-                sessionConstant,
                 unit
         );
     }
 
-    public boolean prepareChannelAccess(ServerSession session, AbstractPacket.PacketType type, InetAddress remoteAddress) {
+    public boolean prepareChannelAccess(ServerSession session, InetAddress remoteAddress) {
         SessionKey.Immutable sessionKey = new SessionKey.Immutable(secureRandom.nextLong(), secureRandom.nextLong());
         sessionsManager.relateChannelToken(sessionKey, session);
         return session.pushSignalingPacket(
-                ScalarSignal.ofInt(SignalingPacket.Signal.BusinessChannelPort_Response, networkRouter.choosePort(type, remoteAddress)),
+                ScalarSignal.ofInt(SignalingPacket.Signal.BusinessChannelPort_Response, networkRouter.choosePort(NexalithicChannel.Kind.Packet_Business, remoteAddress)),
                 new TokenSignal(sessionKey)
         ) == 0;
     }
 
     @Override
-    protected boolean onAsyncEvent() {
-        dispatchQueue.drain(channel -> {
-            try {
-                SelectionKey selectionKey = channel.getSocketChannel().configureBlocking(false).register(selector, SelectionKey.OP_READ);
-                ServerSession session = sessionFactory.apply(channel);
-                selectionKey.attach(session.getSignalingChannel().updateChannel(selectionKey));
-                if (!sessionsManager.putSession(session)) {
-                    closeChannel(session.getSignalingChannel());
-                    return;
-                }
-                session.updateLastActiveTimeNanos(System.nanoTime());
-                timeWheel.schedule(session, this);
-            } catch (IOException ignored) {
-            } finally {
-                channel.recycle();
+    protected boolean onExecuteAcquireEvent(HandshakeContext handoff) {
+        try {
+            SocketChannel socketChannel = handoff.takeChannel();
+            SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
+            ServerSession session = sessionFactory.apply(handoff);
+            SessionChannel<SignalingPacket, ServerSession> sessionChannel = session.getSignalingChannel();
+            sessionChannel.open(socketChannel, selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            if (!sessionsManager.putSession(session)) {
+                submitDisconnectEvent(sessionChannel, Event.Disconnect.Reason.INTERNAL_FAILURE);
+                return false;
             }
-        }, CONSTANT.DrainLimit());
-        return dispatchQueue.isEmpty();
+            sessionChannel.updateLastActiveTimeNanos(System.nanoTime());
+            timeWheel.schedule(sessionChannel, this);
+        } catch (IOException ignored) {
+        } finally {
+            handoff.recycle();
+        }
+        return true;
     }
 
     @Override
-    protected void onReadyEvent(SelectionKey key, ServerSessionChannel<SignalingPacket> channel) {
+    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<SignalingPacket, ServerSession> channel) {
         try {
-            if (key.isReadable()) {
+            if (selectionKey.isReadable()) {
                 if (channel.read() == -1) {
-                    closeChannel(channel);
+                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
                 }
                 SignalingPacket packet;
                 while ((packet = channel.get()) != null) {
                     handleSignalPacket(channel, packet);
                 }
-            } else if (key.isWritable()) {
-                if (channel.write() == -1) {
-                    key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
-                }
+            } else if (selectionKey.isWritable()) {
+                channel.write();
             } else {
-                closeChannel(channel);
+                submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
             }
         } catch (InvalidAlgorithmParameterException | ShortBufferException | IllegalBlockSizeException |
                  BadPaddingException | InvalidKeyException e) {
             logger.warn("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            closeChannel(channel);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
         } catch (IOException e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Channel[{}] onReadyEvent[{}] error", channel, name, e);
             }
-            closeChannel(channel);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
         }
     }
 
     @Override
-    public long getExpiryTimeNanos(TimerContext<ServerSession> context) {
-        return context.target().getExpiryTimeNanos();
-    }
-
-    @Override
-    public boolean isCancelled(TimerContext<ServerSession> context) {
-        return context.target().getLastActiveTimeNanos() == -1;
-    }
-
-    @Override
-    public boolean onExpiryTrigger(TimerContext<ServerSession> context) {
-        ServerSession target = context.target();
-        if (System.nanoTime() < target.getExpiryTimeNanos()) {
-            return false;
-        }
-        if (logger.isDebugEnabled()) {
-            logger.debug("heartbeat timeout [{}]", target.toString());
-        }
-        closeChannel(target.getSignalingChannel());
+    protected boolean onExecuteDisconnectEvent(SessionChannel<SignalingPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
+        ServerSession session = channel.ownerSession();
+        sessionsManager.removeSession(session);
+        session.close();
         return true;
     }
 
-    private void handleSignalPacket(ServerSessionChannel<SignalingPacket> channel, SignalingPacket packet) {
+    @Override
+    public boolean onExpiryTrigger(TimerContext<SessionChannel<SignalingPacket, ServerSession>> context) {
+        SessionChannel<SignalingPacket, ServerSession> target = context.target();
+        if (System.nanoTime() < getChannelExpiryTimeNanos(target)) {
+            return false;
+        }
+        if (logger.isDebugEnabled()) {
+            logger.debug("heartbeat timeout [{}]", target.ownerSession().toString());
+        }
+        submitDisconnectEvent(target, Event.Disconnect.Reason.IDLE_TIMEOUT);
+        return true;
+    }
+
+    private void handleSignalPacket(SessionChannel<SignalingPacket, ServerSession> channel, SignalingPacket packet) {
         if (!switch (packet.getSignal()) {
-            case SignalingPacket.Signal.BusinessChannelPort_Request -> channel.session().pushSignalingPacket(
+            case SignalingPacket.Signal.BusinessChannelPort_Request -> channel.ownerSession().pushSignalingPacket(
                     ScalarSignal.ofInt(SignalingPacket.Signal.BusinessChannelPort_Response,
-                            networkRouter.choosePort(AbstractPacket.PacketType.BUSINESS, channel.getRemoteAddress().getAddress())));
+                            networkRouter.choosePort(NexalithicChannel.Kind.Packet_Business, channel.getRemoteAddress().getAddress())));
             case SignalingPacket.Signal.BusinessChannelToken_Request -> {
                 SessionKey.Immutable sessionKey = new SessionKey.Immutable(secureRandom.nextLong(), secureRandom.nextLong());
-                ServerSession session = channel.session();
+                ServerSession session = channel.ownerSession();
                 sessionsManager.relateChannelToken(sessionKey, session);
                 yield session.pushSignalingPacket(new TokenSignal(sessionKey));
             }
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                channel.session().getBusinessChannel().updateWriteRate(rate);
+                channel.ownerSession().getBusinessChannel().updateWriteRate(rate);
                 yield true;
             }
             default -> true;
         }) {
             logger.warn("ServerSessionChannel[{}] signalingPacket overflow", channel);
-            closeChannel(channel);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.INTERNAL_FAILURE);
         }
-    }
-
-    private void closeChannel(ServerSessionChannel<?> channel) {
-        ServerSession session = channel.session();
-        if (super.closeChannel(channel)) {
-            sessionsManager.removeSession(session);
-        }
-        session.close();
     }
 }

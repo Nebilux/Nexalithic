@@ -72,7 +72,7 @@ public class TimeWheel<T> {
             return defineOption(64, OptionValidator.positive());
         }
         protected NexalithicOption<Integer> TickQuotaShift() {
-            return defineOption(2, OptionValidator.range(1, 63));
+            return defineOption(2, OptionValidator.closedInterval(1, 63));
         }
         protected NexalithicOption<Integer> WaitQueue_ChunkSize() {
             return defineOption(1024, OptionValidator.positive());

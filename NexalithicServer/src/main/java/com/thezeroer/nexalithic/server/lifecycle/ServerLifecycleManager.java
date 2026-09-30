@@ -9,10 +9,10 @@ import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
 import com.thezeroer.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.thezeroer.nexalithic.core.lifecycle.LifecycleManager;
 import com.thezeroer.nexalithic.server.NexalithicServer;
-import com.thezeroer.nexalithic.server.lifecycle.accept.AcceptorLoop;
-import com.thezeroer.nexalithic.server.lifecycle.handshake.HandshakeLoop;
-import com.thezeroer.nexalithic.server.lifecycle.service.ServiceUnit;
-import com.thezeroer.nexalithic.server.lifecycle.service.WorkerLoop;
+import com.thezeroer.nexalithic.server.io.accept.AcceptorLoop;
+import com.thezeroer.nexalithic.server.io.handshake.HandshakeLoop;
+import com.thezeroer.nexalithic.server.io.session.business.BusinessLoop;
+import com.thezeroer.nexalithic.server.io.session.ServiceUnit;
 
 /**
  * 生命周期管理器
@@ -58,9 +58,9 @@ public class ServerLifecycleManager extends LifecycleManager {
     @Override
     public void onStart() {
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            serviceUnit.getStewardLoop().start();
-            for (WorkerLoop workerLoop : serviceUnit.getWorkerLoops()) {
-                workerLoop.start();
+            serviceUnit.getSignalingLoop().start();
+            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
+                businessLoop.start();
             }
         }
         for (HandshakeLoop handshakeLoop : handshakeLoopLoadBalancer.all()) {
@@ -76,9 +76,9 @@ public class ServerLifecycleManager extends LifecycleManager {
             handshakeLoop.stop();
         }
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            serviceUnit.getStewardLoop().stop();
-            for (WorkerLoop workerLoop : serviceUnit.getWorkerLoops()) {
-                workerLoop.stop();
+            serviceUnit.getSignalingLoop().stop();
+            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
+                businessLoop.stop();
             }
         }
     }
@@ -90,9 +90,9 @@ public class ServerLifecycleManager extends LifecycleManager {
             handshakeLoop.shutdown();
         }
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            serviceUnit.getStewardLoop().shutdown();
-            for (WorkerLoop workerLoop : serviceUnit.getWorkerLoops()) {
-                workerLoop.shutdown();
+            serviceUnit.getSignalingLoop().shutdown();
+            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
+                businessLoop.shutdown();
             }
         }
     }

@@ -77,7 +77,7 @@ public class AssemblerFactory {
         return new SignalingPacketsAssembler();
     }
 
-    public PacketsAssembler<BusinessPacket> createBusiness(NexalithicSession<?, ?, ?> session) {
+    public PacketsAssembler<BusinessPacket> createBusiness(NexalithicSession<?> session) {
         return new BusinessPacketsAssembler(session, wrapperPool, timeWheel, PacketQueue_Capacity_);
     }
 }

@@ -1,4 +1,4 @@
-package com.thezeroer.nexalithic.server.lifecycle.service;
+package com.thezeroer.nexalithic.server.io.session.business;
 
 import com.thezeroer.nexalithic.core.builder.NexalithicBuilderContext;
 import com.thezeroer.nexalithic.core.builder.module.ModulesDefinition;
@@ -11,35 +11,39 @@ import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.thezeroer.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.thezeroer.nexalithic.core.infra.timer.TimeWheel;
-import com.thezeroer.nexalithic.core.infra.timer.TimerContext;
-import com.thezeroer.nexalithic.core.infra.timer.TimerCoordinator;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
-import com.thezeroer.nexalithic.core.session.channel.SessionChannel;
+import com.thezeroer.nexalithic.core.session.SessionChannel;
 import com.thezeroer.nexalithic.server.NexalithicServer;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSessionChannel;
+import com.thezeroer.nexalithic.server.io.handshake.HandshakeContext;
+import com.thezeroer.nexalithic.server.io.session.ServerSessionLoop;
 import com.thezeroer.nexalithic.server.messaging.ServerHandlerCoordinator;
+import com.thezeroer.nexalithic.server.session.ServerSession;
 import org.jctools.queues.SpmcArrayQueue;
 import org.jctools.queues.SpscArrayQueue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.ShortBufferException;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 从属选择器
+ * 业务循环
  *
  * @author tbrtz647@outlook.com
  * @since 2026/02/06
  * @version 1.0.0
  */
-public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoordinator<ServerSessionChannel<BusinessPacket>> {
-    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, WorkerLoop.class);
-    public static final class Options extends ServiceLoop.Options {
+public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessLoop.class);
+    public static final class Options extends ServerSessionLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
             protected NexalithicOption<Integer> SlotCount() {
                 return defineOptionLazy(context ->
@@ -49,36 +53,38 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
             }
         };
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Long> MaxIdleTimeMillis = defineOption(
-                600_000L, OptionValidator.positive()
-        );
         public final NexalithicOption<Integer> RateUpdateQueue_Capacity = defineOption(
                 1024, OptionValidator.positive()
         );
         private Options(Class<?> holder) {
             super(holder);
         }
-    }
-    public static final Modules MODULES = new Modules();
-    public static final class Modules extends ModulesDefinition {
-        public final NexalithicModule<TimeWheel<ServerSessionChannel<BusinessPacket>>> TimeWheel = defineModule(TimeWheel.class);
-        private Modules() {
-            super(WorkerLoop.class);
+        @Override
+        protected long MaxIdleTimeMillis_Value() {
+            return 600_000L;
         }
     }
+    private static final Modules MODULES = new Modules();
+    private static final class Modules extends ModulesDefinition {
+        private final NexalithicModule<TimeWheel<SessionChannel<BusinessPacket, ServerSession>>> TimeWheel = defineModule(TimeWheel.class);
+        private Modules() {
+            super(BusinessLoop.class);
+        }
+    }
+    private static final Logger logger = LoggerFactory.getLogger(BusinessLoop.class);
     private final ServerHandlerCoordinator handlerCoordinator;
-    private final TimeWheel<ServerSessionChannel<BusinessPacket>> timeWheel;
-    private final SpscArrayQueue<ServerSessionChannel<?>> rateUpdateQueue;
+    private final TimeWheel<SessionChannel<BusinessPacket, ServerSession>> timeWheel;
+    private final SpscArrayQueue<SessionChannel<BusinessPacket, ServerSession>> rateUpdateQueue;
     private final DynamicRateController dynamicRateController;
     private final boolean dynamicRateEnable;
     private final long dynamicRateTickNanos;
     private long lastDynamicRateTickNanos;
 
-    public WorkerLoop(NexalithicBuilderContext context) throws IOException {
+    public BusinessLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         handlerCoordinator = context.getModule(NexalithicServer.MODULES.HandlerCoordinator);
         timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<ServerSessionChannel<BusinessPacket>> timeWheel = new TimeWheel<>(
+            TimeWheel<SessionChannel<BusinessPacket, ServerSession>> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
                     context.getOption(OPTIONS.TimeWheel.SlotCount),
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
@@ -86,9 +92,9 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
                     new GenericWrapperPool<>(
                             PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<ServerSessionChannel<BusinessPacket>>::new
+                            TimeWheel.ScheduleWrapper<SessionChannel<BusinessPacket, ServerSession>>::new
                     ),
-                    WorkerLoop.class.getSimpleName()
+                    BusinessLoop.class.getSimpleName()
             );
             timeWheel.start();
             return timeWheel;
@@ -107,107 +113,84 @@ public class WorkerLoop extends ServiceLoop<BusinessPacket> implements TimerCoor
         dynamicRateEnable = context.getOption(OPTIONS.DynamicRateController.Enable);
         dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
         lastDynamicRateTickNanos = System.nanoTime();
-    }
-
-    @Override
-    public void postRateUpdate(SessionChannel<?, ?> channel) {
-        rateUpdateQueue.offer((ServerSessionChannel<?>) channel);
-        wakeupIfNeeded();
-    }
-
-    @Override
-    protected boolean onAsyncEvent() {
-        dispatchQueue.drain(channel -> {
-            try {
-                SelectionKey selectionKey = channel.getSocketChannel().configureBlocking(false).register(selector, SelectionKey.OP_READ);
-                ServerSessionChannel<BusinessPacket> businessChannel = channel.getSession().getBusinessChannel();
-                selectionKey.attach(businessChannel.updateChannel(this, selectionKey));
-                if (!businessChannel.fragmenterIsEmpty() && businessChannel.updateChannelInterest(SelectionKey.OP_WRITE, true)) {
-                    businessChannel.applyTargetInterest();
-                }
-                businessChannel.updateLastActiveTimeNanos(System.nanoTime());
-                timeWheel.schedule(businessChannel, this);
-            } catch (IOException ignored) {
-            } finally {
-                channel.recycle();
-            }
-        }, CONSTANT.DrainLimit());
-        rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DrainLimit());
-        if (dynamicRateEnable) {
-            long now = System.nanoTime();
-            if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
-                long interval = now - lastDynamicRateTickNanos;
-                lastDynamicRateTickNanos = now;
-                for (SelectionKey key : selector.keys()) {
-                    if (!key.isValid() || !(key.attachment() instanceof ServerSessionChannel<?> businessChannel)) {
-                        continue;
-                    }
-                    long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
-                    if (targetRate > 0) {
-                        businessChannel.session().setRemoteBusinessChannelWriteRate(targetRate);
+        isDrainCondition(rateUpdateQueue::isEmpty);
+        drainAsyncEventsCondition(() -> {
+            if (dynamicRateEnable) {
+                rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DispatchQueue_DrainLimit());
+                long now = System.nanoTime();
+                if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
+                    long interval = now - lastDynamicRateTickNanos;
+                    lastDynamicRateTickNanos = now;
+                    for (SelectionKey key : registeredKeys()) {
+                        if (!key.isValid() || !(key.attachment() instanceof SessionChannel<?, ?> businessChannel)) {
+                            continue;
+                        }
+                        long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
+                        if (targetRate > 0) {
+                            businessChannel.ownerSession().setRemoteBusinessChannelWriteRate(targetRate);
+                        }
                     }
                 }
             }
-        }
-        return dispatchQueue.isEmpty() && rateUpdateQueue.isEmpty();
+            return rateUpdateQueue.isEmpty();
+        });
     }
 
     @Override
-    protected void onReadyEvent(SelectionKey key, ServerSessionChannel<BusinessPacket> channel) {
+    public void postRateUpdate(SessionChannel<BusinessPacket, ServerSession> channel) {
+        rateUpdateQueue.offer(channel);
+        wakeup();
+    }
+
+    @Override
+    protected boolean onExecuteAcquireEvent(HandshakeContext handoff) {
         try {
-            if (key.isReadable()) {
+            SocketChannel socketChannel = handoff.takeChannel();
+            SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
+            SessionChannel<BusinessPacket, ServerSession> sessionChannel = handoff.takeTargetSession().getBusinessChannel();
+            sessionChannel.open(socketChannel, selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            if (!sessionChannel.fragmenterIsEmpty()) {
+                sessionChannel.updateInterest(SelectionKey.OP_WRITE, true);
+            }
+            sessionChannel.updateLastActiveTimeNanos(System.nanoTime());
+            timeWheel.schedule(sessionChannel, this);
+        } catch (IOException ignored) {
+        } finally {
+            handoff.recycle();
+        }
+        return true;
+    }
+
+    @Override
+    protected boolean onExecuteDisconnectEvent(SessionChannel<BusinessPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
+        return true;
+    }
+
+    @Override
+    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<BusinessPacket, ServerSession> channel) {
+        try {
+            if (selectionKey.isReadable()) {
                 if (channel.read() == -1) {
-                    closeChannel(channel);
+                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
                 }
                 BusinessPacket packet;
                 while ((packet = channel.get()) != null) {
-                    handlerCoordinator.accept(channel.session(), packet);
+                    handlerCoordinator.accept(channel.ownerSession(), packet);
                 }
-            } else if (key.isWritable()) {
-                if (channel.write() == -1) {
-                    key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
-                }
+            } else if (selectionKey.isWritable()) {
+                channel.write();
             } else {
-                closeChannel(channel);
+                submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
             }
         } catch (InvalidAlgorithmParameterException | ShortBufferException | IllegalBlockSizeException |
                  BadPaddingException | InvalidKeyException e) {
             logger.warn("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            closeChannel(channel);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
         } catch (IOException e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Channel[{}] onReadyEvent[{}] error", channel, name, e);
             }
-            closeChannel(channel);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
         }
-    }
-
-    @Override
-    protected void onShuttingDown() {
-        for (SelectionKey key : selector.keys()) {
-            try {
-                key.channel().close();
-            } catch (IOException ignored) {}
-        }
-    }
-
-    @Override
-    public long getExpiryTimeNanos(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
-        return context.target().getExpiryTimeNanos();
-    }
-
-    @Override
-    public boolean isCancelled(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
-        return context.target().getLastActiveTimeNanos() == -1;
-    }
-
-    @Override
-    public boolean onExpiryTrigger(TimerContext<ServerSessionChannel<BusinessPacket>> context) {
-        ServerSessionChannel<BusinessPacket> target = context.target();
-        if (System.nanoTime() < target.getExpiryTimeNanos()) {
-            return false;
-        }
-        closeChannel(target);
-        return true;
     }
 }

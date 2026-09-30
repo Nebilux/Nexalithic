@@ -62,7 +62,7 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsAssembler.class);
-    private final NexalithicSession<?, ?, ?> owner;
+    private final NexalithicSession<?> owner;
     private final Map<Integer, BusinessPacketAssemblyWrapper> assemblingMap;
     private final MpscArrayQueue<BusinessPacket> completedPackets;
     private BusinessPacket pendingPacket;
@@ -70,7 +70,7 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     private final WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool;
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
 
-    public BusinessPacketsAssembler(NexalithicSession<?, ?, ?> owner, WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel, int PacketQueue_Capacity_) {
+    public BusinessPacketsAssembler(NexalithicSession<?> owner, WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel, int PacketQueue_Capacity_) {
         this.owner = owner;
         this.wrapperPool = wrapperPool;
         this.timeWheel = timeWheel;

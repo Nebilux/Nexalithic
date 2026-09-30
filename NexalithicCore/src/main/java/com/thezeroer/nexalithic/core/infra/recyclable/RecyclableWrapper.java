@@ -8,7 +8,7 @@ package com.thezeroer.nexalithic.core.infra.recyclable;
  * @since 2026/02/10
  * @version 1.0.0
  */
-public interface RecyclableWrapper<T> extends AutoCloseable {
+public interface RecyclableWrapper<T> {
     /**
      * 显式回收包装器。
      * <p>根据实现类不同，可能执行不同的重置逻辑（如 {@code target.clear()} 或 {@code target = null}）。</p>
@@ -22,12 +22,4 @@ public interface RecyclableWrapper<T> extends AutoCloseable {
      * @return 内部对象引用
      */
     T unwrap();
-
-    /**
-     * 默认支持 try-with-resources。
-     */
-    @Override
-    default void close() {
-        recycle();
-    }
 }

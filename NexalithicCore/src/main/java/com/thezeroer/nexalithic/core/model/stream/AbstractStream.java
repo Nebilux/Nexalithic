@@ -13,8 +13,8 @@ import com.thezeroer.nexalithic.core.model.stream.chunk.AbstractChunk;
  */
 public abstract class AbstractStream<C extends AbstractChunk> implements AbstractModel {
     public enum StreamType {
-        /** 媒体 */ MEDIA,
-        /** 文件 */ FILE
+        /** 媒体 */ Media,
+        /** 文件 */ File
     }
 
     /**
@@ -23,7 +23,7 @@ public abstract class AbstractStream<C extends AbstractChunk> implements Abstrac
      * @return {@link AbstractPacket.PacketType }
      */
     public abstract StreamType streamType();
-    public ModelType modelType() {
+    public final ModelType modelType() {
         return ModelType.Stream;
     }
 }

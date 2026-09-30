@@ -1,5 +1,9 @@
 package com.thezeroer.nexalithic.core.infra.recyclable;
 
+import com.thezeroer.nexalithic.core.builder.option.NexalithicOption;
+import com.thezeroer.nexalithic.core.builder.option.OptionValidator;
+import com.thezeroer.nexalithic.core.builder.option.OptionsDefinition;
+
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
@@ -11,6 +15,19 @@ import java.lang.invoke.VarHandle;
  * @since 2026/08/18
  */
 public class GenericWrapperPool<T, W extends GenericWrapperPool.AbstractRecyclableWrapper<T, W>> implements WrapperPool<W> {
+    public static class Options extends OptionsDefinition {
+        public final NexalithicOption<Integer> StorageCapacity = defineOption(StorageCapacity_DefaultValue(), OptionValidator.positive());
+        public final NexalithicOption<Double> PrefillRatio = defineOption(PrefillRatio_DefaultValue(), OptionValidator.closedInterval(0, 1));
+        protected Options(Class<?> holder) {
+            super(holder);
+        }
+        protected int StorageCapacity_DefaultValue() {
+            return 1024;
+        }
+        protected double PrefillRatio_DefaultValue() {
+            return 0.25;
+        }
+    }
     private final PoolStorage<W> storage;
     private final PoolStrategy strategy;
     private final WrapperFactory<T, W> wrapperFactory;

@@ -10,24 +10,24 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 
 /**
- * 安全通道
+ * 安全编解码器
  *
  * @author tbrtz647@outlook.com
  * @version 1.0.0
  * @since 2026/02/12
  */
-public abstract class SecurityChannel {
+public class SecurityCodec {
     public static final int FRAME_HEADER_LENGTH = Short.BYTES;
     public static final int MAX_FRAME_SIZE = 1024 * 16;
     public static final int MAX_PAYLOAD_SIZE = MAX_FRAME_SIZE - FRAME_HEADER_LENGTH - SecretKeyContext.TAG_LENGTH;
     private final SecretKeyContext secretKeyContext;
 
-    public SecurityChannel(SecretKeyContext secretKeyContext) {
+    public SecurityCodec(SecretKeyContext secretKeyContext) {
         this.secretKeyContext = secretKeyContext;
     }
 
     /** 加密 */
-    protected final boolean encrypt(LoopBuffer srcBuffer, LoopBuffer dstBuffer) throws InvalidAlgorithmParameterException, ShortBufferException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public final boolean encrypt(LoopBuffer srcBuffer, LoopBuffer dstBuffer) throws InvalidAlgorithmParameterException, ShortBufferException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
         int flag = srcBuffer.readableBytes();
         while (srcBuffer.readableBytes() > 0) {
             int payloadLength = Math.min(srcBuffer.readableBytes(), MAX_PAYLOAD_SIZE);
@@ -58,7 +58,7 @@ public abstract class SecurityChannel {
     }
 
     /** 解密 */
-    protected final boolean decrypt(LoopBuffer srcBuffer, LoopBuffer dstBuffer) throws InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
+    public final boolean decrypt(LoopBuffer srcBuffer, LoopBuffer dstBuffer) throws InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
         int flag = srcBuffer.readableBytes();
         while (srcBuffer.readableBytes() > FRAME_HEADER_LENGTH) {
             srcBuffer.markHead();

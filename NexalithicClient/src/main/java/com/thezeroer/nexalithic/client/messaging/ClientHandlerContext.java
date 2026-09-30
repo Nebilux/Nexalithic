@@ -1,6 +1,6 @@
 package com.thezeroer.nexalithic.client.messaging;
 
-import com.thezeroer.nexalithic.client.lifecycle.session.ClientSession;
+import com.thezeroer.nexalithic.client.session.ClientSession;
 import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerContext;
 

@@ -41,7 +41,7 @@ public class FragmenterFactory {
         return new SignalingPacketsFragmenter(SignalingPacketsFragmenter_WrapperQueue_Capacity_);
     }
 
-    public PacketsFragmenter<BusinessPacket> createBusiness(NexalithicSession<?, ?, ?> session) {
+    public PacketsFragmenter<BusinessPacket> createBusiness(NexalithicSession<?> session) {
         return new BusinessPacketsFragmenter(session, businessPacketWrapperPool,
                 BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_);
     }

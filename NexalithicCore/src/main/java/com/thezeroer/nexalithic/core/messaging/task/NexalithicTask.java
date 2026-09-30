@@ -105,13 +105,13 @@ public class NexalithicTask {
 
     private final TaskFuture future;
     private final TaskMailbox mailbox;
-    private final NexalithicSession<?, ?, ?> owner;
+    private final NexalithicSession<?> owner;
     private volatile long lastActiveTimeNanos = -1;
 
     private NexalithicTask(TaskFunction.RequestAction requestAction, TaskFunction.ResponseAction responseAction, TaskFunction.CompleteAction completeAction,
                            TaskFunction.TimeoutAction timeoutAction, TaskFunction.FailedAction failedAction, TaskFunction.CancelAction cancelAction,
                            TaskFunction.FinishAction finishAction, TransferListener requestListener, TransferListener responseListener,
-                           Pattern pattern, Strategy strategy, long waitTimeNanos, NexalithicSession<?, ?, ?> owner) {
+                           Pattern pattern, Strategy strategy, long waitTimeNanos, NexalithicSession<?> owner) {
         this.taskId = COUNTER.getAndIncrement();
         this.requestAction = requestAction;
         this.responseAction = responseAction;
@@ -213,7 +213,7 @@ public class NexalithicTask {
         return responseListener;
     }
 
-    public NexalithicSession<?, ?, ?> getOwner() {
+    public NexalithicSession<?> getOwner() {
         return owner;
     }
     public TaskFuture getFuture() {
@@ -336,7 +336,7 @@ public class NexalithicTask {
             return this;
         }
 
-        public NexalithicTask build(NexalithicSession<?, ?, ?> targetSession) {
+        public NexalithicTask build(NexalithicSession<?> targetSession) {
             if (requestAction == null) {
                 throw new IllegalArgumentException("requestAction is required");
             }

@@ -89,7 +89,6 @@ public class FixedTaskExecutor<T, TH extends Thread> {
 
     public void shutdown() {
         isShutdown = true;
-        taskQueue.clear();
         for (Worker worker : workers) {
             worker.stop();
         }

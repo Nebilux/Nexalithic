@@ -4,7 +4,7 @@ import com.thezeroer.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.thezeroer.nexalithic.core.messaging.handler.HandlerContext;
 import com.thezeroer.nexalithic.core.model.packet.business.BusinessPacket;
 import com.thezeroer.nexalithic.core.session.SessionAttachment;
-import com.thezeroer.nexalithic.server.lifecycle.service.session.ServerSession;
+import com.thezeroer.nexalithic.server.session.ServerSession;
 import com.thezeroer.nexalithic.server.manager.SessionsManager;
 
 import java.net.InetAddress;

@@ -18,13 +18,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 2026/08/12
  */
 public class TaskCoordinator {
-    private final NexalithicSession<?, ?, ?> owner;
+    private final NexalithicSession<?> owner;
     private final TaskScheduler scheduler;
     private final ConcurrentMap<Long, NexalithicTask> activeTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<NexalithicTask> waitingTasks = new ConcurrentLinkedQueue<>();
     private final AtomicReference<NexalithicTask> currentSequentialTask = new AtomicReference<>();
 
-    public TaskCoordinator(NexalithicSession<?, ?, ?> owner, TaskScheduler scheduler) {
+    public TaskCoordinator(NexalithicSession<?> owner, TaskScheduler scheduler) {
         this.owner = owner;
         this.scheduler = scheduler;
     }

@@ -119,7 +119,7 @@ public class SecretKeyUtils {
         return HKDF.extract(null, ka.generateSecret());
     }
 
-    public static byte[] generateFinished(byte[] secret, byte[] handshakeHash) throws NoSuchAlgorithmException, InvalidKeyException {
+    public static byte[] generateFinished(byte[] secret, byte[] handshakeHash) throws InvalidKeyException {
         return HKDF.extract(HKDF.expand(secret, LABEL_FINISHED, 32), handshakeHash);
     }
 

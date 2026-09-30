@@ -1,8 +1,8 @@
 package com.thezeroer.nexalithic.client;
 
 import com.thezeroer.nexalithic.client.lifecycle.ClientLifecycleManager;
-import com.thezeroer.nexalithic.client.lifecycle.GeneralLoop;
-import com.thezeroer.nexalithic.client.lifecycle.session.ClientSession;
+import com.thezeroer.nexalithic.client.io.session.ClientSessionLoop;
+import com.thezeroer.nexalithic.client.session.ClientSession;
 import com.thezeroer.nexalithic.client.manager.LinkStatusManager;
 import com.thezeroer.nexalithic.client.messaging.ClientHandlerContext;
 import com.thezeroer.nexalithic.client.messaging.ClientHandlerCoordinator;
@@ -55,12 +55,12 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
 
     private static final Logger logger = LoggerFactory.getLogger(NexalithicClient.class);
     private final LinkStatusManager linkStatusManager;
-    private final GeneralLoop generalLoop;
+    private final ClientSessionLoop clientSessionLoop;
 
     private NexalithicClient(NexalithicBuilderContext context) {
         super(context.getModule(MODULES.LifecycleManager), context.getModule(MODULES.EventBus));
         this.linkStatusManager = context.getModule(MODULES.LinkStatusManager);
-        this.generalLoop = context.getModule(ClientLifecycleManager.MODULES.GeneralLoop);
+        this.clientSessionLoop = context.getModule(ClientLifecycleManager.MODULES.SessionLoop);
         System.gc();
     }
     public static NexalithicClient unsafeCreate(NexalithicBuilderContext context) {
@@ -79,9 +79,9 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
         SocketChannel socketChannel = SocketChannel.open(remote);
         logger.info("Linking to [{}]", remote);
         linkStatusManager.trigger(LinkStatusManager.Status.LINKING, remote);
-        generalLoop.getNetworkRouter().setServerAddress(remote);
+        clientSessionLoop.getNetworkRouter().setServerAddress(remote);
         try {
-            if (generalLoop.link(AbstractPacket.PacketType.SIGNALING, socketChannel, null)) {
+            if (clientSessionLoop.link(AbstractPacket.PacketType.Signaling, socketChannel, null)) {
                 return true;
             } else {
                 linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, LinkStatusManager.Reason.REMOTE_ACTIVE);
@@ -93,7 +93,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
         return false;
     }
     public void unlink() {
-        generalLoop.unlink();
+        clientSessionLoop.unlink();
     }
 
     public TaskHandle submit(NexalithicTask.Builder taskBuilder) {
@@ -108,7 +108,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
     }
 
     private ClientSession getSession() {
-        ClientSession session = generalLoop.getSession();
+        ClientSession session = clientSessionLoop.getSession();
         if (session == null) {
             for (int i = 0; i < 100; i++) {
                 if (session != null) {
@@ -120,7 +120,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
                         LockSupport.parkNanos(i * 1_000_000L);
                     }
                 }
-                session = generalLoop.getSession();
+                session = clientSessionLoop.getSession();
             }
         }
         return session;
@@ -157,7 +157,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
             context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
             context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
             context.setModule(MODULES.LinkStatusManager, new LinkStatusManager(context));
-            context.setModule(ClientLifecycleManager.MODULES.GeneralLoop, new GeneralLoop(context));
+            context.setModule(ClientLifecycleManager.MODULES.SessionLoop, new ClientSessionLoop(context));
             context.setModule(MODULES.LifecycleManager, new ClientLifecycleManager(context));
 
             return new NexalithicClient(context);

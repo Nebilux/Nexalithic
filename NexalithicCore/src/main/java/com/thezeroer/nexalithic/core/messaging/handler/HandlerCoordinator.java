@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @version 1.0.0
  */
 public abstract class HandlerCoordinator<
-        S extends NexalithicSession<?, ?, ?>,
+        S extends NexalithicSession<?>,
         HC extends HandlerContext<S>,
         HR extends HandlerContext.Recyclable<S, HC, HR>
         > {
