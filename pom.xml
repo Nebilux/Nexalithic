@@ -4,11 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.thezeroer.nexalithic</groupId>
+    <groupId>com.nebilux.nexalithic</groupId>
     <artifactId>nexalithic</artifactId>
     <name>Nexalithic</name>
     <description>A high-performance application layer network framework.</description>
-    <url>https://github.com/The-Zeroer/nexalithic</url>
+    <url>https://github.com/Nebilux/Nexalithic</url>
     <version>${revision}</version>
     <packaging>pom</packaging>
     <modules>
@@ -24,22 +24,27 @@
         </license>
     </licenses>
 
+    <organization>
+        <name>Nebilux</name>
+        <url>https://nebilux.com</url>
+    </organization>
+
     <developers>
         <developer>
-            <id>thezeroer</id>
-            <name>TheZeroer</name>
-            <email>tbrtz647@outlook.com</email>
+            <id>Reonvia</id>
+            <name>Reonvia</name>
+            <email>hello@reonvia.com</email>
         </developer>
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/The-Zeroer/nexalithic.git</connection>
-        <developerConnection>scm:git:ssh://github.com:The-Zeroer/nexalithic.git</developerConnection>
-        <url>https://github.com/The-Zeroer/nexalithic</url>
+        <connection>scm:git:https://github.com/Nebilux/Nexalithic.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/Nebilux/Nexalithic.git</developerConnection>
+        <url>https://github.com/Nebilux/Nexalithic</url>
     </scm>
 
     <properties>
-        <revision>0.2.0</revision>
+        <revision>0.2.1</revision>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -69,16 +74,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>com.thezeroer.nexalithic</groupId>
-                <artifactId>nexalithic-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <build>
         <plugins>
@@ -157,11 +152,10 @@
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.4.0</version>
+                <version>0.11.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
-                    <tokenAuth>true</tokenAuth>
                     <autoPublish>false</autoPublish>
                 </configuration>
             </plugin>
