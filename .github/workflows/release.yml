@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - closed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maven-central-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Determine release version
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_required: ${{ steps.release.outputs.release_required }}
+      create_tag: ${{ steps.release.outputs.create_tag }}
+
+    steps:
+      - name: Check out merged commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Resolve release version
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          version="$(mvn --batch-mode --no-transfer-progress --quiet \
+            -Dstyle.color=never \
+            -Dexpression=project.version \
+            -DforceStdout \
+            help:evaluate)"
+          version="${version//$'\r'/}"
+
+          if [[ -z "$version" ]]; then
+            echo "::error::Unable to resolve the Maven project version."
+            exit 1
+          fi
+
+          if [[ "$version" == *-SNAPSHOT ]]; then
+            echo "::error::Snapshot version '$version' cannot be released."
+            exit 1
+          fi
+
+          tag="v${version}"
+          release_sha="$(git rev-parse HEAD)"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release_required=false" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Release $tag already exists; no new release is required."
+            exit 0
+          fi
+
+          echo "release_required=true" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            tag_sha="$(git rev-list -n 1 "$tag")"
+            if [[ "$tag_sha" != "$release_sha" ]]; then
+              echo "::error::Tag $tag already points to $tag_sha instead of $release_sha."
+              exit 1
+            fi
+
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Reusing existing tag $tag at $release_sha."
+          else
+            echo "create_tag=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Publish Maven Central and GitHub Release
+    needs: prepare
+    if: needs.prepare.outputs.release_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: maven-central
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Set up Java 21 and Maven Central credentials
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          server-id: central
+          server-username-env-var: MAVEN_CENTRAL_USERNAME
+          server-password-env-var: MAVEN_CENTRAL_TOKEN
+
+      - name: Validate release secrets
+        shell: bash
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for name in \
+            MAVEN_CENTRAL_USERNAME \
+            MAVEN_CENTRAL_TOKEN \
+            MAVEN_GPG_KEY \
+            MAVEN_GPG_PASSPHRASE \
+            MAVEN_GPG_KEY_FINGERPRINT
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required maven-central environment value: $name"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
+
+      - name: Create release tag
+        if: needs.prepare.outputs.create_tag == 'true'
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$TAG" --message "Nexalithic $VERSION"
+          git push origin "refs/tags/$TAG"
+
+      - name: Sign and upload artifacts to Maven Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
+        run: mvn --batch-mode --no-transfer-progress -Prelease deploy
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: >-
+          gh release create "$TAG"
+          --verify-tag
+          --draft
+          --title "Nexalithic $VERSION"
+          --generate-notes
+          --fail-on-no-commits
+
+      - name: Write release summary
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          {
+            echo "### Release prepared"
+            echo
+            echo "- Maven version: \`$VERSION\`"
+            echo "- Git tag: \`$TAG\`"
+            echo "- Maven Central: uploaded and validated; manual publishing is required"
+            echo "- GitHub Release: created as a draft"
+          } >> "$GITHUB_STEP_SUMMARY"
