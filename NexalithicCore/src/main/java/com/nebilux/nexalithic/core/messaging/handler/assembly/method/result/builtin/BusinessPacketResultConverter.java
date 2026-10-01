@@ -1,0 +1,33 @@
+package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.builtin;
+
+import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
+import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
+import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+
+import java.lang.reflect.Method;
+
+/**
+ * 将 Handler 方法返回的 {@link BusinessPacket} 作为响应包推送。
+ *
+ * @param <HC> Handler 上下文类型
+ *
+ * @author Reonvia
+ * @since 0.2.0
+ */
+public class BusinessPacketResultConverter<HC extends HandlerContext<?>> implements HandlerMethodResultConverter<HC> {
+
+    @Override
+    public boolean supports(Method method, Class<?> resultType) {
+        return BusinessPacket.class.isAssignableFrom(resultType);
+    }
+
+    @Override
+    public void convert(HC context, Method method, Object result) {
+        context.pushResponse((BusinessPacket) result);
+    }
+
+    @Override
+    public int priority() {
+        return 1000;
+    }
+}
