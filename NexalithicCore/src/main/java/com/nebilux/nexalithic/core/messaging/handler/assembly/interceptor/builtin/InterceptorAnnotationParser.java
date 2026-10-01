@@ -12,9 +12,8 @@ import java.lang.annotation.Annotation;
  * {@link InterceptorConfiguration}。解析器可以同时根据注解类型和目标拦截器类型
  * 决定是否支持某条绑定，从而允许同一种注解绑定多个不同拦截器。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface InterceptorAnnotationParser {
 

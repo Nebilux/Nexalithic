@@ -16,9 +16,8 @@ import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerPathMatcher;
  * <p>每个注解只能使用 {@code value} 或 {@code levels} 其中一种路径声明方式。
  * 同时声明两者会被视为配置错误。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/24
+ * @author Reonvia
+ * @since 0.2.0
  */
 public final class HandlerPathMatcherParser {
     private HandlerPathMatcherParser() {}

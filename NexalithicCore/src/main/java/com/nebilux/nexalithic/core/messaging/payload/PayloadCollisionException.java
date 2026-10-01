@@ -3,7 +3,10 @@ package com.nebilux.nexalithic.core.messaging.payload;
 import com.nebilux.nexalithic.core.exception.NexalithicException;
 
 /**
- * 当多个 Payload 类产生了相同的 IdentityCode 时抛出
+ * 当多个 Payload 类产生相同的 IdentityCode 时抛出。
+ *
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class PayloadCollisionException extends NexalithicException {
     private final long conflictedId;

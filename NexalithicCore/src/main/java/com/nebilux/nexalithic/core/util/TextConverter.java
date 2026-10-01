@@ -8,9 +8,8 @@ import java.util.regex.Pattern;
 /**
  * 文本数据转换器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/16
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class TextConverter {
     private static final Pattern LIST_PATTERN = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");

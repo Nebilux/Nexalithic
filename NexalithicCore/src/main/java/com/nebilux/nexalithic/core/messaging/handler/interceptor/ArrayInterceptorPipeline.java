@@ -13,9 +13,8 @@ import java.util.List;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/09
+ * @author Reonvia
+ * @since 0.2.0
  */
 class ArrayInterceptorPipeline<HC extends HandlerContext<?>> implements InterceptorPipeline <HC>{
     private final HandlerMetadata metadata;

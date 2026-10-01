@@ -8,9 +8,8 @@ import java.nio.ByteBuffer;
 /**
  * 标量信号
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ScalarSignal extends SignalingPacket {
     public static final int LENGTH = Long.BYTES;

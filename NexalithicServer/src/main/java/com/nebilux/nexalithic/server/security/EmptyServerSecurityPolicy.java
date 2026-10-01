@@ -10,9 +10,8 @@ import java.nio.ByteBuffer;
  * <p><b>警告：</b> 该策略不提供任何身份、签名验证。仅建议在开发调试环境或
  * 物理隔离的受信网络中使用。在公网环境使用会导致系统极易受到中间人 (MITM) 攻击。</p>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/12
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public final class EmptyServerSecurityPolicy implements ServerSecurityPolicy {
     private static final Logger logger = LoggerFactory.getLogger(EmptyServerSecurityPolicy.class);

@@ -5,9 +5,8 @@ import java.nio.ByteBuffer;
 /**
  * 会话密钥
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public sealed interface SessionKey permits SessionKey.Immutable, SessionKey.Mutable {
     int LENGTH = Long.BYTES * 2;

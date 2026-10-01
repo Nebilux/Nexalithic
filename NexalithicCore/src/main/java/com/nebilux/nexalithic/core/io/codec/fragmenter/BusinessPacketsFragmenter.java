@@ -17,9 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 业务数据包碎片器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/10
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsFragmenter.class);

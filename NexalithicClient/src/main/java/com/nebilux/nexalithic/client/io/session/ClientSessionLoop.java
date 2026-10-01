@@ -46,9 +46,8 @@ import java.util.function.Function;
 /**
  * 客户端会话循环
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/06
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionChannel<?, ClientSession>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ClientSessionLoop.class);

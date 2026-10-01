@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
 /**
  * 目标动态可回收包装器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class TargetDynamicRecyclableWrapper<T, W extends TargetDynamicRecyclableWrapper<T, W>> extends GenericWrapperPool.AbstractRecyclableWrapper<T, W> {
     protected volatile T target;

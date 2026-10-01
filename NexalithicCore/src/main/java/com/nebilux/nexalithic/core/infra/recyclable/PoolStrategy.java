@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
 /**
  * 池资源获取策略
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface PoolStrategy {
     enum Permit {

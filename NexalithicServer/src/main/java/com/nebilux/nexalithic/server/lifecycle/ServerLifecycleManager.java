@@ -17,9 +17,8 @@ import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 /**
  * 生命周期管理器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/19
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ServerLifecycleManager extends LifecycleManager {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServerLifecycleManager.class);

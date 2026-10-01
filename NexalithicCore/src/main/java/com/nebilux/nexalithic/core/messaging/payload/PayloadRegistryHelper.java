@@ -11,9 +11,8 @@ import java.util.function.Supplier;
  * Payload 构造器注册应直接通过 {@link PayloadRegistry.Builder#payloadConstructor(Supplier)}
  * 或 {@link PayloadRegistry.Builder#payloadConstructors(java.util.Collection)} 完成。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class PayloadRegistryHelper {
     /**

@@ -26,9 +26,8 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 @FunctionalInterface
 public interface HandlerRegistryConfigurer<HC extends HandlerContext<?>> extends NexalithicConfigurer<HandlerRegistry.Builder<HC>, Void> {

@@ -48,9 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 握手选择器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/06
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContext> implements HandshakeIngress, TimerCoordinator<HandshakeContext> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, HandshakeLoop.class);

@@ -9,9 +9,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 任务追踪器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/27
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class TaskFuture {
     private final CountDownLatch latch = new CountDownLatch(1);

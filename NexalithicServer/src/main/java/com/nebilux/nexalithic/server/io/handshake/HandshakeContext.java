@@ -42,9 +42,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * <h2>线程约束</h2>
  * <p>缓冲区、握手阶段和密码学字段应由所属 HandshakeLoop 串行访问。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/27
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeContext> implements NexalithicChannel, ChannelLoop.Handoff {
     /**

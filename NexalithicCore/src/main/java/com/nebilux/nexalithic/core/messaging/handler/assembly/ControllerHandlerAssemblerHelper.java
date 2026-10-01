@@ -24,9 +24,8 @@ import java.util.function.Consumer;
  * <p>最常用的方法是 {@link #defaultHandlerMethodConverterSelector(ControllerHandlerAssembler.Builder)}，
  * 它会一次性为装配器 Builder 设置默认参数转换器选择器和默认返回值转换器选择器。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/02
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class ControllerHandlerAssemblerHelper<HC extends HandlerContext<?>> {
     private final Class<HC> handlerContextType;

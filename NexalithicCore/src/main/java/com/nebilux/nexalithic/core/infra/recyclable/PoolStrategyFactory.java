@@ -6,9 +6,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 池资源获取策略工厂。
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public final class PoolStrategyFactory {
     private PoolStrategyFactory() {}

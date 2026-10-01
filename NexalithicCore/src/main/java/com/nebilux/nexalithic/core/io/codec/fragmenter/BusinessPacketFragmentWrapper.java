@@ -14,9 +14,8 @@ import java.util.List;
 /**
  * 业务数据包分段包装器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BusinessPacketFragmentWrapper extends TargetDynamicRecyclableWrapper<BusinessPacket, BusinessPacketFragmentWrapper> {
     private final CodecCallback codecCallback;

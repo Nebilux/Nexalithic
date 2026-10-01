@@ -4,9 +4,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
  * <h2>池化存储抽象接口 (Pool Storage)</h2>
  *
  * @param <T> 存储的资源类型
- * @author tbrtz647@outlook.com
- * @since 2026/03/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface PoolStorage<T> {
     /**

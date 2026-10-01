@@ -23,9 +23,8 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @since 2026/08/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.2.0
  */
 @FunctionalInterface
 public interface ControllerHandlerAssemblerConfigurer<HC extends HandlerContext<?>> extends NexalithicConfigurer<ControllerHandlerAssembler.Builder<HC>, ControllerHandlerAssemblerHelper<HC>> {

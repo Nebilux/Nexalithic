@@ -9,9 +9,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 抽象通道
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class AbstractChannel<C extends SelectableChannel> implements NexalithicChannel {
     public record Transport<C extends SelectableChannel> (C selectableChannel, SelectionKey selectionKey, InetSocketAddress remoteAddress) {

@@ -14,9 +14,8 @@ import java.util.function.Function;
 /**
  * 选项集定义
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class OptionsDefinition {
     protected final Class<?> holder;

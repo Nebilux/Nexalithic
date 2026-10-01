@@ -13,9 +13,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 客户端会话
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/09
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ClientSession extends NexalithicSession<ClientSession> {
     private final NetworkRouter networkRouter;

@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.builder.option;
 /**
  * Option 验证器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 @FunctionalInterface
 public interface OptionValidator<T> {

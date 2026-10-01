@@ -14,9 +14,8 @@ import java.security.spec.X509EncodedKeySpec;
 /**
  * 默认客户端安全策略
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/26
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class DefaultClientSecurityPolicy implements ClientSecurityPolicy {
     private static final Logger logger = LoggerFactory.getLogger(DefaultClientSecurityPolicy.class);

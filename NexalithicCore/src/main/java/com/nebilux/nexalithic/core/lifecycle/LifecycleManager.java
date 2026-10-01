@@ -8,9 +8,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 生命周期管理器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/14
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class LifecycleManager {
     /**

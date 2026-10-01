@@ -40,9 +40,8 @@ import java.lang.annotation.*;
  * }
  * }</pre>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/28
+ * @author Reonvia
+ * @since 0.2.0
  *
  * @see HandlerInterceptor
  */

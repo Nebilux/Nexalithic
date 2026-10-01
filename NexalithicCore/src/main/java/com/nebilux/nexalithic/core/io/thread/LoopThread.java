@@ -19,9 +19,8 @@ import java.nio.ByteBuffer;
 /**
  * Loop的执行线程
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/03
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class LoopThread extends Thread {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, LoopThread.class);

@@ -8,9 +8,8 @@ import java.lang.invoke.VarHandle;
  * 核心原理：利用 VarHandle 的 Release/Acquire 语义，实现 IO 线程写开销最小化，
  * 同时保证监控线程能读到一致的进度数据。
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/06
- * @version 1.0.1
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class TransferSnapshot {
     private static final String[] SIZE_UNITS = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};

@@ -5,9 +5,8 @@ import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 /**
  * 裸信号
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BareSignal extends SignalingPacket {
     public static final BareSignal HeartBeat = new BareSignal(Signal.HeartBeat);

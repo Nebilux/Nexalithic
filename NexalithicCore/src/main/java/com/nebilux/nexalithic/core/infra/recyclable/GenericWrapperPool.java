@@ -10,9 +10,8 @@ import java.lang.invoke.VarHandle;
 /**
  * 通用包装池
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/18
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class GenericWrapperPool<T, W extends GenericWrapperPool.AbstractRecyclableWrapper<T, W>> implements WrapperPool<W> {
     public static class Options extends OptionsDefinition {
@@ -117,9 +116,8 @@ public class GenericWrapperPool<T, W extends GenericWrapperPool.AbstractRecyclab
     /**
      * 抽象可回收包装
      *
-     * @author tbrtz647@outlook.com
-     * @version 1.0.0
-     * @since 2026/08/18
+     * @author Reonvia
+     * @since 0.2.0
      */
     public abstract static class AbstractRecyclableWrapper<T, W extends AbstractRecyclableWrapper<T, W>> implements RecyclableWrapper<T> {
         public enum State {
@@ -250,9 +248,8 @@ public class GenericWrapperPool<T, W extends GenericWrapperPool.AbstractRecyclab
     /**
      * 包装工厂
      *
-     * @author tbrtz647@outlook.com
-     * @version 1.0.0
-     * @since 2026/08/18
+     * @author Reonvia
+     * @since 0.2.0
      */
     @FunctionalInterface
     public interface WrapperFactory<T, W extends AbstractRecyclableWrapper<T, W>> {

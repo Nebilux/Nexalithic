@@ -19,9 +19,8 @@ import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
  *
  * failed()仅在request()/response()产生异常时才触发
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/21
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface TaskFunction {
     @FunctionalInterface

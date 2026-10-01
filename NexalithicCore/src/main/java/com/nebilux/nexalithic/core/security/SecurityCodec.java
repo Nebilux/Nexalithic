@@ -12,9 +12,8 @@ import java.security.InvalidKeyException;
 /**
  * 安全编解码器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/12
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SecurityCodec {
     public static final int FRAME_HEADER_LENGTH = Short.BYTES;

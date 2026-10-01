@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.io.codec;
 /**
  * 数据包帧
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/01
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class PacketFrame {
     public static final int FRAME_HEADER_LENGTH = Long.BYTES; // 8 Bytes

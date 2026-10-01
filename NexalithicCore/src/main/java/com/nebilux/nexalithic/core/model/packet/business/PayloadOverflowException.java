@@ -5,9 +5,8 @@ import com.nebilux.nexalithic.core.exception.NexalithicException;
 /**
  * 有效载荷溢出异常
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/03
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class PayloadOverflowException extends NexalithicException {
     private final int currentCount;    // 当前已有的数量

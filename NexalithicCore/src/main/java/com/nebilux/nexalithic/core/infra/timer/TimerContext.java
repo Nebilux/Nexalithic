@@ -7,9 +7,8 @@ package com.nebilux.nexalithic.core.infra.timer;
  * {@link TimerCoordinator} 方法调用期间有效，不得缓存、跨线程传递或异步访问。</p>
  *
  * @param <T> 被调度的目标类型
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/25
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface TimerContext<T> {
 

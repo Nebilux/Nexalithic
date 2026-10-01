@@ -7,9 +7,8 @@ import java.util.Objects;
  *
  * <p>当注册表、映射表或配置集合中出现不允许重复的Key时抛出。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/23
+ * @author Reonvia
+ * @since 0.2.0
  */
 public final class NexalithicDuplicateKeyException extends NexalithicConflictException {
 

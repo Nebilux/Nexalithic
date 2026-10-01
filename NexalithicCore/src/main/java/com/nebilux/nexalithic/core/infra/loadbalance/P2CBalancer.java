@@ -5,9 +5,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * P2平衡器,“Power of Two Choices”（随机选两个，取较优者）
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/21
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class P2CBalancer<T extends LoadBalanceable> implements LoadBalancer<Void, T> {
     private final T[] candidates;

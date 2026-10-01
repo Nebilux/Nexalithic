@@ -12,9 +12,8 @@ import java.net.InetAddress;
 /**
  * 服务端处理器上下文
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/18
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ServerHandlerContext extends HandlerContext<ServerSession> {
     private final SessionsManager sessionsManager;

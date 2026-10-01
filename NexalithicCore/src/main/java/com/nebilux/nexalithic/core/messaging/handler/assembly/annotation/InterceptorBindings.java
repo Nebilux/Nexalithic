@@ -13,9 +13,8 @@ import java.lang.annotation.Target;
  * 多个 {@code HandlerInterceptor}。装配器通过
  * {@link Class#getDeclaredAnnotationsByType(Class)} 读取这些绑定。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/28
+ * @author Reonvia
+ * @since 0.2.0
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

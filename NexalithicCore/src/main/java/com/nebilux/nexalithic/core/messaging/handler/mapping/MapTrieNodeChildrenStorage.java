@@ -14,9 +14,8 @@ import java.util.Map;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/16
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class MapTrieNodeChildrenStorage<HC extends HandlerContext<?>> implements TrieNodeChildrenStorage<HC> {
     private final Map<Short, HandlerRegistry.TrieNode<HC>> map = new HashMap<>();

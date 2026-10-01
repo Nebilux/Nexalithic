@@ -15,9 +15,8 @@ import java.nio.channels.ScatteringByteChannel;
  * <li><b>Scatter/Gather 优化：</b>原生支持 {@code ByteBuffer[]} 视图，适配系统级分散/聚集 I/O。</li>
  * <li><b>单线程优化：</b>移除了非必要的 Volatile 语义，完美适配 Reactor 或 EventLoop 线程模型。</li>
  * </ul>
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/13
+ * @author Reonvia
+ * @since 0.1.0
  */
 @SuppressWarnings("UnusedReturnValue")
 public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
@@ -547,9 +546,8 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     /**
      * 有限可读视图
      *
-     * @author tbrtz647@outlook.com
-     * @since 2026/03/13
-     * @version 1.0.0
+     * @author Reonvia
+     * @since 0.1.0
      */
     public class LimitedReadableView {
         private int quota;
@@ -679,9 +677,8 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     /**
      * 有限可写视图
      *
-     * @author tbrtz647@outlook.com
-     * @since 2026/03/13
-     * @version 1.0.0
+     * @author Reonvia
+     * @since 0.1.0
      */
     public class LimitedWritableView {
         private int quota;

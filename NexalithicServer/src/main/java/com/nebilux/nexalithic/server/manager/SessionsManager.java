@@ -23,9 +23,8 @@ import java.util.function.Consumer;
 /**
  * 会话管理器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/06
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SessionsManager {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SessionsManager.class);

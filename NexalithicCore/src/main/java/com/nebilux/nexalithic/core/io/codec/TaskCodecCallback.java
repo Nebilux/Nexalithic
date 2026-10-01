@@ -10,9 +10,8 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
 /**
  * 任务编解码器回调
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/16
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class TaskCodecCallback implements CodecCallback {
     protected final TaskScheduler taskScheduler;

@@ -11,9 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 循环通道
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/23
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class LoopChannel<L extends ChannelLoop<?, ?>, C extends SelectableChannel> extends AbstractChannel<C> {
     private static final Logger logger = LoggerFactory.getLogger(LoopChannel.class);

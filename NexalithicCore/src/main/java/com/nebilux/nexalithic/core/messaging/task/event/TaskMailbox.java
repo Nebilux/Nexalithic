@@ -8,9 +8,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 任务邮箱
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/17
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class TaskMailbox {
     public enum OfferResult {

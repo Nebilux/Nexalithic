@@ -11,9 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 密钥上下文
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/05
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SecretKeyContext {
     public static final String AES_ALGORITHM = "AES/GCM/NoPadding";

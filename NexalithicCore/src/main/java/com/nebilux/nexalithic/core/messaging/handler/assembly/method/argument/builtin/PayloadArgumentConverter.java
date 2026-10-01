@@ -13,9 +13,8 @@ import java.lang.reflect.Parameter;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/02
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class PayloadArgumentConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketArgumentConverter<HC> implements HandlerMethodArgumentConverter<HC> {
 

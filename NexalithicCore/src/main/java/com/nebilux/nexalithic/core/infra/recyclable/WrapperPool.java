@@ -5,9 +5,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
  * <p>负责管理 {@link RecyclableWrapper} 实例的生命周期。</p>
  *
  * @param <W> 池所管理的具体包装器类型，必须是自引用泛型。
- * @author tbrtz647@outlook.com
- * @since 2026/02/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface WrapperPool<W extends RecyclableWrapper<?>> {
     /**

@@ -32,9 +32,8 @@ import java.util.List;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/15
+ * @author Reonvia
+ * @since 0.1.0
  * @see NexalithicTask
  */
 public class NexalithicHandler<HC extends HandlerContext<?>> {

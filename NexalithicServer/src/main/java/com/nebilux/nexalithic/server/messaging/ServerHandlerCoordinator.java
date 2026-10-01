@@ -13,9 +13,8 @@ import com.nebilux.nexalithic.server.manager.SessionsManager;
 /**
  * 服务器业务分组器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/17
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ServerHandlerCoordinator extends HandlerCoordinator<
         ServerSession,

@@ -3,6 +3,12 @@ package com.nebilux.nexalithic.core.infra.loadbalance;
 import java.util.Map;
 import java.util.TreeMap;
 
+/**
+ * 一致性哈希负载均衡器。
+ *
+ * @author Reonvia
+ * @since 0.1.0
+ */
 public class ConsistentHashBalancer<K, V extends LoadBalanceable> implements LoadBalancer<K, V> {
     private final TreeMap<Integer, V> ring = new TreeMap<>();
     private final V[] candidates;

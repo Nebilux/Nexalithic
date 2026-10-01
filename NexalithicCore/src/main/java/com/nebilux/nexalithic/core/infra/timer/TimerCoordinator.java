@@ -15,9 +15,8 @@ package com.nebilux.nexalithic.core.infra.timer;
  * 不得保存到字段、集合或异步任务中。</p>
  *
  * @param <T> 被调度的目标类型
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/20
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface TimerCoordinator<T> {
 

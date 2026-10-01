@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
 /**
  * 自静态可回收包装器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class SelfStaticRecyclableWrapper<W extends SelfStaticRecyclableWrapper<W>> extends GenericWrapperPool.AbstractRecyclableWrapper<W, W>{
     public SelfStaticRecyclableWrapper(GenericWrapperPool<W, W> owner) {

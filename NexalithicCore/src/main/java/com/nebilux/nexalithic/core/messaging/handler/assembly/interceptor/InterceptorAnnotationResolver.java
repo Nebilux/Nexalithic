@@ -11,9 +11,8 @@ import java.lang.annotation.Annotation;
  * 绑定的拦截器类型交给该接口。实现类负责选择合适的解析策略，并返回拦截器工厂可消费的
  * {@link InterceptorConfigurationBinding}。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/29
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface InterceptorAnnotationResolver {
     /**

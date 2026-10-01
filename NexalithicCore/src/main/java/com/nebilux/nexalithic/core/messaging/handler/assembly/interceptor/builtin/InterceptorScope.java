@@ -7,9 +7,8 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.interceptor.built
  * 它由 {@link InterceptorCreator} 声明，并由 {@link DefaultInterceptorFactory}
  * 执行具体缓存策略。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/29
+ * @author Reonvia
+ * @since 0.2.0
  */
 public enum InterceptorScope {
 

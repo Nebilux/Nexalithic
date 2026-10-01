@@ -16,9 +16,8 @@ import com.nebilux.nexalithic.core.session.SessionChannel;
 /**
  * 客户端通道工厂
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/28
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ClientChannelFactory implements ChannelFactory<ClientSession> {
     private final ClientSessionLoop loop;

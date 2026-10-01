@@ -6,9 +6,8 @@ import com.nebilux.nexalithic.core.exception.NexalithicBufferException;
  * 循环缓冲区下溢异常（物理数据不足）
  * <p>当尝试从 {@code LoopBuffer} 读取数据，但缓冲区处于 {@code isEmpty()} 状态时抛出。</p>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/13
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public final class LoopBufferUnderflowException extends NexalithicBufferException {
 

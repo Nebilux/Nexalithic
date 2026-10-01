@@ -63,9 +63,8 @@ import java.util.*;
  *
  * @param <HC> 当前装配器支持的 Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/11
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class ControllerHandlerAssembler<HC extends HandlerContext<?>> {
     public static class Builder<HC extends HandlerContext<?>> {

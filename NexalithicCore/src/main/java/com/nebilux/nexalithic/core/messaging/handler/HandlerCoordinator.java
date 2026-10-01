@@ -27,9 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 业务包分发器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/16
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class HandlerCoordinator<
         S extends NexalithicSession<?>,

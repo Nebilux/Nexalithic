@@ -17,9 +17,8 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
  *
  * @param <S> 当前上下文绑定的会话类型
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/16
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class HandlerContext<S extends NexalithicSession<?>> {
     /** 当前请求所属的会话。 */

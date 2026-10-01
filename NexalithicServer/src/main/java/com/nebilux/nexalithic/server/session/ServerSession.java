@@ -12,9 +12,8 @@ import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
 /**
  * 服务器会话
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/09
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ServerSession extends NexalithicSession<ServerSession> {
     private final ServiceUnit serviceUnit;

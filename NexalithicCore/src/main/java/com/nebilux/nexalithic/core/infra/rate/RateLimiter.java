@@ -7,9 +7,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * 采用 Q32.32 格式：高32位存储字节整数，低32位存储小数部分。
  * 消除热点路径除法，支持最高 4GB/s 限速。
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/20
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class RateLimiter {
     // 定点数转换常量：2^32

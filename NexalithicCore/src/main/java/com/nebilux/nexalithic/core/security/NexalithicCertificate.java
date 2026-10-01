@@ -5,9 +5,8 @@ import java.nio.ByteBuffer;
 /**
  * Nexalithic 证书
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/23
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface NexalithicCertificate {
     int BASE_LENGTH = Integer.BYTES * 3 + Long.BYTES * 2;

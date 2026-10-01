@@ -7,9 +7,8 @@ import java.util.Objects;
 /**
  * 任务句柄
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/15
+ * @author Reonvia
+ * @since 0.2.0
  */
 public final class TaskHandle {
     private final TaskFuture future;

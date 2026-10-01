@@ -31,9 +31,8 @@ import java.nio.channels.SocketChannel;
  * <p>异步实现还应保证：成功接收的任务最终必须被执行或在关闭阶段显式拒绝，
  * 不能静默丢弃任务及其持有的 SocketChannel。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/26
+ * @author Reonvia
+ * @since 0.2.0
  */
 @FunctionalInterface
 public interface AdmissionDispatcher {

@@ -11,9 +11,8 @@ import java.util.Map;
  * <p>构造后配置内容不可变。无默认值的读取方法在属性缺失时抛出
  * {@link IllegalArgumentException}；数值转换失败时也会抛出该异常并保留原始原因。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/12
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class InterceptorConfiguration {
     private final String name;

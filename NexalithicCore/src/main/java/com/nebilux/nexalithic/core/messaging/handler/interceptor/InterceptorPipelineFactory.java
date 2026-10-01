@@ -11,9 +11,8 @@ import java.util.List;
  * <p>根据拦截器列表创建最合适的管线实现。空列表或 {@code null}
  * 会复用 {@link EmptyInterceptorPipeline} 单例，非空列表会创建数组快照管线。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/09
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class InterceptorPipelineFactory {
     private InterceptorPipelineFactory() {}

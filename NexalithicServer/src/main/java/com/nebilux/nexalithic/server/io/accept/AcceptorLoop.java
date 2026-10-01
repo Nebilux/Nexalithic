@@ -22,9 +22,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 /**
  * 接收器选择器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/06
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class AcceptorLoop extends SelectorLoop {
     public static final Options OPTIONS = Options.initOptions(Options.class, AcceptorLoop.class);

@@ -26,9 +26,8 @@ import java.util.concurrent.atomic.LongAdder;
 /**
  * 会话通道
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/04
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SessionChannel<P extends AbstractPacket, S extends NexalithicSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<P, S>>, SocketChannel> {
     private static final Logger logger = LoggerFactory.getLogger(SessionChannel.class);

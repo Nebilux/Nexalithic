@@ -11,9 +11,8 @@ import com.nebilux.nexalithic.core.messaging.handler.interceptor.HandlerIntercep
  * @param configuration 拦截器配置
  * @param interceptorType 目标拦截器实现类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/19
+ * @author Reonvia
+ * @since 0.2.0
  */
 public record InterceptorConfigurationBinding(
         InterceptorConfiguration configuration,

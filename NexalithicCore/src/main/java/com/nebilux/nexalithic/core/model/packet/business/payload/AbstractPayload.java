@@ -16,8 +16,8 @@ import java.util.zip.CRC32;
  * 支持大对象的分段编解码。</p>
  *
  * @param <T> 业务数据类型（如 Map, String 或自定义 POJO）
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class AbstractPayload<T> {
     /** 具体的业务数据对象 */

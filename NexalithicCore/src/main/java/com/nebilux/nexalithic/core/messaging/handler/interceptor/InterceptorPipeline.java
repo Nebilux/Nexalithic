@@ -10,9 +10,8 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/09
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface InterceptorPipeline<HC extends HandlerContext<?>> {
     /**

@@ -14,9 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 固定任务执行者
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/09
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class FixedTaskExecutor<T, TH extends Thread> {
     public static class Options extends OptionsDefinition {

@@ -21,9 +21,8 @@ import java.util.Map;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/29
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class DefaultInterceptorFactory<HC extends HandlerContext<?>> implements InterceptorFactory<HC> {
     private final Map<Class<? extends HandlerInterceptor<?>>, InterceptorCreator<HC>> creators;

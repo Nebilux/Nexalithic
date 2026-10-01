@@ -39,9 +39,8 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * Nexalithic客户端
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 @SuppressWarnings("UnusedReturnValue")
 public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager> {

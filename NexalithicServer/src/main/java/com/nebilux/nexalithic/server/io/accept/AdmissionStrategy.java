@@ -44,9 +44,8 @@ import java.util.List;
  *
  * @param <C> 准入上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/26
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class AdmissionStrategy<C> {
     /**

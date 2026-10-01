@@ -13,9 +13,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 任务协调员
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/12
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class TaskCoordinator {
     private final NexalithicSession<?> owner;

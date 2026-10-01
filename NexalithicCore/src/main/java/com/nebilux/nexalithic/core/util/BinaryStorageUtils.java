@@ -8,9 +8,8 @@ import java.nio.file.Paths;
 /**
  * 二进制存储工具类
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/12
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BinaryStorageUtils {
 

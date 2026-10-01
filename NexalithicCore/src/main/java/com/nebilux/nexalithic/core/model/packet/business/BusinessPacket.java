@@ -14,9 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 业务包
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BusinessPacket extends AbstractPacket {
     public static final int MAX_PATH_DEPTH = Byte.MAX_VALUE;

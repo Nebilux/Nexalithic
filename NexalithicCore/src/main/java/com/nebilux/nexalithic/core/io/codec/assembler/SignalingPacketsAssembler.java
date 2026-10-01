@@ -9,9 +9,8 @@ import org.slf4j.LoggerFactory;
 /**
  * 信令包汇编器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/10
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SignalingPacketsAssembler implements PacketsAssembler<SignalingPacket> {
     private static final Logger logger = LoggerFactory.getLogger(SignalingPacketsAssembler.class);

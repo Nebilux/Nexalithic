@@ -7,9 +7,8 @@ import java.util.Objects;
  *
  * <p>当一个仅允许执行一次的方法被重复调用时抛出。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/23
+ * @author Reonvia
+ * @since 0.2.0
  */
 public final class NexalithicRepeatedInvocationException extends NexalithicException {
 

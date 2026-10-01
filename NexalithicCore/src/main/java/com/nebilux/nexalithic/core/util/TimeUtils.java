@@ -9,9 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 时间利用
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/15
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class TimeUtils {
     private static final Map<String, DateTimeFormatter> FORMATTER_CACHE = new ConcurrentHashMap<>();

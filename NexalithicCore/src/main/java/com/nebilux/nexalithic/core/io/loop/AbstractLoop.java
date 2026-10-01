@@ -23,9 +23,8 @@ import java.util.function.BooleanSupplier;
 /**
  * 抽象循环
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class AbstractLoop implements LoadBalanceable {
     public static class Options extends OptionsDefinition {

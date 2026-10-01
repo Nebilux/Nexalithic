@@ -17,9 +17,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 服务器会话循环
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/08
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class ServerSessionLoop<P extends AbstractPacket> extends SessionLoop<HandshakeContext, SessionChannel<P, ServerSession>> implements TimerCoordinator<SessionChannel<P, ServerSession>> {
     public static abstract class Options extends SessionLoop.Options {

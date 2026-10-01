@@ -16,9 +16,8 @@ import org.jctools.queues.MpmcArrayQueue;
 /**
  * 分片器工厂
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/10
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class FragmenterFactory {
     private final int SignalingPacketsFragmenter_WrapperQueue_Capacity_, BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_;

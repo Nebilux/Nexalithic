@@ -11,9 +11,8 @@ import java.lang.annotation.Target;
  * <p>注解值表示 Payload 在当前请求包中的下标。
  * 例如 {@code @RequestPayload(0)} 表示选择第一个 Payload。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/02
+ * @author Reonvia
+ * @since 0.2.0
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)

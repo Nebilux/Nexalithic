@@ -8,9 +8,8 @@ import java.lang.annotation.Target;
 /**
  *
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)

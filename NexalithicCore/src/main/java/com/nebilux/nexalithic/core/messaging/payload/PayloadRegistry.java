@@ -9,9 +9,8 @@ import java.util.function.Supplier;
 /**
  * 有效载荷注册表
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/28
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class PayloadRegistry {
     private final PayloadConstructorStorage constructors;

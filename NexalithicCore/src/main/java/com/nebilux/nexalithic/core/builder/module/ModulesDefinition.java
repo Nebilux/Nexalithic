@@ -5,9 +5,8 @@ import java.util.Objects;
 /**
  * 模定义
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/04
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class ModulesDefinition {
     protected final Class<?> holder;

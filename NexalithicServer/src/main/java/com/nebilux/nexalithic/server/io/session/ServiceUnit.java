@@ -15,9 +15,8 @@ import java.io.IOException;
 /**
  * 服务单元
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/18
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class ServiceUnit implements LoadBalanceable {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServiceUnit.class);

@@ -8,9 +8,8 @@ import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 /**
  * 片段回调
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/16
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class FragmentCallback extends TaskCodecCallback {
     public FragmentCallback(TaskScheduler scheduler) {

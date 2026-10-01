@@ -12,9 +12,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 链接状态管理器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/15
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class LinkStatusManager {
     /**
@@ -23,9 +22,8 @@ public class LinkStatusManager {
      * 该枚举描述了客户端与服务器之间链路的逻辑生存周期，屏蔽了底层多通道（信令/业务）的构建细节。
      * </p>
      *
-     * @author tbrtz647@outlook.com
-     * @since 2026/04/15
-     * @version 1.0.0
+     * @author Reonvia
+     * @since 0.1.0
      */
     public enum Status {
         /**
@@ -56,9 +54,8 @@ public class LinkStatusManager {
     /**
      * 原因
      *
-     * @author tbrtz647@outlook.com
-     * @since 2026/04/15
-     * @version 1.0.0
+     * @author Reonvia
+     * @since 0.1.0
      */
     public enum Reason {
         /** 无原因或未知原因 */

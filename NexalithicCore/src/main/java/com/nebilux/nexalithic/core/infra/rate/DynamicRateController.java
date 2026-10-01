@@ -14,9 +14,8 @@ import java.util.concurrent.TimeUnit;
  * <li>返回 -1：本周期不发布</li>
  * </ul>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/21
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class DynamicRateController {
     /**

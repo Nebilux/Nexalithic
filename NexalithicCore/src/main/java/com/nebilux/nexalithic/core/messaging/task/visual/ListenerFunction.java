@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.messaging.task.visual;
 /**
  * 监听函数
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/06
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface ListenerFunction {
     @FunctionalInterface

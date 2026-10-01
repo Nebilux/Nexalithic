@@ -6,9 +6,8 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
 /**
  * 编解码器回调
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/14
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface CodecCallback {
     void bind(NexalithicSession<?> session);

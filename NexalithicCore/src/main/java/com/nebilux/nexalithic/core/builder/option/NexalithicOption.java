@@ -8,9 +8,8 @@ import java.util.function.Function;
 /**
  * Nexalithic选项
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/19
+ * @author Reonvia
+ * @since 0.1.0
  */
 public final class NexalithicOption<T> {
     private volatile String name;

@@ -12,9 +12,8 @@ import java.lang.annotation.Target;
  * {@link NexalithicHandlerMethod#levels()} 的数组元素使用，用于描述路径中的单个层级。
  * 非空候选值表示该层级可以匹配其中任一值；候选值为空时表示通配符。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/24
+ * @author Reonvia
+ * @since 0.2.0
  */
 @Documented
 @Target({})

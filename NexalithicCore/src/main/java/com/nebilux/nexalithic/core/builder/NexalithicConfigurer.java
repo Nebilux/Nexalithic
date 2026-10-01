@@ -14,9 +14,8 @@ import java.util.Objects;
  * @param <T> 被配置的目标类型
  * @param <H> 配置辅助对象类型
  *
- * @author tbrtz647@outlook.com
- * @since 2026/08/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.2.0
  */
 @FunctionalInterface
 public interface NexalithicConfigurer<T, H> {

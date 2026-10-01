@@ -37,9 +37,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 业务循环
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/06
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessLoop.class);

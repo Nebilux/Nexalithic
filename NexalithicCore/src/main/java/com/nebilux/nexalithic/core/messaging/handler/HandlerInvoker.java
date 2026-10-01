@@ -9,9 +9,8 @@ package com.nebilux.nexalithic.core.messaging.handler;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/16
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 @FunctionalInterface
 public interface HandlerInvoker<HC extends HandlerContext<?>> {

@@ -17,9 +17,8 @@ import java.util.List;
  * <p>该类型只描述匹配规则本身，不执行匹配。实际匹配由
  * {@link HandlerRegistry} 在冻结后的 Trie 树上完成。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/16
+ * @author Reonvia
+ * @since 0.1.0
  */
 @SuppressWarnings("UnusedReturnValue")
 public final class HandlerPathMatcher {

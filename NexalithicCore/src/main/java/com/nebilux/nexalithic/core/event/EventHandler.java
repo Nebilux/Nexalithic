@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.event;
 /**
  * 事件处理器接口
  *
- * @author tbrtz647@outlook.com
- * @since 2026/05/11
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface EventHandler<T extends NexalithicEvent> {
 

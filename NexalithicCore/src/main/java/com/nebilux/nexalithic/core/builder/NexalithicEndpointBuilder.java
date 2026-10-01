@@ -47,9 +47,8 @@ import java.util.List;
  * @param <SELF> 具体 Builder 类型，用于保持链式调用返回子类类型
  * @param <HC> 终端 Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointBuilder<SELF, HC>, HC extends HandlerContext<?>> {
     /**

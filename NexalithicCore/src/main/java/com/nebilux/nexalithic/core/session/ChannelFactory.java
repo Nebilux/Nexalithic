@@ -7,9 +7,8 @@ import com.nebilux.nexalithic.core.security.SecretKeyContext;
 /**
  * 通道工厂
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/28
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface ChannelFactory<S extends NexalithicSession<S>> {
     SessionChannel<SignalingPacket, S> createSignalingChannel(S session, SecretKeyContext secretKeyContext);

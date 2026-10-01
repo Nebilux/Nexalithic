@@ -12,9 +12,8 @@ import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerPathMatcher;
  * @param description Handler 描述文本；未指定时为空字符串
  * @param pathMatcher 该 Handler 注册时使用的路径匹配器
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/09
+ * @author Reonvia
+ * @since 0.2.0
  */
 public record HandlerMetadata(String name, String description, HandlerPathMatcher pathMatcher) {
 

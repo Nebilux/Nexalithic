@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.exception;
 /**
  * Nexalithic异常基类
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/03
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class NexalithicException extends RuntimeException {
     public NexalithicException(String message) {

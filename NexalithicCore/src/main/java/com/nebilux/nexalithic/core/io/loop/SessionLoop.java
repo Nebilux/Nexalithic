@@ -9,9 +9,8 @@ import java.nio.channels.SelectionKey;
 /**
  * 会话循环
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/12
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends SessionChannel<?, ?>> extends ChannelLoop<H, C> {
     public SessionLoop(NexalithicBuilderContext context, Options options) throws IOException {

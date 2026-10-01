@@ -17,9 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * </p>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/19
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class NexalithicEventBus {
     private final Map<Class<? extends NexalithicEvent>, EventTopic<? extends NexalithicEvent>> topics = new ConcurrentHashMap<>();

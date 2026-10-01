@@ -32,9 +32,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 任务调度程序
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/13
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, TaskScheduler.class);

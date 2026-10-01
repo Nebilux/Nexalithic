@@ -18,9 +18,8 @@ import java.util.Arrays;
 /**
  * 密钥工具
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/02/15
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class SecretKeyUtils {
     public static final int ECDH_LENGTH = 32;

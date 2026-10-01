@@ -20,9 +20,8 @@ import java.util.List;
  * 供 {@link com.nebilux.nexalithic.core.messaging.handler.assembly.interceptor.InterceptorFactory}
  * 创建实际拦截器实例。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/29
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class DefaultInterceptorAnnotationResolver implements InterceptorAnnotationResolver {
     private final List<InterceptorAnnotationParser> parsers;

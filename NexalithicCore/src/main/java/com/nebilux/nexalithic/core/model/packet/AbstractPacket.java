@@ -7,9 +7,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * 抽象包
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public abstract class AbstractPacket implements AbstractModel {
     public static final int MAX_PAYLOAD_COUNT = Byte.MAX_VALUE;

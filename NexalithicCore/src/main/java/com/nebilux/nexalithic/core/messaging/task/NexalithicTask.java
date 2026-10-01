@@ -22,9 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * <li><b>状态化：</b> 支持超时控制、重试机制以及异步结果生成（Future/Promise）。</li>
  * <li><b>双工支持：</b> 客户端和服务端均可发起任务以驱动对端执行特定逻辑。</li>
  * </ul>
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/15
+ * @author Reonvia
+ * @since 0.1.0
  * @see NexalithicHandler
  */
 public class NexalithicTask {

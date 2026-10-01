@@ -9,9 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 网络路由器
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/07
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class NetworkRouter {
     private volatile InetSocketAddress serverAddress;

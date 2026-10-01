@@ -24,9 +24,8 @@ import com.nebilux.nexalithic.core.security.SecurityPolicy;
  *
  * @param <LM> 具体终端使用的生命周期管理器类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/06
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class NexalithicEndpoint<LM extends LifecycleManager> {
     public static class Modules extends ModulesDefinition {

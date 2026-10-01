@@ -15,9 +15,8 @@ import java.util.function.Supplier;
  * 1. 启动期：通过 {@link #freeze(Map)} 将扫描到的原始映射关系转化为高性能的内部结构。
  * 2. 运行期：通过 {@link #get(long)} 进行检索，此时实现必须保证线程安全且不可变。
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/28
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface PayloadConstructorStorage {
 

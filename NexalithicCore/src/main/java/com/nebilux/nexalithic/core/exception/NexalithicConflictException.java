@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.exception;
 /**
  * Nexalithic 冲突例外
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/26
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class NexalithicConflictException extends NexalithicException {
     public NexalithicConflictException(String message) {

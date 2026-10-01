@@ -29,9 +29,8 @@ import java.util.concurrent.locks.LockSupport;
  * 提交—清理屏障；{@code acceptingSchedules} 仅用于尽早拒绝已经观察到停止状态的提交，不能替代调用方对生命周期的串行化。</p>
  *
  * @param <T> 被调度的目标类型
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/20
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class TimeWheel<T> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, TimeWheel.class);

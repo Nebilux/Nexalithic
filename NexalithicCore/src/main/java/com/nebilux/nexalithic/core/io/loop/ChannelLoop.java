@@ -15,9 +15,8 @@ import java.nio.channels.SelectionKey;
 /**
  * 通道循环
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/03/08
+ * @author Reonvia
+ * @since 0.2.0
  */
 public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends NexalithicChannel> extends SelectorLoop {
     public static abstract class Options extends SelectorLoop.Options {

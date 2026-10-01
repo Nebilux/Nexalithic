@@ -12,9 +12,8 @@ package com.nebilux.nexalithic.core.session;
  * <li><b>托管回收：</b> 当网络异常断开、心跳超时或主动关闭时，Nexalithic 会自动回调 {@link #clear()} 方法。</li>
  * </ul>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/07
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface SessionAttachment {
 

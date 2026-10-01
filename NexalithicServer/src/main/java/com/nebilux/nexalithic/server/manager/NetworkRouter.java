@@ -17,9 +17,8 @@ import java.util.*;
  * <li><b>并发安全：</b> 写入端通过 synchronized 同步，读取端无锁（volatile 引用切换），实现写时复制 (COW) 模式。</li>
  * </ul>
  *
- * @author tbrtz647@outlook.com
- * @since 2026/03/03
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class NetworkRouter {
     private final Map<NexalithicChannel.Kind, RouteTable> routingTables = new EnumMap<>(NexalithicChannel.Kind.class);

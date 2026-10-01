@@ -14,9 +14,8 @@ import java.nio.channels.SocketChannel;
  * <p>Dispatcher 接收任务后必须保证该入口最多执行一次，避免同一个连接被重复过滤、
  * 重复关闭或重复移交给握手阶段。</p>
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/26
+ * @author Reonvia
+ * @since 0.2.0
  */
 @FunctionalInterface
 public interface AdmissionExecutor {

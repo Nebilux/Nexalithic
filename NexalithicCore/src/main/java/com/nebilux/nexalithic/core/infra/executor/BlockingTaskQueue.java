@@ -7,9 +7,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * 针对对象 T 的阻塞队列接口
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/09
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface BlockingTaskQueue<T> {
 

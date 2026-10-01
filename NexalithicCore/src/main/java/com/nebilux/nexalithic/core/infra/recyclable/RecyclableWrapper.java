@@ -4,9 +4,8 @@ package com.nebilux.nexalithic.core.infra.recyclable;
  * 池化资源的可回收包装器 (Recyclable Wrapper)
  *
  * @param <T> 被包装的底层资源类型
- * @author tbrtz647@outlook.com
- * @since 2026/02/10
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public interface RecyclableWrapper<T> {
     /**

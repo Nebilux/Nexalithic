@@ -11,9 +11,8 @@ import java.lang.annotation.*;
  * <p>被标记的方法必须满足装配器要求的 Handler 方法签名约束。</p>
  * @see NexalithicHandlerController
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/07/24
+ * @author Reonvia
+ * @since 0.2.0
  */
 @Documented
 @Target(ElementType.METHOD)

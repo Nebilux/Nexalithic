@@ -15,9 +15,8 @@ import java.nio.channels.SelectionKey;
 /**
  * Nexalithic 会话
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 @SuppressWarnings("unchecked")
 public abstract class NexalithicSession <S extends NexalithicSession<S>> {

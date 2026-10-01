@@ -3,9 +3,8 @@ package com.nebilux.nexalithic.core.infra.executor;
 /**
  * 当队列满且无法增加线程时，如何处理对象 T
  *
- * @author tbrtz647@outlook.com
- * @since 2026/04/09
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 @FunctionalInterface
 public interface RejectedTaskHandler<T> {

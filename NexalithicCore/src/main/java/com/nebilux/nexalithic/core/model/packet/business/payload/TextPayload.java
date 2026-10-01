@@ -8,9 +8,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * 文本有效载荷
  *
- * @author tbrtz647@outlook.com
- * @since 2026/02/02
- * @version 1.0.0
+ * @author Reonvia
+ * @since 0.1.0
  */
 public class TextPayload extends AbstractPayload<String> {
     public static final long UID = 1;

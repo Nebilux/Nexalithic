@@ -20,9 +20,8 @@ import java.util.List;
  *
  * @param <HC> Handler 上下文类型
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/08/02
+ * @author Reonvia
+ * @since 0.2.0
  */
 public class DefaultHandlerMethodArgumentConverterSelector<HC extends HandlerContext<?>> implements HandlerMethodArgumentConverterSelector<HC> {
     private final List<HandlerMethodArgumentConverter<HC>> converters;

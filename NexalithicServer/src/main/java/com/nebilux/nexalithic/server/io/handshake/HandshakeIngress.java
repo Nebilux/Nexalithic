@@ -7,9 +7,8 @@ import java.nio.channels.SocketChannel;
 /**
  * 握手入口
  *
- * @author tbrtz647@outlook.com
- * @version 1.0.0
- * @since 2026/09/26
+ * @author Reonvia
+ * @since 0.2.0
  */
 public interface HandshakeIngress {
     boolean submit(NexalithicChannel.Kind kind, SocketChannel channel);
