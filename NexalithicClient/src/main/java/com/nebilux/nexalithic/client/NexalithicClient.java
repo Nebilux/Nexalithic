@@ -1,12 +1,12 @@
 package com.nebilux.nexalithic.client;
 
-import com.nebilux.nexalithic.client.lifecycle.ClientLifecycleManager;
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
-import com.nebilux.nexalithic.client.session.ClientSession;
+import com.nebilux.nexalithic.client.lifecycle.ClientLifecycleManager;
 import com.nebilux.nexalithic.client.manager.LinkStatusManager;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerContext;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerCoordinator;
 import com.nebilux.nexalithic.client.security.ClientSecurityPolicy;
+import com.nebilux.nexalithic.client.session.ClientSession;
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuilder;
@@ -67,7 +67,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
     }
 
     public static Builder builder() {
-        logger.info(Banner.BANNER.formatted("Client"));
+        logger.info(Banner.render(NexalithicClient.class));
         return new Builder();
     }
 

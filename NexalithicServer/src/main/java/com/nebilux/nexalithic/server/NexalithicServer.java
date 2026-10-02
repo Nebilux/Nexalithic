@@ -69,7 +69,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
     }
 
     public static Builder builder() {
-        logger.info(Banner.BANNER.formatted("Server"));
+        logger.info(Banner.render(NexalithicServer.class));
         return new Builder();
     }
     public static NexalithicServer unsafeCreate(NexalithicBuilderContext context) {

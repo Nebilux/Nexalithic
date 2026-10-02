@@ -48,17 +48,63 @@ public abstract class NexalithicEndpoint<LM extends LifecycleManager> {
      * Nexalithic 启动横幅。
      */
     public static final class Banner {
-        public static final String BANNER =
+        private static final String LOGO =
                 """
-                          \s
-                          _   _                _ _ _   _     _     \s
-                          | \\ | | _____  ____ _| (_) |_| |__ (_) ___\s
-                          |  \\| |/ _ \\ \\/ / _` | | | __| '_ \\| |/ __|\s
-                          | |\\  |  __/>  < (_| | | | |_| | | | | (__\s
-                          |_| \\_|\\___/_/\\_\\__,_|_|_|\\__|_| |_|_|\\___|\s
-                
-                         :: Nexalithic %s ::              (v0.2.0)\s
-                """;
+                 _   _                _ _ _   _     _
+                | \\ | | _____  ____ _| (_) |_| |__ (_) ___
+                |  \\| |/ _ \\ \\/ / _` | | | __| '_ \\| |/ __|
+                | |\\  |  __/>  < (_| | | | |_| | | | | (__
+                |_| \\_|\\___/_/\\_\\__,_|_|_|\\__|_| |_|_|\\___|
+                """.stripTrailing();
+
+        private static final int WIDTH = LOGO.lines().mapToInt(String::length).max().orElse(0);
+
+        private Banner() {}
+
+        /**
+         * 根据具体终端类型生成启动横幅。
+         *
+         * @param endpointClass 具体终端类
+         * @return 完整启动横幅
+         */
+        public static String render(Class<? extends NexalithicEndpoint<?>> endpointClass) {
+            Package metadata = endpointClass.getPackage();
+
+            String title = resolveTitle(endpointClass, metadata);
+            String version = resolveVersion(metadata);
+
+            return System.lineSeparator()
+                    + LOGO
+                    + System.lineSeparator()
+                    + System.lineSeparator()
+                    + createMetadataLine(title, version)
+                    + System.lineSeparator();
+        }
+
+        private static String resolveTitle(Class<? extends NexalithicEndpoint<?>> endpointClass, Package metadata) {
+            String title = metadata.getImplementationTitle();
+            if (title != null && !title.isBlank()) {
+                return title;
+            }
+            String className = endpointClass.getSimpleName();
+            if (className.startsWith("Nexalithic")) {
+                return "Nexalithic " + className.substring("Nexalithic".length());
+            }
+            return className;
+        }
+        private static String resolveVersion(Package metadata) {
+            String version = metadata.getImplementationVersion();
+            if (version == null || version.isBlank()) {
+                return "DEV";
+            }
+            return version;
+        }
+        private static String createMetadataLine(String title, String version) {
+            String left = ":: " + title + " ::";
+            String right = "(v" + version + ")";
+            int spacing = Math.max(1, WIDTH - left.length() - right.length());
+            return left + " ".repeat(spacing) + right;
+        }
     }
 
     /**
