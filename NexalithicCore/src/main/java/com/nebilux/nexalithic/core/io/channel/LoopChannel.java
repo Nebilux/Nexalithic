@@ -21,7 +21,8 @@ public abstract class LoopChannel<L extends ChannelLoop<?, ?>, C extends Selecta
     private final AtomicInteger targetInterest = new AtomicInteger(0);
     protected final L ownerLoop;
 
-    public LoopChannel(L ownerLoop) {
+    public LoopChannel(Kind kind, L ownerLoop) {
+        super(kind);
         this.ownerLoop = ownerLoop;
     }
 
@@ -61,13 +62,13 @@ public abstract class LoopChannel<L extends ChannelLoop<?, ?>, C extends Selecta
             int newValue = oldInterest & INTEREST_MASK;
             if (targetInterest.compareAndSet(oldInterest, newValue)) {
                 SelectionKey key = getSelectionKey();
-                if (key != null) {
+                if (key != null && key.isValid()) {
                     try {
                         if (key.interestOps() != newValue) {
                             key.interestOps(newValue);
                         }
-                    } catch (IllegalArgumentException e) {
-                        logger.error("applyTargetInterest error: {}", e.getMessage());
+                    } catch (RuntimeException failure) {
+                        logger.debug("Unable to update channel interest", failure);
                     }
                 }
                 return;
@@ -76,9 +77,18 @@ public abstract class LoopChannel<L extends ChannelLoop<?, ?>, C extends Selecta
         }
     }
 
+    public final L getOwnerLoop() {
+        return ownerLoop;
+    }
+
     @Override
     protected void onOpen(Transport<C> transport) {
         targetInterest.set(transport.selectionKey().interestOps());
+    }
+
+    @Override
+    protected void onClose(Transport<C> transport) {
+        targetInterest.set(0);
     }
 
     @Override

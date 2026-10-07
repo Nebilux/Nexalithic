@@ -5,6 +5,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.infra.concurrent.async.AsyncOperation;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalanceable;
 import com.nebilux.nexalithic.core.io.thread.LoopThread;
 import org.slf4j.Logger;
@@ -12,7 +13,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,6 +37,7 @@ public abstract class AbstractLoop implements LoadBalanceable {
             super(holder);
         }
     }
+
     public enum State {
         /** 已构造，但尚未启动。 */
         NEW,
@@ -49,25 +52,31 @@ public abstract class AbstractLoop implements LoadBalanceable {
         /** 已退出，所有资源已经释放。 */
         TERMINATED;
 
-        public boolean isTerminatingOrTerminated() {
+        /**
+         * 判断循环当前是否仍可接收新的常规工作。
+         *
+         * <p>{@link #DRAINING} 表示循环已经停止接收新的常规工作，
+         * 但仍可能接收完成既有工作所需的维护操作；终止阶段同样不再接收新工作。</p>
+         *
+         * @return 当前状态为 {@link #NEW}、{@link #STARTING} 或 {@link #RUNNING} 时返回 {@code true}
+         */
+        public boolean isAcceptingNewWork() {
+            return this == NEW || this == STARTING || this == RUNNING;
+        }
+        public boolean isTerminationStarted() {
             return this == TERMINATING || this == TERMINATED;
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(AbstractLoop.class);
-    private enum TerminationAction {
-        NONE,
-        SYNC,
-        ASYNC
-    }
     private record Constant(long ShutdownTimeoutNanos) {}
     private final Constant CONSTANT;
     private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
     private final AtomicBoolean signaled = new AtomicBoolean(false);
-    private final AtomicBoolean sealed = new AtomicBoolean(false);
-    private final AtomicBoolean cleaning = new AtomicBoolean(false);
     private final LoopThread thread;
     private final Object lifecycleLock = new Object();
-    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+    private final AsyncOperation<Void, Void> startupOperation;
+    private final AsyncOperation<Void, Void> sealingOperation;
+    private final AsyncOperation<Throwable, Void> terminationOperation;
     private final List<BooleanSupplier> isDrainConditions = new ArrayList<>(4);
     private volatile long shutdownStartedNanos;
     protected final String name;
@@ -82,73 +91,93 @@ public abstract class AbstractLoop implements LoadBalanceable {
         thread = new LoopThread(context, this::run);
         thread.setDaemon(false);
         thread.setName("LoopThread-" + name);
+        startupOperation = new AsyncOperation<>(name + "-startup", this::executeStartup);
+        sealingOperation = new AsyncOperation<>(name + "-sealing", this::executeSealing);
+        terminationOperation = new AsyncOperation<>(name + "-termination", this::executeTermination);
     }
 
-    public final void start() throws IllegalStateException {
+    public final CompletionStage<Void> start() throws IllegalStateException {
         synchronized (lifecycleLock) {
             transition(State.NEW, State.STARTING);
-            try {
-                thread.start();
-            } catch (Throwable throwable) {
-                terminate(throwable);
-                throw throwable;
-            }
+            startupOperation.trigger();
         }
+        return startupOperation.completion();
     }
     public final CompletionStage<Void> stop() throws IllegalStateException {
-        TerminationAction terminationAction = TerminationAction.NONE;
+        boolean terminateSynchronously;
         synchronized (lifecycleLock) {
             while (true) {
                 State current = state.get();
-                if (current.isTerminatingOrTerminated()) {
-                    break;
+                if (current.isTerminationStarted()) {
+                    return terminationOperation.completion();
                 }
                 if (!state.compareAndSet(current, State.TERMINATING)) {
                     continue;
                 }
-                seal();
-                terminationAction = current == State.NEW ? TerminationAction.SYNC : TerminationAction.ASYNC;
+                terminateSynchronously = current == State.NEW;
+                break;
             }
         }
-        switch (terminationAction) {
-            case NONE -> {}
-            case SYNC -> terminate(null);
-            case ASYNC -> wakeupLoop();
+        Throwable failure = null;
+        try {
+            seal();
+        } catch (Throwable throwable) {
+            failure = throwable;
         }
-        return terminationFuture.minimalCompletionStage();
+        if (terminateSynchronously) {
+            terminate(failure);
+        } else {
+            wakeup();
+        }
+        return terminationOperation.completion();
     }
     public final CompletionStage<Void> shutdown() throws IllegalStateException {
-        TerminationAction terminationAction = TerminationAction.NONE;
+        boolean terminateSynchronously;
         synchronized (lifecycleLock) {
             while (true) {
                 State current = state.get();
                 if (current == State.DRAINING || current == State.TERMINATING || current == State.TERMINATED) {
-                    break;
+                    return terminationOperation.completion();
                 }
                 shutdownStartedNanos = System.nanoTime();
                 if (!state.compareAndSet(current, current == State.NEW ? State.TERMINATING : State.DRAINING)) {
                     continue;
                 }
-                seal();
-                terminationAction = current == State.NEW ? TerminationAction.SYNC : TerminationAction.ASYNC;
+                terminateSynchronously = current == State.NEW;
+                break;
             }
         }
-        switch (terminationAction) {
-            case NONE -> {}
-            case SYNC -> terminate(null);
-            case ASYNC -> wakeupLoop();
+        Throwable failure = null;
+        try {
+            seal();
+        } catch (Throwable throwable) {
+            failure = throwable;
         }
-        return terminationFuture.minimalCompletionStage();
+        if (terminateSynchronously) {
+            terminate(failure);
+        } else {
+            wakeup();
+        }
+        return terminationOperation.completion();
     }
 
     public final void wakeup() {
         if (signaled.compareAndSet(false, true)) {
             try {
                 wakeupLoop();
-            } catch (Exception exception) {
-                logger.error("Loop [{}] wakeupLoop() failed", name, exception);
+            } catch (Throwable failure) {
+                signaled.set(false);
+                logger.error("Loop [{}] wakeupLoop() failed", name, failure);
             }
         }
+    }
+
+    public final CompletionStage<Void> started() {
+        return startupOperation.completion();
+    }
+
+    public final CompletionStage<Void> termination() {
+        return terminationOperation.completion();
     }
 
     public final LoopBuffer aquireLoopBuffer() {
@@ -206,7 +235,7 @@ public abstract class AbstractLoop implements LoadBalanceable {
      *     <li>若为 false，则表示 LoopThread 尚未成功启动，不存在并发的所有者线程。</li>
      * </ul>
      *
-     * <p>该方法必须同步完成清理；返回后 terminationFuture 将被完成。</p>
+     * <p>该方法必须同步完成清理；返回后终止操作将被完成。</p>
      */
     protected abstract void clearLoop();
     /**
@@ -232,7 +261,7 @@ public abstract class AbstractLoop implements LoadBalanceable {
         return signaled.getAndSet(false);
     }
     protected final boolean isSealed() {
-        return sealed.get();
+        return sealingOperation.isTriggered();
     }
 
     private void run() {
@@ -243,7 +272,7 @@ public abstract class AbstractLoop implements LoadBalanceable {
         try {
             synchronized (lifecycleLock) {
                 State current = state.get();
-                if (current.isTerminatingOrTerminated()) {
+                if (current.isTerminationStarted()) {
                     return;
                 }
                 if (current != State.STARTING && current != State.DRAINING) {
@@ -268,11 +297,14 @@ public abstract class AbstractLoop implements LoadBalanceable {
                     );
                 }
             }
+            startupOperation.completer().complete(null);
             runLoop();
         } catch (Throwable throwable) {
             if (!(throwable instanceof InterruptedException)) {
                 failure = throwable;
+                logger.error("Loop [{}] terminated unexpectedly", name, throwable);
             }
+            startupOperation.completer().completeExceptionally(throwable);
         } finally {
             terminate(failure);
         }
@@ -303,6 +335,74 @@ public abstract class AbstractLoop implements LoadBalanceable {
         }
     }
 
+    private void executeStartup(Void input, AsyncOperation.Completer<Void> completer) {
+        try {
+            thread.start();
+        } catch (Throwable failure) {
+            terminate(failure);
+            throw failure;
+        }
+    }
+    private void executeSealing(Void input, AsyncOperation.Completer<Void> completer) {
+        sealLoop();
+        completer.complete(null);
+    }
+    private void executeTermination(Throwable input, AsyncOperation.Completer<Void> completer) {
+        Throwable terminalFailure = input;
+        try {
+            seal();
+        } catch (Throwable throwable) {
+            terminalFailure = mergeThrowable(terminalFailure, throwable);
+        }
+        try {
+            clearLoop();
+        } catch (Throwable throwable) {
+            terminalFailure = mergeThrowable(terminalFailure, throwable);
+        } finally {
+            state.set(State.TERMINATED);
+        }
+        if (!startupOperation.isDone()) {
+            Throwable startupFailure = terminalFailure;
+            if (startupFailure == null) {
+                startupFailure = new CancellationException("Loop [" + name + "] terminated before startup completed");
+            }
+            if (!startupOperation.abort(startupFailure)) {
+                startupOperation.completer().completeExceptionally(startupFailure);
+            }
+        }
+        if (terminalFailure == null) {
+            completer.complete(null);
+        } else {
+            completer.completeExceptionally(terminalFailure);
+            if (terminalFailure instanceof Error error) {
+                throw error;
+            }
+        }
+    }
+
+    private void seal() throws Throwable {
+        boolean initiated;
+        try {
+            initiated = sealingOperation.trigger();
+        } catch (Error fatal) {
+            initiated = true;
+        }
+        Throwable failure = null;
+        try {
+            sealingOperation.completion().toCompletableFuture().join();
+        } catch (CompletionException exception) {
+            failure = exception.getCause();
+        } catch (Exception exception) {
+            failure = exception;
+        }
+        if (failure != null) {
+            if (initiated) {
+                logger.error("Loop [{}] sealLoop() failed", name, failure);
+            }
+            throw failure;
+        }
+    }
+
     private void terminate(Throwable failure) {
         while (true) {
             State current = state.get();
@@ -313,39 +413,7 @@ public abstract class AbstractLoop implements LoadBalanceable {
                 break;
             }
         }
-        if (!cleaning.compareAndSet(false, true)) {
-            return;
-        }
-        Throwable terminalFailure = failure;
-        if (sealed.compareAndSet(false, true)) {
-            try {
-                sealLoop();
-            } catch (Throwable throwable) {
-                terminalFailure = mergeThrowable(terminalFailure, throwable);
-            }
-        }
-        try {
-            clearLoop();
-        } catch (Throwable throwable) {
-            terminalFailure = mergeThrowable(terminalFailure, throwable);
-        } finally {
-            state.set(State.TERMINATED);
-        }
-        if (terminalFailure == null) {
-            terminationFuture.complete(null);
-        } else {
-            terminationFuture.completeExceptionally(terminalFailure);
-        }
-    }
-    private void seal() {
-        if (sealed.compareAndSet(false, true)) {
-            try {
-                sealLoop();
-            } catch (Exception exception) {
-                logger.error("Loop [{}] sealLoop() failed", name, exception);
-            }
-            sealLoop();
-        }
+        terminationOperation.trigger(failure);
     }
 
     private void transition(State expected, State targeted) {
@@ -359,12 +427,17 @@ public abstract class AbstractLoop implements LoadBalanceable {
     }
 
     protected static Throwable mergeThrowable(Throwable previous, Throwable current) {
-        Throwable result = previous;
         if (previous == null) {
-            result = current;
-        } else if (current != null) {
-            previous.addSuppressed(current);
+            return current;
         }
-        return result;
+        if (current == null || previous == current) {
+            return previous;
+        }
+        if (!(previous instanceof Error) && current instanceof Error) {
+            current.addSuppressed(previous);
+            return current;
+        }
+        previous.addSuppressed(current);
+        return previous;
     }
 }

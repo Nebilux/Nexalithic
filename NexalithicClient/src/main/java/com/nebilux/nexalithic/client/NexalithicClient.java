@@ -1,12 +1,12 @@
 package com.nebilux.nexalithic.client;
 
-import com.nebilux.nexalithic.client.lifecycle.ClientLifecycleManager;
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
-import com.nebilux.nexalithic.client.session.ClientSession;
-import com.nebilux.nexalithic.client.manager.LinkStatusManager;
+import com.nebilux.nexalithic.client.lifecycle.ClientLifecycleCoordinator;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerContext;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerCoordinator;
 import com.nebilux.nexalithic.client.security.ClientSecurityPolicy;
+import com.nebilux.nexalithic.client.session.ClientSession;
+import com.nebilux.nexalithic.client.session.SessionManager;
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuilder;
@@ -18,7 +18,6 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +28,6 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -43,23 +41,21 @@ import java.util.concurrent.locks.LockSupport;
  * @since 0.1.0
  */
 @SuppressWarnings("UnusedReturnValue")
-public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager> {
+public class NexalithicClient extends NexalithicEndpoint {
     public static final Modules MODULES = new Modules();
     public static final class Modules extends NexalithicEndpoint.Modules {
-        public final NexalithicModule<LinkStatusManager> LinkStatusManager = defineModule(LinkStatusManager.class);
+        public final NexalithicModule<SessionManager> SessionManager = defineModule(SessionManager.class);
         private Modules() {
             super(NexalithicClient.class);
         }
     }
 
     private static final Logger logger = LoggerFactory.getLogger(NexalithicClient.class);
-    private final LinkStatusManager linkStatusManager;
-    private final ClientSessionLoop clientSessionLoop;
+    private final SessionManager sessionManager;
 
     private NexalithicClient(NexalithicBuilderContext context) {
-        super(context.getModule(MODULES.LifecycleManager), context.getModule(MODULES.EventBus));
-        this.linkStatusManager = context.getModule(MODULES.LinkStatusManager);
-        this.clientSessionLoop = context.getModule(ClientLifecycleManager.MODULES.SessionLoop);
+        super(context, MODULES);
+        this.sessionManager = context.getModule(MODULES.SessionManager);
         System.gc();
     }
     public static NexalithicClient unsafeCreate(NexalithicBuilderContext context) {
@@ -67,32 +63,15 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
     }
 
     public static Builder builder() {
-        logger.info(Banner.BANNER.formatted("Client"));
+        logger.info(Banner.render(NexalithicClient.class));
         return new Builder();
     }
 
     public boolean link(InetSocketAddress remote) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException, ShortBufferException {
-        if (linkStatusManager.getStatus() != LinkStatusManager.Status.UNLINKED) {
-            throw new IllegalStateException("Cannot link while in State " + linkStatusManager.getStatus() + ", must be " + LinkStatusManager.Status.UNLINKED);
-        }
-        SocketChannel socketChannel = SocketChannel.open(remote);
-        logger.info("Linking to [{}]", remote);
-        linkStatusManager.trigger(LinkStatusManager.Status.LINKING, remote);
-        clientSessionLoop.getNetworkRouter().setServerAddress(remote);
-        try {
-            if (clientSessionLoop.link(AbstractPacket.PacketType.Signaling, socketChannel, null)) {
-                return true;
-            } else {
-                linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, LinkStatusManager.Reason.REMOTE_ACTIVE);
-            }
-        } catch (Exception e) {
-            linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, e instanceof IOException ? LinkStatusManager.Reason.NETWORK_ERROR : LinkStatusManager.Reason.PROTOCOL_ERROR, e);
-            throw e;
-        }
-        return false;
+        return sessionManager.connect(remote);
     }
     public void unlink() {
-        clientSessionLoop.unlink();
+        sessionManager.disconnect();
     }
 
     public TaskHandle submit(NexalithicTask.Builder taskBuilder) {
@@ -102,14 +81,20 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
         return getSession().pushBusinessPacket(packet);
     }
 
-    public LinkStatusManager.Status getLinkStatus() {
-        return linkStatusManager.getStatus();
+    public SessionManager.State getSessionState() {
+        return sessionManager.getState();
     }
 
     private ClientSession getSession() {
-        ClientSession session = clientSessionLoop.getSession();
+        if (sessionManager.isShuttingDown()) {
+            return null;
+        }
+        ClientSession session = sessionManager.getCurrentSession();
         if (session == null) {
             for (int i = 0; i < 100; i++) {
+                if (sessionManager.isShuttingDown()) {
+                    return null;
+                }
                 if (session != null) {
                     return session;
                 } else {
@@ -119,7 +104,7 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
                         LockSupport.parkNanos(i * 1_000_000L);
                     }
                 }
-                session = clientSessionLoop.getSession();
+                session = sessionManager.getCurrentSession();
             }
         }
         return session;
@@ -155,9 +140,12 @@ public class NexalithicClient extends NexalithicEndpoint<ClientLifecycleManager>
             ClientHandlerCoordinator handlerCoordinator = new ClientHandlerCoordinator(context);
             context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
             context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
-            context.setModule(MODULES.LinkStatusManager, new LinkStatusManager(context));
-            context.setModule(ClientLifecycleManager.MODULES.SessionLoop, new ClientSessionLoop(context));
-            context.setModule(MODULES.LifecycleManager, new ClientLifecycleManager(context));
+            SessionManager sessionManager = new SessionManager(context);
+            context.setModule(MODULES.SessionManager, sessionManager);
+            ClientSessionLoop sessionLoop = new ClientSessionLoop(context);
+            context.setModule(ClientLifecycleCoordinator.MODULES.SessionLoop, sessionLoop);
+            sessionManager.bindSessionLoop(sessionLoop);
+            context.setModule(MODULES.LifecycleCoordinator, new ClientLifecycleCoordinator(context));
 
             return new NexalithicClient(context);
         }

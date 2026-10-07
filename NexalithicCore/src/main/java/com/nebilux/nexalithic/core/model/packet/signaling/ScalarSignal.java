@@ -1,7 +1,6 @@
 package com.nebilux.nexalithic.core.model.packet.signaling;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
 
 import java.nio.ByteBuffer;
 
@@ -77,17 +76,12 @@ public class ScalarSignal extends SignalingPacket {
     }
 
     @Override
-    public byte[] getContent() {
-        return AbstractPacket.longToBytes(value);
-    }
-
-    @Override
-    public short getContentLength() {
+    public short getLength() {
         return Long.BYTES;
     }
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + "-> Signal: " + toName(signal) + ", Value: " + value;
+        return super.toString() + ", Value: " + value;
     }
 }

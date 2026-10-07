@@ -3,20 +3,21 @@ package com.nebilux.nexalithic.server.io.accept;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
-import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
-import com.nebilux.nexalithic.core.builder.option.OptionValidator;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicStateQueue;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.SelectorLoop;
+import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeIngress;
+import com.nebilux.nexalithic.server.routing.NetworkRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -28,24 +29,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class AcceptorLoop extends SelectorLoop {
     public static final Options OPTIONS = Options.initOptions(Options.class, AcceptorLoop.class);
     public static final class Options extends SelectorLoop.Options {
-        public final NexalithicOption<Integer> FiltrationContextPool_Capacity = defineOption(
-                1024, OptionValidator.positive()
-        );
-        public final NexalithicOption<Integer> FiltrationContextPool_Limit = defineOption(
-                FiltrationContextPool_Capacity.defaultValue() * 2, OptionValidator.positive()
-        );
-        public final NexalithicOption<Double> FiltrationContextPool_PrefillRatio = defineOption(
-                0.5, OptionValidator.unitInterval()
-        );
-        public final NexalithicOption<Integer> PendingChannelPool_Capacity = defineOption(
-                4096, OptionValidator.positive()
-        );
-        public final NexalithicOption<Integer> PendingChannelPool_Limit = defineOption(
-                PendingChannelPool_Capacity.defaultValue() * 2, OptionValidator.positive()
-        );
-        public final NexalithicOption<Double> PendingChannelPool_PrefillRatio = defineOption(
-                0.5, OptionValidator.unitInterval()
-        );
         private Options(Class<?> holder) {
             super(holder);
         }
@@ -59,40 +42,66 @@ public class AcceptorLoop extends SelectorLoop {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(AcceptorLoop.class);
-    private record ListenerRegistration(NexalithicChannel.Kind kind, AdmissionStrategy<?> strategy) {}
-    private final Queue<Runnable> eventQueue = new ConcurrentLinkedQueue<>();
+    private enum RegistrationState {
+        OPEN,
+        CLOSED
+    }
+    private record ListenerRegistration(
+            NexalithicChannel.Kind kind,
+            AdmissionStrategy<?> strategy,
+            NetworkRouter.RouteRegistration routeRegistration
+    ) {}
+    private final AtomicStateQueue.StateHandle<RegistrationState> registrationState = new AtomicStateQueue.StateHandle<>(RegistrationState.OPEN);
+    private final AtomicStateQueue<Runnable, RegistrationState> eventQueue = new AtomicStateQueue<>(
+            new ConcurrentLinkedQueue<>(), registrationState, (state, event) -> state == RegistrationState.OPEN
+    );
     private final HandshakeIngress handshakeIngress;
+    private final NetworkRouter networkRouter;
 
     public AcceptorLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         handshakeIngress = context.getModule(MODULES.HandshakeIngress);
+        networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
         drainAsyncEventsCondition(() -> {
-            while (!eventQueue.isEmpty()) {
-                eventQueue.poll().run();
+            eventQueue.drain(Runnable::run);
+            if (registrationState.get() == RegistrationState.CLOSED) {
+                for (SelectionKey key : registeredKeys().toArray(SelectionKey[]::new)) {
+                    try {
+                        closeListenerKey(key);
+                    } catch (Exception failure) {
+                        logger.error("Failed to close listener during shutdown", failure);
+                    }
+                }
             }
-            return true;
+            return eventQueue.isEmpty();
         });
     }
 
-    public void register(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {
-        eventQueue.add(() -> {
-            SocketAddress address = null;
-            try {
-                address = channel.getLocalAddress();
-                AdmissionStrategy<?> strategy = strategyBuilder.build(handshakeIngress);
-                registerSelectableChannel(channel.configureBlocking(false), SelectionKey.OP_ACCEPT).attach(new ListenerRegistration(kind, strategy));
-                logger.debug("Registered [{}] channel [{}] successfully. Strategy [{}]", kind, address, strategy.getName());
-                loadScore.increment();
-            } catch (Exception exception) {
-                logger.error("Failed to register [{}] channel [{}]", kind, address, exception);
-            }
-        });
+    public boolean register(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {
+        if (registrationState.get() != RegistrationState.OPEN) {
+            closeRejectedListener(channel);
+            return false;
+        }
+        if (!eventQueue.offer(() -> registerListener(channel, kind, strategyBuilder))) {
+            closeRejectedListener(channel);
+            return false;
+        }
         wakeup();
+        return true;
+    }
+
+    @Override
+    protected void sealLoop() {
+        registrationState.set(RegistrationState.CLOSED);
     }
 
     @Override
     protected void onSelectorKeyReady(SelectionKey key) {
         try {
+            if (registrationState.get() == RegistrationState.CLOSED) {
+                closeListenerKey(key);
+                return;
+            }
             if (!key.isAcceptable()) {
                 return;
             }
@@ -112,10 +121,64 @@ public class AcceptorLoop extends SelectorLoop {
     }
 
     @Override
-    protected void onSelectionKeyMigrated(SelectionKey oldKey, SelectionKey newKey) {}
+    protected void discardAsyncEvents() {
+        eventQueue.drain(Runnable::run);
+    }
 
     @Override
     protected void clearSelectionKey(SelectionKey key) throws Exception {
-        key.channel().close();
+        closeListenerKey(key);
+    }
+
+    private void registerListener(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {
+        SocketAddress address = null;
+        SelectionKey selectionKey = null;
+        NetworkRouter.RouteRegistration routeRegistration = null;
+        try {
+            address = channel.getLocalAddress();
+            AdmissionStrategy<?> strategy = strategyBuilder.build(handshakeIngress);
+            selectionKey = registerSelectableChannel(channel.configureBlocking(false), SelectionKey.OP_ACCEPT);
+            int port = ((InetSocketAddress) address).getPort();
+            routeRegistration = networkRouter.registerLocalEndpoint(kind, port);
+            selectionKey.attach(new ListenerRegistration(kind, strategy, routeRegistration));
+            logger.debug("Registered [{}] channel [{}] successfully. Strategy [{}]", kind, address, strategy.getName());
+            loadScore.increment();
+        } catch (Exception exception) {
+            logger.error("Failed to register [{}] channel [{}]", kind, address, exception);
+            if (selectionKey != null) {
+                selectionKey.attach(null);
+                selectionKey.cancel();
+            }
+            if (routeRegistration != null) {
+                routeRegistration.close();
+            }
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                exception.addSuppressed(closeFailure);
+            }
+        }
+    }
+
+    private void closeListenerKey(SelectionKey key) throws IOException {
+        Object attachment = key.attachment();
+        key.attach(null);
+        key.cancel();
+        try {
+            key.channel().close();
+        } finally {
+            if (attachment instanceof ListenerRegistration registration) {
+                registration.routeRegistration().close();
+                loadScore.decrement();
+            }
+        }
+    }
+
+    private void closeRejectedListener(ServerSocketChannel channel) {
+        try {
+            channel.close();
+        } catch (IOException failure) {
+            logger.debug("Failed to close listener rejected during shutdown", failure);
+        }
     }
 }

@@ -1,7 +1,6 @@
 package com.nebilux.nexalithic.core.model.packet.signaling;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-
 /**
  * 裸信号
  *
@@ -10,14 +9,10 @@ import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
  */
 public class BareSignal extends SignalingPacket {
     public static final BareSignal HeartBeat = new BareSignal(Signal.HeartBeat);
-    public static final BareSignal BusinessChannelToken_Request = new BareSignal(Signal.BusinessChannelToken_Request);
-    public static final BareSignal BusinessChannelPort_Request = new BareSignal(Signal.BusinessChannelPort_Request);
 
     private static final BareSignal[] LOOKUP = new BareSignal[256];
     static {
         register(HeartBeat);
-        register(BusinessChannelToken_Request);
-        register(BusinessChannelPort_Request);
     }
 
     private static void register(BareSignal instance) {
@@ -41,17 +36,7 @@ public class BareSignal extends SignalingPacket {
     }
 
     @Override
-    public byte[] getContent() {
-        return null;
-    }
-
-    @Override
-    public short getContentLength() {
+    public short getLength() {
         return 0;
-    }
-
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + "-> Signal: " + toName(signal);
     }
 }

@@ -172,18 +172,40 @@ jobs:
           MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
         run: mvn --batch-mode --no-transfer-progress -Prelease deploy
 
-      - name: Create draft GitHub Release
+      - name: Create GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: >-
-          gh release create "$TAG"
-          --verify-tag
-          --draft
-          --title "Nexalithic $VERSION"
-          --generate-notes
-          --fail-on-no-commits
+        run: |
+          set -euo pipefail
+
+          artifacts=(
+            "NexalithicCore/target/nexalithic-core-${VERSION}.jar"
+            "NexalithicCore/target/nexalithic-core-${VERSION}-sources.jar"
+            "NexalithicCore/target/nexalithic-core-${VERSION}-javadoc.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}-sources.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}-javadoc.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}-sources.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}-javadoc.jar"
+          )
+
+          for artifact in "${artifacts[@]}"; do
+            if [[ ! -f "$artifact" ]]; then
+              echo "::error::Missing release artifact: $artifact"
+              exit 1
+            fi
+          done
+
+          gh release create "$TAG" \
+            "${artifacts[@]}" \
+            --verify-tag \
+            --title "Nexalithic $VERSION" \
+            --generate-notes \
+            --fail-on-no-commits
 
       - name: Write release summary
         shell: bash
@@ -197,5 +219,5 @@ jobs:
             echo "- Maven version: \`$VERSION\`"
             echo "- Git tag: \`$TAG\`"
             echo "- Maven Central: uploaded and validated; manual publishing is required"
-            echo "- GitHub Release: created as a draft"
+            echo "- GitHub Release: published with binary, sources, and Javadoc JARs"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -25,10 +25,10 @@ import com.nebilux.nexalithic.core.security.SecurityPolicy;
 import com.nebilux.nexalithic.core.session.SessionKey;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
-import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleManager;
-import com.nebilux.nexalithic.server.manager.SessionsManager;
+import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleCoordinator;
 import com.nebilux.nexalithic.server.security.ServerSecurityPolicy;
 import com.nebilux.nexalithic.server.session.ServerSession;
+import com.nebilux.nexalithic.server.session.SessionRegistry;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscUnboundedArrayQueue;
 import org.jctools.queues.SpmcArrayQueue;
@@ -93,7 +93,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
     protected record Constant(long MaxIdleTimeNanos, int AsyncQueue_DrainLimit) {}
     protected final Constant CONSTANT;
     private static final Logger logger = LoggerFactory.getLogger(HandshakeLoop.class);
-    private final SessionsManager sessionsManager;
+    private final SessionRegistry sessionRegistry;
     private final ServerSecurityPolicy securityPolicy;
     private final WrapperPool<HandshakeContext> wrapperPool;
     private final LoadBalancer<Void, ServiceUnit> serviceUnitLoadBalancer;
@@ -108,9 +108,9 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                 TimeUnit.MILLISECONDS.toNanos(context.getOption(OPTIONS.MaxIdleTimeMillis)),
                 context.getOption(OPTIONS.AsyncQueue_DrainLimit)
         ));
-        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
+        sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
-        serviceUnitLoadBalancer = context.getModule(ServerLifecycleManager.MODULES.ServiceUnitLoadBalancer);
+        serviceUnitLoadBalancer = context.getModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer);
         timeWheel = context.getModule(MODULES.TimeWheel, () -> {
             TimeWheel<HandshakeContext> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
@@ -200,34 +200,37 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
     }
 
     @Override
-    protected boolean onExecuteAcquireEvent(HandshakeContext handoff) {
+    protected HandshakeContext onExecuteAcquireEvent(HandshakeContext handoff) {
         try {
             if (!handoff.isActive()) {
-                return false;
+                return null;
             }
             handoff.attachSelectionKey(registerSelectableChannel(handoff.getSocketChannel().configureBlocking(false), SelectionKey.OP_READ));
             handoff.getReadBuffer().limit(SecurityPolicy.MAGIC_NUMBER_LENGTH);
             timeWheel.schedule(handoff, handoff.stamp(), this);
-        } catch (IOException ignored) {
-            return false;
+        } catch (IOException failure) {
+            logger.debug("[{}] failed to register handshake channel", name, failure);
+            return null;
+        }
+        return handoff;
+    }
+
+    @Override
+    protected boolean onExecuteReleaseEvent(HandshakeContext channel) {
+        SelectionKey key = channel.getSelectionKey();
+        if (key != null) {
+            key.cancel();
         }
         return true;
     }
 
     @Override
-    protected boolean onExecuteReleaseEvent(HandshakeContext channel) {
-        channel.getSelectionKey().cancel();
-        return true;
-    }
-
-    @Override
-    protected boolean onExecuteDisconnectEvent(HandshakeContext channel, Event.Disconnect.Reason reason) {
+    protected void onExecuteDisconnectEvent(HandshakeContext channel, Event.Disconnect.Reason reason) {
         if (channel.getPhase().isAsync()) {
             channel.setPhase(HandshakeContext.Phase.RECYCLE_PENDING);
         } else {
             channel.recycle();
         }
-        return true;
     }
 
     @Override
@@ -276,9 +279,13 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
 
     private void handleReadable(SelectionKey key, HandshakeContext context, SocketChannel channel) throws IOException {
         ByteBuffer readBuffer = context.getReadBuffer();
-        if (channel.read(readBuffer) == -1) {
+        int read = channel.read(readBuffer);
+        if (read == -1) {
             submitDisconnectEvent(context, Event.Disconnect.Reason.REMOTE_CLOSED);
             return;
+        }
+        if (read > 0) {
+            context.updateLastActiveTimeNanos(System.nanoTime());
         }
         if (readBuffer.hasRemaining()) {
             return;
@@ -303,21 +310,25 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                 submitToExecutor(key, context);
             }
             case READ_CHANNEL_TOKEN -> {
-                ServerSession session = sessionsManager.verifyAndConsumeToken(readBuffer, 0);
+                ServerSession session = sessionRegistry.verifyAndConsumeToken(readBuffer, 0, context.getKind());
                 if (session == null) {
                     submitDisconnectEvent(context, Event.Disconnect.Reason.SECURITY_FAILURE);
                     return;
                 }
-                key.cancel();
-                loadScore.decrement();
                 context.setPhase(HandshakeContext.Phase.READY);
-                session.getBusinessLoop().submitAcquireEvent(context.setTargetSession(session));
+                context.setTargetSession(session);
+                if (!submitTransferEvent(context, context, session.getBusinessLoop())) {
+                    submitDisconnectEvent(context, Event.Disconnect.Reason.TRANSFER_FAILURE);
+                }
             }
         }
     }
     private void handleWritable(SelectionKey selectionKey, HandshakeContext context, SocketChannel channel) throws IOException {
         ByteBuffer writeBuffer = context.getWriteBuffer();
-        channel.write(writeBuffer);
+        int written = channel.write(writeBuffer);
+        if (written > 0) {
+            context.updateLastActiveTimeNanos(System.nanoTime());
+        }
         if (writeBuffer.hasRemaining()) {
             return;
         }
@@ -327,10 +338,10 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                 selectionKey.interestOps(SelectionKey.OP_READ);
             }
             case WRITE_SERVER_FINISH -> {
-                selectionKey.cancel();
-                loadScore.decrement();
                 context.setPhase(HandshakeContext.Phase.READY);
-                serviceUnitLoadBalancer.select(null).getSignalingLoop().submitAcquireEvent(context);
+                if (!submitTransferEvent(context, context, serviceUnitLoadBalancer.select(null).getSignalingLoop())) {
+                    submitDisconnectEvent(context, Event.Disconnect.Reason.TRANSFER_FAILURE);
+                }
             }
         }
     }

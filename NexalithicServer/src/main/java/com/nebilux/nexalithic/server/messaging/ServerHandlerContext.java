@@ -5,7 +5,7 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.SessionAttachment;
 import com.nebilux.nexalithic.server.session.ServerSession;
-import com.nebilux.nexalithic.server.manager.SessionsManager;
+import com.nebilux.nexalithic.server.session.SessionRegistry;
 
 import java.net.InetAddress;
 
@@ -16,14 +16,14 @@ import java.net.InetAddress;
  * @since 0.1.0
  */
 public class ServerHandlerContext extends HandlerContext<ServerSession> {
-    private final SessionsManager sessionsManager;
+    private final SessionRegistry sessionRegistry;
 
-    public ServerHandlerContext(SessionsManager sessionsManager) {
-        this.sessionsManager = sessionsManager;
+    public ServerHandlerContext(SessionRegistry sessionRegistry) {
+        this.sessionRegistry = sessionRegistry;
     }
 
     public boolean push(String sessionName, BusinessPacket packet) {
-        ServerSession session = sessionsManager.getSession(sessionName);
+        ServerSession session = sessionRegistry.getSession(sessionName);
         if (session == null) {
             return false;
         }
@@ -31,13 +31,13 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
     }
 
     public void forceSetSessionName(String sessionName) {
-        ServerSession existing = sessionsManager.forceSetSessionName(sessionName, session);
+        ServerSession existing = sessionRegistry.forceSetSessionName(sessionName, session);
         if (existing != null) {
             existing.close();
         }
     }
     public boolean trySetSessionName(String sessionName) {
-        return sessionsManager.trySetSessionName(sessionName, session);
+        return sessionRegistry.trySetSessionName(sessionName, session);
     }
     public String getSessionName() {
         return session.getSessionName();
@@ -57,7 +57,7 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
     public void broadcastToOthers(BusinessPacket packet) {
         packet.seal();
         String currentSessionName = session.getSessionName();
-        sessionsManager.forEachNamedSession(s -> {
+        sessionRegistry.forEachNamedSession(s -> {
             if (!s.getSessionName().equals(currentSessionName)) {
                 s.pushBusinessPacket(packet.duplicate());
             }

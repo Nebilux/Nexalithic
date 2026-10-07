@@ -14,14 +14,32 @@ import java.io.IOException;
  */
 public interface NexalithicChannel {
     enum Kind {
-        Packet_Signaling(AbstractModel.ModelType.Packet),
-        Packet_Business(AbstractModel.ModelType.Packet),
-        Stream_Media(AbstractModel.ModelType.Stream),
-        Stream_File(AbstractModel.ModelType.Stream);
+        Packet_Signaling((byte) 0x0, AbstractModel.ModelType.Packet),
+        Packet_Business((byte) 0x1, AbstractModel.ModelType.Packet),
+        Stream_Media((byte) 0x2, AbstractModel.ModelType.Stream),
+        Stream_File((byte) 0x3, AbstractModel.ModelType.Stream);
 
+        private final byte code;
         private final AbstractModel.ModelType model;
-        Kind(AbstractModel.ModelType model) {
+        Kind(byte code, AbstractModel.ModelType model) {
+            this.code = code;
             this.model = model;
+        }
+
+        public static Kind fromCode(byte code) {
+            return switch (code) {
+                case 0x0 -> Packet_Signaling;
+                case 0x1 -> Packet_Business;
+                case 0x2 -> Stream_Media;
+                case 0x3 -> Stream_File;
+                default -> throw new IllegalArgumentException(
+                        "Unknown channel kind protocol id: " + Byte.toUnsignedInt(code)
+                );
+            };
+        }
+
+        public byte code() {
+            return code;
         }
 
         public AbstractModel.ModelType modelType() {

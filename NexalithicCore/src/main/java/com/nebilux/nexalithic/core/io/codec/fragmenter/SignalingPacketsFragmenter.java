@@ -39,19 +39,6 @@ public class SignalingPacketsFragmenter implements PacketsFragmenter<SignalingPa
     }
 
     @Override
-    public int fill(SignalingPacket... wrappers) {
-        int count = wrappers.length;
-        for (SignalingPacket wrapper : wrappers) {
-            if (feed(wrapper)) {
-                count--;
-            } else {
-                break;
-            }
-        }
-        return count;
-    }
-
-    @Override
     public boolean drain(LoopBuffer target) {
         int flag = target.writableBytes();
         SignalingPacket packet = currentPacket;

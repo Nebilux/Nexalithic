@@ -72,19 +72,6 @@ public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPack
     }
 
     @Override
-    public int fill(BusinessPacket... packets) {
-        int count = packets.length;
-        for (BusinessPacket packet : packets) {
-            if (feed(packet)) {
-                count--;
-            } else {
-                break;
-            }
-        }
-        return count;
-    }
-
-    @Override
     public boolean drain(LoopBuffer target) throws IOException {
         int flag = target.writableBytes(), written;
         BusinessPacketFragmentWrapper wrapper;

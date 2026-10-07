@@ -126,7 +126,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                         }
                         long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
                         if (targetRate > 0) {
-                            businessChannel.ownerSession().setRemoteBusinessChannelWriteRate(targetRate);
+                            businessChannel.getOwnerSession().setRemoteBusinessChannelWriteRate(targetRate);
                         }
                     }
                 }
@@ -142,27 +142,45 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     }
 
     @Override
-    protected boolean onExecuteAcquireEvent(HandshakeContext handoff) {
+    protected SessionChannel<BusinessPacket, ServerSession> onExecuteAcquireEvent(HandshakeContext handoff) {
+        SocketChannel socketChannel = null;
+        SessionChannel<BusinessPacket, ServerSession> sessionChannel = null;
+        boolean channelOpened = false;
         try {
-            SocketChannel socketChannel = handoff.takeChannel();
+            socketChannel = handoff.takeChannel();
+            ServerSession session = handoff.takeTargetSession();
+            sessionChannel = session.getBusinessChannel();
             SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
-            SessionChannel<BusinessPacket, ServerSession> sessionChannel = handoff.takeTargetSession().getBusinessChannel();
-            sessionChannel.open(socketChannel, selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            sessionChannel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            channelOpened = true;
+            socketChannel = null;
             if (!sessionChannel.fragmenterIsEmpty()) {
                 sessionChannel.updateInterest(SelectionKey.OP_WRITE, true);
             }
-            sessionChannel.updateLastActiveTimeNanos(System.nanoTime());
             timeWheel.schedule(sessionChannel, this);
-        } catch (IOException ignored) {
-        } finally {
-            handoff.recycle();
+            return sessionChannel;
+        } catch (Exception failure) {
+            logger.error("[{}] failed to acquire business channel", name, failure);
+            if (sessionChannel != null && (channelOpened || sessionChannel.getState() == com.nebilux.nexalithic.core.io.channel.NexalithicChannel.State.Opening)) {
+                try {
+                    sessionChannel.close();
+                } catch (Exception closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            if (!channelOpened && socketChannel != null) {
+                try {
+                    socketChannel.close();
+                } catch (Exception closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            return null;
         }
-        return true;
     }
 
     @Override
-    protected boolean onExecuteDisconnectEvent(SessionChannel<BusinessPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
-        return true;
+    protected void onExecuteDisconnectEvent(SessionChannel<BusinessPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
     }
 
     @Override
@@ -174,7 +192,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                 }
                 BusinessPacket packet;
                 while ((packet = channel.get()) != null) {
-                    handlerCoordinator.accept(channel.ownerSession(), packet);
+                    handlerCoordinator.accept(channel.getOwnerSession(), packet);
                 }
             } else if (selectionKey.isWritable()) {
                 channel.write();

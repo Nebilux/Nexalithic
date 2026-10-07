@@ -31,7 +31,7 @@ public class RawSignal extends SignalingPacket {
         }
     }
 
-    public short getContentLength() {
+    public short getLength() {
         return length;
     }
     public byte[] getContent() {
@@ -40,6 +40,6 @@ public class RawSignal extends SignalingPacket {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + "-> Signal: " + toName(signal) + ", Length: " + length + ", Content" + Arrays.toString(content);
+        return super.toString() + ", Length: " + length + ", Content" + Arrays.toString(content);
     }
 }

@@ -2,9 +2,27 @@
 
 > **The Unshakable Foundation for Secure High-Concurrency Messaging.**
 
+[![Maven Central](https://img.shields.io/maven-central/v/com.nebilux.nexalithic/nexalithic-core?label=Maven%20Central&logo=apachemaven&logoColor=white)](https://central.sonatype.com/artifact/com.nebilux.nexalithic/nexalithic-core)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
 
 Nexalithic 是一个基于 Java 21 的应用层网络框架，围绕客户端、服务端、会话与消息处理构建，并采用 Maven 多模块结构组织代码。
+
+## Maven Central
+
+这些构件已发布至 Maven Central，使用 Maven 时无需额外配置仓库。点击对应构件页面，在 **Snippets** 中选择 Maven，即可复制当前版本的依赖配置。
+
+| 用途               | Maven 坐标                                 | Maven Central               |
+| ------------------ | ------------------------------------------ | -------------------------   |
+| 公共协议与基础设施 | `com.nebilux.nexalithic:nexalithic-core`   | [查看 Core][maven-core]     |
+| 服务端             | `com.nebilux.nexalithic:nexalithic-server` | [查看 Server][maven-server] |
+| 客户端             | `com.nebilux.nexalithic:nexalithic-client` | [查看 Client][maven-client] |
+
+[maven-core]: https://central.sonatype.com/artifact/com.nebilux.nexalithic/nexalithic-core
+[maven-server]: https://central.sonatype.com/artifact/com.nebilux.nexalithic/nexalithic-server
+[maven-client]: https://central.sonatype.com/artifact/com.nebilux.nexalithic/nexalithic-client
+
+`nexalithic-server` 和 `nexalithic-client` 均已传递依赖 `nexalithic-core`，通常不需要再单独声明 Core。
 
 ## 核心能力
 
@@ -17,13 +35,13 @@ Nexalithic 是一个基于 Java 21 的应用层网络框架，围绕客户端、
 
 ## 项目结构
 
-| 模块 | 说明 |
-| --- | --- |
-| `NexalithicCore` | 公共协议模型、I/O 抽象、消息处理、任务与基础设施 |
-| `NexalithicServer` | 连接接入、握手、安全策略、会话和服务端生命周期 |
-| `NexalithicClient` | 客户端连接、会话、安全策略和客户端生命周期 |
+| 模块               | 说明                                             |
+| ------------------ | ------------------------------------------------ |
+| `NexalithicCore`   | 公共协议模型、I/O 抽象、消息处理、任务与基础设施 |
+| `NexalithicServer` | 连接接入、握手、安全策略、会话和服务端生命周期   |
+| `NexalithicClient` | 客户端连接、会话、安全策略和客户端生命周期       |
 
-## 构建
+## 本地构建
 
 环境要求：
 
@@ -46,3 +64,7 @@ mvn verify
 * **Lithic (Stone Age)**：寓意“石器时代”的纯粹与稳固，使架构在流量洪峰中如同巨石般岿然不动。
 
 ---
+
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE.txt) 发布，版权与其他声明详见 [NOTICE.txt](NOTICE.txt)。
