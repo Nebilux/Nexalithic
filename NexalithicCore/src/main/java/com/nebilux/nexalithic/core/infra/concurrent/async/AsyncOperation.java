@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @param <I> 触发操作时传递给 Action 的输入类型
  * @param <R> 异步操作的最终结果类型
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public final class AsyncOperation<I, R> {
     /**
@@ -35,7 +35,7 @@ public final class AsyncOperation<I, R> {
      * @param <I> 触发输入类型
      * @param <R> 异步操作的最终结果类型
      * @author Reonvia
-     * @since 0.2.2
+     * @since 0.3.0
      */
     @FunctionalInterface
     public interface Action<I, R> {
@@ -57,7 +57,7 @@ public final class AsyncOperation<I, R> {
      *
      * @param <R> 异步操作的最终结果类型
      * @author Reonvia
-     * @since 0.2.2
+     * @since 0.3.0
      */
     public interface Completer<R> {
         /**

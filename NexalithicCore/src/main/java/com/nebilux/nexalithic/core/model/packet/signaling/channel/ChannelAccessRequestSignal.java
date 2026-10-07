@@ -7,7 +7,7 @@ import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
  * 指定目标 Channel 类型的接入请求。
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public final class ChannelAccessRequestSignal extends ChannelAccessSignal {
     private static final int CONTENT_LENGTH = KIND_LENGTH;

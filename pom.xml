@@ -44,7 +44,7 @@
     </scm>
 
     <properties>
-        <revision>0.2.2-SNAPSHOT</revision>
+        <revision>0.3.0</revision>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

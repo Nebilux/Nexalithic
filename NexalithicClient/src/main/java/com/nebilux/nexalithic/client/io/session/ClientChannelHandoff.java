@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Socket 所有权转移给接收方；否则 {@link #discard()} 会关闭仍由交接对象持有的 Socket。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public abstract sealed class ClientChannelHandoff implements ChannelLoop.Handoff permits ClientChannelHandoff.Signaling, ClientChannelHandoff.Business {
     private final long stamp;

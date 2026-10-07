@@ -24,7 +24,7 @@ import java.util.Objects;
  * 信令通道、重试，或仅结束本次业务通道打开操作。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public class ChannelAccessCoordinator {
     /** 一次通道访问授权的处理结果。 */

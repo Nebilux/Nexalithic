@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * 已接入 Channel 的 Selector 所有权仍由 {@link ClientSessionLoop} 持有。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public class SessionManager {
     /** Session 状态事件。 */

@@ -9,7 +9,7 @@ import com.nebilux.nexalithic.core.builder.NexalithicConfigurer;
  * {@link NetworkRouter} 实例，因此构建阶段写入的路由会直接成为初始路由表。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 @FunctionalInterface
 public interface NetworkRouterConfigurer extends NexalithicConfigurer<NetworkRouter, Void> {

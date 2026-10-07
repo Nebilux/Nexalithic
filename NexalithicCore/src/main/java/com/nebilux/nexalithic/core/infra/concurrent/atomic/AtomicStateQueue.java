@@ -27,7 +27,7 @@ import java.util.function.Predicate;
  * @param <S> 状态类型
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public class AtomicStateQueue<E, S> {
     /**

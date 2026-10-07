@@ -17,7 +17,7 @@ import java.util.Objects;
  * {@code 0.0.0.0} 或 {@code ::} 等不可连接的监听地址。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public final class ChannelAccessResponseSignal extends ChannelAccessSignal {
     private static final int DEFAULT_ADDRESS_LENGTH = 0;

@@ -13,7 +13,7 @@ import java.util.Objects;
  * 之后的专属载荷，避免请求与响应分别实现相同的 Kind 编解码逻辑。</p>
  *
  * @author Reonvia
- * @since 0.2.2
+ * @since 0.3.0
  */
 public abstract sealed class ChannelAccessSignal extends SignalingPacket permits ChannelAccessRequestSignal, ChannelAccessResponseSignal {
     protected static final int KIND_LENGTH = Byte.BYTES;
