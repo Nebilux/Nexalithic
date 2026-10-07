@@ -2,6 +2,8 @@ package com.nebilux.nexalithic.core.model.packet.signaling;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessRequestSignal;
+import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
 
 import java.lang.reflect.Field;
 
@@ -14,11 +16,9 @@ import java.lang.reflect.Field;
 public abstract class SignalingPacket extends AbstractPacket {
     public static class Signal {
         public static final byte HeartBeat = 0x0;
-        public static final byte BusinessChannelToken_Request = -0x1;
-        public static final byte BusinessChannelToken_Response = 0x1;
-        public static final byte BusinessChannelPort_Request = -0x2;
-        public static final byte BusinessChannelPort_Response = 0x2;
         public static final byte BusinessChannelRate = -0x3;
+        public static final byte ChannelAccess_Request = -0x4;
+        public static final byte ChannelAccess_Response = 0x4;
     }
     public static final int HEADER_LENGTH = Byte.BYTES + Short.BYTES;
     public static final int MAX_PACKET_LENGTH = 1024 * 4;
@@ -33,7 +33,9 @@ public abstract class SignalingPacket extends AbstractPacket {
                 try {
                     byte value = field.getByte(null);
                     NAMES[value & 0xFF] = field.getName();
-                } catch (IllegalAccessException ignored) {}
+                } catch (IllegalAccessException exception) {
+                    throw new ExceptionInInitializerError(exception);
+                }
             }
         }
     }
@@ -54,14 +56,18 @@ public abstract class SignalingPacket extends AbstractPacket {
     public static SignalingPacket fromBuffer(LoopBuffer buffer) {
         buffer.markHead();
         byte signal = buffer.unsafeGetByte();
-        short length = buffer.unsafeGetShort();
+        int length = buffer.unsafeGetShort();
+        if (length < 0 || length + HEADER_LENGTH > MAX_PACKET_LENGTH) {
+            throw new IllegalArgumentException("Signaling packet length exceeds maximum: " + length);
+        }
         if (buffer.readableBytes() < length) {
             buffer.resetHead();
             return null;
         }
         return switch (signal) {
-            case Signal.BusinessChannelPort_Response, Signal.BusinessChannelRate -> new ScalarSignal(signal, buffer.unsafeGetLong());
-            case Signal.BusinessChannelToken_Response -> new TokenSignal(buffer);
+            case Signal.BusinessChannelRate -> new ScalarSignal(signal, buffer.unsafeGetLong());
+            case Signal.ChannelAccess_Request -> ChannelAccessRequestSignal.fromBuffer(buffer, length);
+            case Signal.ChannelAccess_Response -> ChannelAccessResponseSignal.fromBuffer(buffer, length);
             default -> {
                 if (length == 0) {
                     BareSignal bare = BareSignal.find(signal);
@@ -79,16 +85,20 @@ public abstract class SignalingPacket extends AbstractPacket {
         return signal;
     }
     public int getTotalSize() {
-        return HEADER_LENGTH + getContentLength();
+        return HEADER_LENGTH + getLength();
     }
 
     protected abstract void onToBuffer(LoopBuffer buffer);
-    public abstract byte[] getContent();
-    public abstract short getContentLength();
+    public abstract short getLength();
 
     public static String toName(byte signal) {
         String name = NAMES[signal & 0xFF];
         return name != null ? name : "UNKNOWN_SIGNAL(" + String.format("0x%02X", signal) + ")";
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + " -> Signal: " + toName(signal);
     }
 
     @Override

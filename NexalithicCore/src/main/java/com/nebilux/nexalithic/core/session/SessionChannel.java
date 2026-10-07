@@ -10,8 +10,6 @@ import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecurityCodec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -30,8 +28,6 @@ import java.util.concurrent.atomic.LongAdder;
  * @since 0.1.0
  */
 public class SessionChannel<P extends AbstractPacket, S extends NexalithicSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<P, S>>, SocketChannel> {
-    private static final Logger logger = LoggerFactory.getLogger(SessionChannel.class);
-    protected final AbstractPacket.PacketType channelType;
     protected final S ownerSession;
     protected final PacketsFragmenter<P> fragmenter;
     protected final PacketsAssembler<P> assembler;
@@ -43,11 +39,9 @@ public class SessionChannel<P extends AbstractPacket, S extends NexalithicSessio
     protected LoopBuffer readPlainBuffer, writeCipheBuffer;
     protected LoopBuffer readCipheBuffer, writePlainBuffer;
 
-    public SessionChannel(SecretKeyContext secretKeyContext, AbstractPacket.PacketType channelType,
-                          S ownerSession, SessionLoop<?, ? super SessionChannel<P, S>> ownerLoop,
-                          PacketsFragmenter<P> fragmenter, PacketsAssembler<P> assembler) {
-        super(ownerLoop);
-        this.channelType = channelType;
+    public SessionChannel(Kind kind, SessionLoop<?, ? super SessionChannel<P, S>> ownerLoop, S ownerSession,
+                          PacketsFragmenter<P> fragmenter, PacketsAssembler<P> assembler, SecretKeyContext secretKeyContext) {
+        super(kind, ownerLoop);
         this.ownerSession = ownerSession;
         this.fragmenter = fragmenter;
         this.assembler = assembler;
@@ -78,16 +72,25 @@ public class SessionChannel<P extends AbstractPacket, S extends NexalithicSessio
     public final boolean put(P packet) {
         return fragmenter.feed(packet);
     }
-    @SafeVarargs
-    public final int fill(P... packets) {
-        return fragmenter.fill(packets);
-    }
+
     public final P get() {
         return assembler.drain();
     }
 
     public final boolean fragmenterIsEmpty() {
         return fragmenter.isEmpty();
+    }
+
+    /**
+     * 判断已接受的待写数据是否已经送入底层通道。
+     *
+     * <p>只允许所属 Loop 线程在没有并发写操作时用于优雅关闭判断；
+     * 这不表示对端已经收到或处理了数据。</p>
+     */
+    public final boolean isWriteDrained() {
+        return fragmenter.isEmpty()
+                && (readPlainBuffer == null || readPlainBuffer.isEmpty())
+                && (writeCipheBuffer == null || writeCipheBuffer.isEmpty());
     }
 
     public final long write() throws IOException, InvalidAlgorithmParameterException, ShortBufferException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
@@ -116,6 +119,7 @@ public class SessionChannel<P extends AbstractPacket, S extends NexalithicSessio
         rateLimiter.consumeWrite(written);
         if (written > 0) {
             writeBytesWindow.add(written);
+            updateLastActiveTimeNanos(System.nanoTime());
         }
         if (writeCipheBuffer.isEmpty() && fragmenter.isEmpty()) {
             readPlainBuffer.recycle();
@@ -164,23 +168,18 @@ public class SessionChannel<P extends AbstractPacket, S extends NexalithicSessio
         rateLimiter.consumeRead(read);
         if (read > 0) {
             readBytesWindow.add(read);
+            updateLastActiveTimeNanos(System.nanoTime());
         }
         return read;
     }
 
-    public final S ownerSession() {
+    public final S getOwnerSession() {
         return ownerSession;
-    }
-    public final SessionLoop<?, ? super SessionChannel<P, S>> ownerLoop() {
-        return ownerLoop;
-    }
-
-    public final AbstractPacket.PacketType getChannelType() {
-        return channelType;
     }
 
     @Override
     protected void onClose(Transport<SocketChannel> transport) {
+        super.onClose(transport);
         if (readPlainBuffer != null) {
             readPlainBuffer.recycle();
             readPlainBuffer = null;
@@ -199,6 +198,6 @@ public class SessionChannel<P extends AbstractPacket, S extends NexalithicSessio
         }
         fragmenter.clear();
         assembler.clear();
-        rateState.reset();
+        resetDynamicRateState();
     }
 }

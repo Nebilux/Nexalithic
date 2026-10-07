@@ -21,19 +21,20 @@ import com.nebilux.nexalithic.server.io.accept.AdmissionStrategy;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeIngress;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeLoop;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
-import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleManager;
-import com.nebilux.nexalithic.server.manager.NetworkRouter;
-import com.nebilux.nexalithic.server.manager.SessionsManager;
+import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleCoordinator;
 import com.nebilux.nexalithic.server.messaging.ServerHandlerContext;
 import com.nebilux.nexalithic.server.messaging.ServerHandlerCoordinator;
+import com.nebilux.nexalithic.server.routing.NetworkRouter;
+import com.nebilux.nexalithic.server.routing.NetworkRouterConfigurer;
 import com.nebilux.nexalithic.server.security.ServerSecurityPolicy;
 import com.nebilux.nexalithic.server.session.ServerSession;
+import com.nebilux.nexalithic.server.session.SessionRegistry;
+import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Collection;
@@ -47,23 +48,26 @@ import java.util.function.Consumer;
  * @since 0.1.0
  */
 @SuppressWarnings("UnusedReturnValue")
-public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager> {
+public class NexalithicServer extends NexalithicEndpoint {
     public static final Modules MODULES = new Modules();
     public static final class Modules extends NexalithicEndpoint.Modules {
-        public final NexalithicModule<SessionsManager> SessionsManager = defineModule(SessionsManager.class);
+        public final NexalithicModule<SessionRegistry> SessionRegistry = defineModule(SessionRegistry.class);
         public final NexalithicModule<NetworkRouter> NetworkRouter = defineModule(NetworkRouter.class);
+        public final NexalithicModule<ChannelAccessCoordinator> ChannelAccessCoordinator = defineModule(ChannelAccessCoordinator.class);
         private Modules() {
             super(NexalithicServer.class);
         }
     }
 
     private static final Logger logger = LoggerFactory.getLogger(NexalithicServer.class);
-    private final SessionsManager sessionsManager;
+    private final AcceptorLoop acceptorLoop;
+    private final SessionRegistry sessionRegistry;
     private final NetworkRouter networkRouter;
 
     private NexalithicServer(NexalithicBuilderContext context) {
-        super(context.getModule(MODULES.LifecycleManager), context.getModule(MODULES.EventBus));
-        this.sessionsManager = context.getModule(MODULES.SessionsManager);
+        super(context, MODULES);
+        this.acceptorLoop = context.getModule(ServerLifecycleCoordinator.MODULES.AcceptorLoop);
+        this.sessionRegistry = context.getModule(MODULES.SessionRegistry);
         this.networkRouter = context.getModule(MODULES.NetworkRouter);
         System.gc();
     }
@@ -83,12 +87,14 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
             Objects.requireNonNull(strategyBuilder, "strategyBuilder");
             ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
             int bindPort = serverSocketChannel.bind(localAddress).socket().getLocalPort();
-            logger.info("Successfully bound server to [{}:{}] with packetType [{}] and strategy [{}]",
+            logger.info("Successfully bound server to [{}:{}] with ChannelKind [{}] and Strategy [{}]",
                     localAddress.getHostString(), bindPort, channelKind, strategyBuilder.getName());
-            lifecycleManager.getAcceptorLoop().register(serverSocketChannel, channelKind, strategyBuilder);
+            if (!acceptorLoop.register(serverSocketChannel, channelKind, strategyBuilder)) {
+                throw new IOException("AcceptorLoop is not accepting listener registrations");
+            }
             return bindPort;
         } catch (IOException exception) {
-            logger.error("Failed to bind to local [{}]. packetType [{}], Strategy [{}]",
+            logger.error("Failed to bind to local [{}]. ChannelKind [{}], Strategy [{}]",
                     localAddress, channelKind, strategyBuilder.getName(), exception);
             throw exception;
         }
@@ -98,7 +104,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
     }
 
     public boolean kick(String sessionName) {
-        ServerSession session = sessionsManager.removeSession(sessionName);
+        ServerSession session = sessionRegistry.removeSession(sessionName);
         if (session == null) {
             return false;
         }
@@ -107,7 +113,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
     }
 
     public TaskHandle submit(String sessionName, NexalithicTask.Builder taskBuilder) {
-        ServerSession session = sessionsManager.getSession(sessionName);
+        ServerSession session = sessionRegistry.getSession(sessionName);
         if (session == null) {
             return null;
         }
@@ -121,7 +127,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
      * @param packet 业务数据包
      */
     public boolean push(String sessionName, BusinessPacket packet) {
-        ServerSession session = sessionsManager.getSession(sessionName);
+        ServerSession session = sessionRegistry.getSession(sessionName);
         if (session == null) {
             return false;
         }
@@ -135,7 +141,7 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
      */
     public void pushToAll(BusinessPacket packet) {
         packet.seal();
-        sessionsManager.forEachNamedSession(session -> session.pushBusinessPacket(packet.duplicate()));
+        sessionRegistry.forEachNamedSession(session -> session.pushBusinessPacket(packet.duplicate()));
     }
 
     /**
@@ -143,24 +149,18 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
      * @param action 业务处理逻辑
      */
     public void forEachSession(Consumer<SessionAttachment> action) {
-        sessionsManager.forEachNamedSession(session -> action.accept(session.attachment()));
+        sessionRegistry.forEachNamedSession(session -> action.accept(session.attachment()));
     }
 
     public Collection<String> getAllSessionsName() {
-        return sessionsManager.allSessionName();
+        return sessionRegistry.allSessionName();
     }
 
     /**
-     * <p>获取当前服务器的路由管理器。</p>
-     * <ul>
-     * <li><b>前置性：</b> 开发者必须在调用 {@link #open(NexalithicChannel.Kind, InetSocketAddress, AdmissionStrategy.Builder)} 开启端口监听<b>之前</b>，
-     * 通过此方法获取路由器并完成所有初始路由规则的添加（{@link NetworkRouter#addRoutes}）。</li>
-     * <li><b>冷启动保护：</b> 若在 open 之后才添加路由，可能会导致服务器启动瞬间涌入的Channel
-     * 因找不到匹配端口（Return -1）而触发静默丢弃或连接断开。</li>
-     * <li><b>动态性：</b> 服务器运行期间仍支持动态增删路由，但基础骨干路由应在 open 前就位。</li>
-     * </ul>
+     * 返回全局网络路由器。
      *
-     * @return 全局唯一的网络路由器实例 {@link NetworkRouter}
+     * <p>{@link #open} 成功把监听器注册到 AcceptorLoop 后会自动添加监听路由，关闭监听器时
+     * 自动移除。调用者仍可在启动前或运行期间添加 CIDR/默认路由；显式规则优先于自动路由。</p>
      */
     public NetworkRouter getNetworkRouter() {
         return networkRouter;
@@ -176,9 +176,15 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
             return this;
         }
 
-        public Builder addRoute(NexalithicChannel.Kind kind, String cidr, int port) throws UnknownHostException {
+        /**
+         * 集中配置服务器的 CIDR 路由和默认路由。
+         *
+         * @param configurer 路由配置器
+         * @return 当前 Builder
+         */
+        public Builder networkRouterConfigurer(NetworkRouterConfigurer configurer) {
             NetworkRouter router = context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
-            router.addRoute(kind, cidr, port);
+            configurer.configure(router);
             return this;
         }
 
@@ -197,20 +203,22 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
 
             controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
             context.setModule(MODULES.EventBus, new NexalithicEventBus());
-            context.setModule(MODULES.SessionsManager, new SessionsManager(context));
+            context.setModule(MODULES.SessionRegistry, new SessionRegistry(context));
+            context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
+            context.setModule(MODULES.ChannelAccessCoordinator, new ChannelAccessCoordinator(context));
             context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
             context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
             ServerHandlerCoordinator handlerCoordinator = new ServerHandlerCoordinator(context);
             context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
             context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
 
-            ServiceUnit[] serviceUnits = new ServiceUnit[context.getOption(ServerLifecycleManager.OPTIONS.ServiceUnit_Count)];
+            ServiceUnit[] serviceUnits = new ServiceUnit[context.getOption(ServerLifecycleCoordinator.OPTIONS.ServiceUnit_Count)];
             for (int i = 0; i < serviceUnits.length; i++) {
                 serviceUnits[i] = new ServiceUnit(context);
             }
-            context.setModule(ServerLifecycleManager.MODULES.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
+            context.setModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
 
-            HandshakeLoop[] handshakeLoops = new HandshakeLoop[context.getOption(ServerLifecycleManager.OPTIONS.HandshakeLoop_Count)];
+            HandshakeLoop[] handshakeLoops = new HandshakeLoop[context.getOption(ServerLifecycleCoordinator.OPTIONS.HandshakeLoop_Count)];
             for (int i = 0; i < handshakeLoops.length; i++) {
                 handshakeLoops[i] = new HandshakeLoop(context);
             }
@@ -223,10 +231,10 @@ public class NexalithicServer extends NexalithicEndpoint<ServerLifecycleManager>
                     return loopLoadBalancer.select(null).submit(kind, channel);
                 }
             });
-            context.setModule(ServerLifecycleManager.MODULES.HandshakeLoopLoadBalancer, handshakeLoopLoadBalancer);
+            context.setModule(ServerLifecycleCoordinator.MODULES.HandshakeLoopLoadBalancer, handshakeLoopLoadBalancer);
 
-            context.setModule(ServerLifecycleManager.MODULES.AcceptorLoop, new AcceptorLoop(context));
-            context.setModule(MODULES.LifecycleManager, new ServerLifecycleManager(context));
+            context.setModule(ServerLifecycleCoordinator.MODULES.AcceptorLoop, new AcceptorLoop(context));
+            context.setModule(MODULES.LifecycleCoordinator, new ServerLifecycleCoordinator(context));
             return new NexalithicServer(context);
         }
     }

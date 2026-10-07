@@ -59,7 +59,6 @@ public class TaskCoordinator {
 
     public void activate(NexalithicTask task) {
         if (task.getPattern() == NexalithicTask.Pattern.ONE_WAY) {
-            untrack(task);
             scheduler.schedule(task, TaskEvent.COMPLETE());
             return;
         }
@@ -77,6 +76,11 @@ public class TaskCoordinator {
 
     public TaskScheduler getScheduler() {
         return scheduler;
+    }
+
+    /** 当前 Session 是否仍有尚未处理完毕的本地任务。 */
+    public boolean hasActiveTasks() {
+        return !activeTasks.isEmpty();
     }
 
     public void trySubmitWaitingTask(NexalithicTask activeTask) {
@@ -113,9 +117,8 @@ public class TaskCoordinator {
         if (task == null) {
             return null;
         }
-        if (task.getPattern() == NexalithicTask.Pattern.STREAM) {
-            return task;
-        }
-        return activeTasks.remove(taskId, task) ? task : null;
+        // 收到响应不等于响应回调执行完毕；任务必须留在 activeTasks 中，
+        // 直到 TaskScheduler 执行回调并移除它，优雅关闭才能正确等待回调。
+        return task.getState().isTerminal() ? null : task;
     }
 }

@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
@@ -433,6 +434,65 @@ public class AtomicStateQueue<E, S> {
      */
     public E poll() {
         return delegateQueue.poll();
+    }
+
+    /**
+     * 从队首移除元素并交给指定操作处理，直到队列被观察为空。
+     *
+     * <p>本方法只负责消费底层队列中的元素，不会读取或改变共享状态，也不会
+     * 阻止并发提交。若其他线程持续提交元素，本方法可能长时间无法返回。需要
+     * 最终排空队列时，调用方应先将共享状态转换为拒绝新提交的状态。</p>
+     *
+     * <p>元素会在调用 {@code action} 前从队列中移除。若操作抛出异常，该异常
+     * 会直接传播，当前元素不会重新加入队列，剩余元素仍保留在队列中。</p>
+     *
+     * @param action 元素处理操作
+     * @return 本次处理的元素数量
+     * @throws NullPointerException 当 {@code action} 为 {@code null} 时抛出
+     */
+    public int drain(Consumer<? super E> action) {
+        Objects.requireNonNull(action, "action");
+        int drained = 0;
+        E element;
+        while ((element = delegateQueue.poll()) != null) {
+            action.accept(element);
+            if (drained != Integer.MAX_VALUE) {
+                drained++;
+            }
+        }
+        return drained;
+    }
+
+    /**
+     * 从队首移除并处理至多 {@code limit} 个元素。
+     *
+     * <p>本方法不参与状态转换协议，也不阻止并发提交。它适用于事件循环中的
+     * 有界批量处理，可避免单个队列长期占用消费线程。</p>
+     *
+     * <p>元素会在调用 {@code action} 前从队列中移除。若操作抛出异常，该异常
+     * 会直接传播，当前元素不会重新加入队列，剩余元素仍保留在队列中。</p>
+     *
+     * @param action 元素处理操作
+     * @param limit 本次最多处理的元素数量，必须大于或等于 {@code 0}
+     * @return 本次实际处理的元素数量
+     * @throws NullPointerException 当 {@code action} 为 {@code null} 时抛出
+     * @throws IllegalArgumentException 当 {@code limit} 小于 {@code 0} 时抛出
+     */
+    public int drain(Consumer<? super E> action, int limit) {
+        Objects.requireNonNull(action, "action");
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be non-negative");
+        }
+        int drained = 0;
+        while (drained < limit) {
+            E element = delegateQueue.poll();
+            if (element == null) {
+                break;
+            }
+            action.accept(element);
+            drained++;
+        }
+        return drained;
     }
 
     /**

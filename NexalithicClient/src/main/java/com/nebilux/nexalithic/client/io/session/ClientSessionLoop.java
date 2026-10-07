@@ -1,45 +1,28 @@
 package com.nebilux.nexalithic.client.io.session;
 
 import com.nebilux.nexalithic.client.NexalithicClient;
-import com.nebilux.nexalithic.client.manager.LinkStatusManager;
-import com.nebilux.nexalithic.client.manager.NetworkRouter;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerCoordinator;
-import com.nebilux.nexalithic.client.security.ClientSecurityPolicy;
-import com.nebilux.nexalithic.client.session.ClientChannelFactory;
 import com.nebilux.nexalithic.client.session.ClientSession;
+import com.nebilux.nexalithic.client.session.SessionManager;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
-import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.BareSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.security.SecretKeyContext;
-import com.nebilux.nexalithic.core.security.SecretKeyUtils;
-import com.nebilux.nexalithic.core.security.SecurityPolicy;
+import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
 import com.nebilux.nexalithic.core.session.SessionChannel;
-import com.nebilux.nexalithic.core.session.SessionKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.security.*;
-import java.security.spec.InvalidKeySpecException;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -49,7 +32,7 @@ import java.util.function.Function;
  * @author Reonvia
  * @since 0.1.0
  */
-public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionChannel<?, ClientSession>> {
+public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, SessionChannel<?, ClientSession>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ClientSessionLoop.class);
     public static final class Options extends SessionLoop.Options {
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
@@ -61,18 +44,15 @@ public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionC
             return 30_000L;
         }
     }
-    private record Constant(long HeartBeat_IntervalNanos, boolean DynamicRate_Enable, long DynamicRate_TickNanos) {}
+
     private static final Logger logger = LoggerFactory.getLogger(ClientSessionLoop.class);
+    private record Constant(long HeartBeat_IntervalNanos, boolean DynamicRate_Enable, long DynamicRate_TickNanos) {}
     private final Constant CONSTANT;
-    private final Queue<Runnable> eventQueue;
-    private final LinkStatusManager linkStatusManager;
-    private final ClientSecurityPolicy securityPolicy;
+    private final SessionManager sessionManager;
     private final ClientHandlerCoordinator handlerCoordinator;
-    private final NetworkRouter networkRouter;
     private final DynamicRateController dynamicRateController;
-    private final Function<Object[], ClientSession> sessionFactory;
+    private final Function<ClientChannelHandoff.Signaling, ClientSession> sessionFactory;
     private long lastDynamicRateTickNanos;
-    private volatile ClientSession session;
 
     public ClientSessionLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
@@ -81,11 +61,8 @@ public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionC
                 context.getOption(OPTIONS.DynamicRateController.Enable),
                 TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS)
         );
-        linkStatusManager = context.getModule(NexalithicClient.MODULES.LinkStatusManager);
-        securityPolicy = context.getModule(NexalithicClient.MODULES.SecurityPolicy);
+        sessionManager = context.getModule(NexalithicClient.MODULES.SessionManager);
         handlerCoordinator = context.getModule(NexalithicClient.MODULES.HandlerCoordinator);
-        networkRouter = new NetworkRouter();
-        eventQueue = new ConcurrentLinkedQueue<>();
         dynamicRateController = new DynamicRateController(
                 context.getOption(OPTIONS.DynamicRateController.MinBps),
                 context.getOption(OPTIONS.DynamicRateController.MaxBps),
@@ -96,22 +73,19 @@ public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionC
                 context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
-        ClientChannelFactory channelFactory = new ClientChannelFactory(context, this);
         TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
-        sessionFactory = objects -> new ClientSession(
-                (SessionKey) objects[0],
-                (SecretKeyContext) objects[1],
-                (SecretKeyContext) objects[2],
-                channelFactory,
-                taskScheduler,
-                networkRouter
+        ClientSession.ChannelFactory channelFactory = new ClientSession.ChannelFactory(context, this);
+        sessionFactory = handoff -> new ClientSession(
+                handoff.sessionKey(), handoff.signalingSecretKey(), handoff.businessSecretKey(),
+                channelFactory, taskScheduler, sessionManager
         );
         lastDynamicRateTickNanos = System.nanoTime();
-        isDrainCondition(eventQueue::isEmpty);
         drainAsyncEventsCondition(() -> {
-            while (!eventQueue.isEmpty()) {
-                eventQueue.poll().run();
+            if (sessionManager.isShuttingDown()) {
+                sessionManager.tryFinishGracefulShutdown();
+                return true;
             }
+            ClientSession session = sessionManager.getCurrentSession();
             if (session != null) {
                 long now = System.nanoTime();
                 if (now - session.getLastActiveTimeNanos() >= CONSTANT.HeartBeat_IntervalNanos) {
@@ -131,182 +105,98 @@ public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionC
             } else {
                 lastDynamicRateTickNanos = System.nanoTime();
             }
-            return eventQueue.isEmpty();
+            return true;
         });
-    }
-
-    public boolean link(AbstractPacket.PacketType packetType, SocketChannel socketChannel, byte[] token) throws IOException,
-            NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException,
-            InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException, ShortBufferException {
-        socketChannel.write(ByteBuffer.allocate(SecurityPolicy.MAGIC_NUMBER_LENGTH).putLong(SecurityPolicy.MAGIC_NUMBER).flip());
-        if (packetType == AbstractPacket.PacketType.Signaling) {
-            MessageDigest transcriptHash = SecretKeyUtils.createTranscriptHash();
-            int certificatesLength = securityPolicy.certificatesLength();
-            int keyAndSignatureLength = SecretKeyUtils.ECDH_LENGTH + securityPolicy.signatureLength();
-            ByteBuffer readBuffer = ByteBuffer.allocate(Math.max(certificatesLength + keyAndSignatureLength,
-                    SecretKeyUtils.FINISHED_LENGTH + SessionKey.LENGTH + SecretKeyContext.TAG_LENGTH * 2));
-            if (socketChannel.read(readBuffer) == -1) {
-                return false;
-            }
-            transcriptHash.update(readBuffer.flip());
-            securityPolicy.certificatesFormBuffer(readBuffer.slice(0, certificatesLength));
-            if (!securityPolicy.verify(readBuffer.slice(certificatesLength, keyAndSignatureLength))) {
-                logger.warn("NexalithicCertificate verification failed");
-                throw new SecurityException("NexalithicCertificate verification failed");
-            }
-            KeyPair keyPair = SecretKeyUtils.generateKeyPair();
-            ByteBuffer writeBuffer = ByteBuffer.allocate(SecretKeyUtils.ECDH_LENGTH + SecretKeyUtils.FINISHED_LENGTH + SecretKeyContext.TAG_LENGTH);
-            writeBuffer.put(SecretKeyUtils.rawPublickey(keyPair.getPublic()));
-            transcriptHash.update(writeBuffer.flip());
-            writeBuffer.limit(writeBuffer.capacity());
-            byte[] secret = SecretKeyUtils.compactSecret(keyPair.getPrivate(), readBuffer.slice(certificatesLength, keyAndSignatureLength));
-            byte[] localFinished = SecretKeyUtils.generateFinished(secret, transcriptHash.digest());
-            SecretKeyContext signalingSecretKey = SecretKeyUtils.generateSessionSecretKey(secret, SecretKeyUtils.LABEL_CLIENT_SIGNALING, SecretKeyUtils.LABEL_SERVER_SIGNALING);
-            writeBuffer.put((signalingSecretKey.encrypt(localFinished)));
-            socketChannel.write(writeBuffer.flip());
-            if (socketChannel.read(readBuffer.clear()) == -1) {
-                return false;
-            }
-            byte[] remoteFinished = signalingSecretKey.decrypt(readBuffer.flip().limit(SecretKeyUtils.FINISHED_LENGTH + SecretKeyContext.TAG_LENGTH));
-            if (!MessageDigest.isEqual(localFinished, remoteFinished)) {
-                logger.warn("Finished verification failed");
-                throw new SecurityException("Finished verification failed");
-            }
-            ByteBuffer tempBuffer = ByteBuffer.allocate(SessionKey.LENGTH);
-            signalingSecretKey.decrypt(readBuffer.position(readBuffer.limit()).limit(readBuffer.limit() + SessionKey.LENGTH + SecretKeyContext.TAG_LENGTH), tempBuffer);
-            session = sessionFactory.apply(new Object[]{
-                    new SessionKey.Immutable(tempBuffer.flip(), 0),
-                    signalingSecretKey,
-                    SecretKeyUtils.generateSessionSecretKey(secret, SecretKeyUtils.LABEL_CLIENT_BUSINESS, SecretKeyUtils.LABEL_SERVER_BUSINESS)
-            });
-            logger.info("Link server succeeded");
-        } else {
-            socketChannel.write(ByteBuffer.wrap(token));
-        }
-        eventQueue.add(() -> {
-            SessionChannel<?, ClientSession> channel = session.getChannel(packetType);
-            try {
-                SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
-                channel.open(socketChannel, selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
-                logger.debug("[{}] channel open succeeded", packetType);
-                if (!channel.fragmenterIsEmpty()) {
-                    channel.updateInterest(SelectionKey.OP_WRITE, true);
-                }
-                if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
-                    linkStatusManager.trigger(LinkStatusManager.Status.LINKED);
-                } else {
-                    channel.resetDynamicRateState();
-                }
-            } catch (Exception e) {
-                logger.error("[{}] channel open failed", packetType, e);
-                if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
-                    linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, e instanceof IOException ? LinkStatusManager.Reason.NETWORK_ERROR : LinkStatusManager.Reason.PROTOCOL_ERROR, e);
-                }
-                submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
-            }
-        });
-        wakeup();
-        return true;
-    }
-
-    public void unlink() {
-        eventQueue.add(() -> {
-            LinkStatusManager.Status current = linkStatusManager.getStatus();
-            if (current == LinkStatusManager.Status.UNLINKED) {
-                logger.info("Server already unlinked, skipping.");
-                return;
-            }
-            logger.info("Initiating active unlink from state: {}", current);
-            linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, LinkStatusManager.Reason.LOCAL_ACTIVE);
-            if (session != null) {
-                session.close();
-                session = null;
-                logger.info("Session closed and resources recycled.");
-            }
-            networkRouter.clear();
-        });
-        wakeup();
     }
 
     @Override
-    protected boolean onExecuteAcquireEvent(Handoff handoff) {
-        return true;
+    protected SessionChannel<?, ClientSession> onExecuteAcquireEvent(ClientChannelHandoff handoff) throws Exception {
+        if (sessionManager.isShuttingDown() || !sessionManager.isAccepting()) {
+            return null;
+        }
+        if (handoff instanceof ClientChannelHandoff.Business business) {
+            if (!sessionManager.isCurrent(business.targetSession(), handoff.stamp())) {
+                return null;
+            }
+        } else if (!sessionManager.isCurrent(handoff.stamp())) {
+            return null;
+        }
+        return switch (handoff) {
+            case ClientChannelHandoff.Signaling signaling -> acquireSignalingChannel(signaling);
+            case ClientChannelHandoff.Business business -> acquireBusinessChannel(business);
+        };
+    }
+
+    @Override
+    protected void onChannelAcquired(ClientChannelHandoff handoff, SessionChannel<?, ClientSession> channel) {
+        sessionManager.onChannelAcquired(handoff, channel);
+        logger.debug("[{}] channel acquisition succeeded", channel.getKind());
+    }
+
+    @Override
+    protected void onChannelAcquireFailed(ClientChannelHandoff handoff, Throwable failure) {
+        sessionManager.onChannelAcquireFailed(handoff, failure);
     }
 
     @Override
     protected boolean onExecuteReleaseEvent(SessionChannel<?, ClientSession> channel) {
+        SelectionKey key = channel.getSelectionKey();
+        if (key != null) {
+            key.cancel();
+        }
         return true;
     }
 
     @Override
-    protected boolean onExecuteDisconnectEvent(SessionChannel<?, ClientSession> channel, Event.Disconnect.Reason reason) {
-        return true;
+    protected void onExecuteDisconnectEvent(SessionChannel<?, ClientSession> channel, Event.Disconnect.Reason reason) {
+        sessionManager.onChannelDisconnected(channel, reason);
     }
 
     @Override
-    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<?, ClientSession> channel) throws IOException {
+    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<?, ClientSession> channel) {
         try {
             if (selectionKey.isReadable()) {
                 if (channel.read() == -1) {
-                    closeChannel(channel, false);
+                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
                     return;
                 }
-                if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
+                ClientSession ownerSession = channel.getOwnerSession();
+                if (channel.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
                     while (channel.get() instanceof SignalingPacket packet) {
-                        handleSignalPacket(packet);
+                        handleSignalPacket(ownerSession, packet);
                     }
                 } else {
                     while (channel.get() instanceof BusinessPacket packet) {
-                        handlerCoordinator.accept(session, packet);
+                        handlerCoordinator.accept(ownerSession, packet);
                     }
                 }
             } else if (selectionKey.isWritable()) {
                 channel.write();
             } else {
-                closeChannel(channel, false);
+                submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
             }
         } catch (IOException e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Channel[{}] onReadyEvent[{}] error", channel.toString(), name, e);
             }
-            closeChannel(channel, true);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
         } catch (Exception e) {
             logger.warn("Channel[{}] onReadyEvent[{}] error", channel.toString(), name, e);
-            closeChannel(channel, true);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    protected void onKeyNotValid(SelectionKey selectionKey) {
-        SessionChannel<?, ClientSession> channel = (SessionChannel<?, ClientSession>) selectionKey.attachment();
-        if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
-            closeChannel(channel, false);
-        }
-    }
+//    @SuppressWarnings("unchecked")
+//    protected void onKeyNotValid(SelectionKey selectionKey) {
+//        SessionChannel<?, ClientSession> channel = (SessionChannel<?, ClientSession>) selectionKey.attachment();
+//        if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
+//            disconnectChannel(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
+//        }
+//    }
 
-    private void handleSignalPacket(SignalingPacket packet) throws Exception {
+    private void handleSignalPacket(ClientSession session, SignalingPacket packet) {
         switch (packet.getSignal()) {
-            case SignalingPacket.Signal.BusinessChannelToken_Response -> {
-                byte[] token = packet.getContent();
-                Integer port = networkRouter.getPort(AbstractPacket.PacketType.Business);
-                if (port == null) {
-                    session.setBusinessChannelToken(token);
-                } else {
-                    link(AbstractPacket.PacketType.Business,
-                            SocketChannel.open(new InetSocketAddress(networkRouter.getServerHost(), port)),
-                            token);
-                }
-            }
-            case SignalingPacket.Signal.BusinessChannelPort_Response -> {
-                int port = ((ScalarSignal) packet).asInt();
-                networkRouter.setPort(AbstractPacket.PacketType.Business, port);
-                byte[] token = session.getBusinessChannelToken();
-                if (token != null) {
-                    link(AbstractPacket.PacketType.Business,
-                            SocketChannel.open(new InetSocketAddress(networkRouter.getServerHost(), port)),
-                            token);
-                }
-            }
+            case SignalingPacket.Signal.ChannelAccess_Response -> sessionManager.onChannelAccess(session, (ChannelAccessResponseSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
                 SessionChannel<?, ClientSession> businessChannel = session.getBusinessChannel();
@@ -316,81 +206,40 @@ public class ClientSessionLoop extends SessionLoop<ChannelLoop.Handoff, SessionC
         }
     }
 
-    public ClientSession getSession() {
-        return session;
-    }
-    public NetworkRouter getNetworkRouter() {
-        return networkRouter;
+    private SessionChannel<?, ClientSession> acquireSignalingChannel(ClientChannelHandoff.Signaling handoff) throws Exception {
+        SessionChannel<?, ClientSession> channel = sessionFactory.apply(handoff).getSignalingChannel();
+        openTransferredChannel(handoff, channel);
+        return channel;
     }
 
-    private void closeChannel(SessionChannel<?, ?> channel, boolean reconnect) {
-        String channelInfo = channel.toString();
-        logger.debug("closeChannel[{}]", channelInfo);
-        AbstractPacket.PacketType type = channel.getChannelType();
-        if (type == AbstractPacket.PacketType.Signaling) {
-            channel.ownerSession().close();
-            session = null;
-        } else {
+    private SessionChannel<?, ClientSession> acquireBusinessChannel(ClientChannelHandoff.Business handoff) throws Exception {
+        ClientSession target = handoff.targetSession();
+        SessionChannel<?, ClientSession> channel = target.getBusinessChannel();
+        openTransferredChannel(handoff, channel);
+        return channel;
+    }
+
+    private void openTransferredChannel(ClientChannelHandoff handoff, SessionChannel<?, ClientSession> channel) throws Exception {
+        SocketChannel socketChannel = handoff.takeChannel();
+        try {
+            socketChannel.configureBlocking(false);
+            SelectionKey selectionKey = registerSelectableChannel(socketChannel, SelectionKey.OP_READ);
+            channel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            if (!channel.fragmenterIsEmpty()) {
+                channel.updateInterest(SelectionKey.OP_WRITE, true);
+            }
+        } catch (Exception | Error failure) {
             try {
                 channel.close();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            } catch (Throwable closeFailure) {
+                failure.addSuppressed(closeFailure);
             }
-        }
-        if (!reconnect) {
-            if (type == AbstractPacket.PacketType.Signaling) {
-                logger.info("Signaling channel closed without reconnection request.");
-                linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, LinkStatusManager.Reason.REMOTE_ACTIVE);
-            } else {
-                logger.debug("Business channel closed without reconnection request.");
+            try {
+                socketChannel.close();
+            } catch (Throwable closeFailure) {
+                failure.addSuppressed(closeFailure);
             }
-            return;
-        }
-        performReconnect(type);
-    }
-    private synchronized void performReconnect(AbstractPacket.PacketType type) {
-        logger.info("Initiating reconnection sequence for channel type: {}", type);
-        if (type == AbstractPacket.PacketType.Signaling) {
-            linkStatusManager.trigger(LinkStatusManager.Status.RECONNECTING);
-            boolean success = false;
-            for (int i = 1; i < 6; i++) {
-                logger.debug("Signaling reconnection attempt [{}/5] to {}", i, networkRouter.getServerAddress());
-                try {
-                    if (link(AbstractPacket.PacketType.Signaling, SocketChannel.open(networkRouter.getServerAddress()), null)) {
-                        logger.info("Signaling reconnection successful at attempt {}", i);
-                        success = true;
-                        break;
-                    }
-                } catch (Exception e) {
-                    logger.warn("Signaling reconnection attempt [{}/5] failed: {}", i, e.getMessage());
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Detailed error for attempt [{}]", i, e);
-                    }
-                }
-                try {
-                    Thread.sleep(3000 * i);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-            if (!success) {
-                logger.error("All 5 reconnection attempts failed for Signaling channel. Switching to UNLINKED.");
-                linkStatusManager.trigger(LinkStatusManager.Status.UNLINKED, LinkStatusManager.Reason.NETWORK_ERROR);
-            }
-        } else {
-            if (session == null) {
-                logger.warn("Skip Business reconnection: No active session available.");
-                return;
-            }
-            Integer port = networkRouter.getPort(AbstractPacket.PacketType.Business);
-            if (port == null) {
-                logger.info("Business port unknown, requesting BusinessChannelPort_Request via Signaling channel.");
-                session.pushSignalingPacket(BareSignal.BusinessChannelPort_Request);
-            } else {
-                logger.debug("Retrieved existing business port from router: {}", port);
-            }
-            logger.info("Requesting new BusinessChannelToken via Signaling channel.");
-            session.pushSignalingPacket(BareSignal.BusinessChannelToken_Request);
+            throw failure;
         }
     }
 }

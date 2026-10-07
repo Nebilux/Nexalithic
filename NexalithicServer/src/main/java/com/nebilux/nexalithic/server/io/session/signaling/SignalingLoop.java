@@ -11,21 +11,18 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.TokenSignal;
+import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessRequestSignal;
 import com.nebilux.nexalithic.core.session.SessionChannel;
-import com.nebilux.nexalithic.core.session.SessionKey;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
-import com.nebilux.nexalithic.server.manager.NetworkRouter;
-import com.nebilux.nexalithic.server.manager.SessionsManager;
-import com.nebilux.nexalithic.server.session.ServerChannelFactory;
 import com.nebilux.nexalithic.server.session.ServerSession;
+import com.nebilux.nexalithic.server.session.SessionRegistry;
+import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
 import org.jctools.queues.SpmcArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,13 +31,11 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.ShortBufferException;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
-import java.security.SecureRandom;
 import java.util.function.Function;
 
 /**
@@ -77,16 +72,15 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(SignalingLoop.class);
-    private final SessionsManager sessionsManager;
-    private final NetworkRouter networkRouter;
+    private final SessionRegistry sessionRegistry;
+    private final ChannelAccessCoordinator channelAccessCoordinator;
     private final TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel;
-    private final SecureRandom secureRandom = new SecureRandom();
     private final Function<HandshakeContext, ServerSession> sessionFactory;
 
     public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
         super(context, OPTIONS);
-        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
-        networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
+        sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
+        channelAccessCoordinator = context.getModule(NexalithicServer.MODULES.ChannelAccessCoordinator);
         timeWheel = context.getModule(MODULES.TimeWheel, () -> {
             TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel = new TimeWheel<>(
                     context.getOption(OPTIONS.TimeWheel.TickMillis),
@@ -103,46 +97,65 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
             timeWheel.start();
             return timeWheel;
         });
-        ServerChannelFactory channelFactory = new ServerChannelFactory(context, unit);
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
-        sessionFactory = channel -> new ServerSession(
-                channel.takeSessionKey(),
-                channel.takeSignalingSecretContext(),
-                channel.takeBusinessSecretContext(),
+        ServerSession.ChannelFactory channelFactory = new ServerSession.ChannelFactory(context, unit);
+        sessionFactory = handoff -> new ServerSession(
+                handoff.takeSessionKey(),
+                handoff.takeSignalingSecretContext(),
+                handoff.takeBusinessSecretContext(),
                 channelFactory,
                 taskScheduler,
-                unit
+                unit,
+                channelAccessCoordinator
         );
     }
 
-    public boolean prepareChannelAccess(ServerSession session, InetAddress remoteAddress) {
-        SessionKey.Immutable sessionKey = new SessionKey.Immutable(secureRandom.nextLong(), secureRandom.nextLong());
-        sessionsManager.relateChannelToken(sessionKey, session);
-        return session.pushSignalingPacket(
-                ScalarSignal.ofInt(SignalingPacket.Signal.BusinessChannelPort_Response, networkRouter.choosePort(NexalithicChannel.Kind.Packet_Business, remoteAddress)),
-                new TokenSignal(sessionKey)
-        ) == 0;
-    }
-
     @Override
-    protected boolean onExecuteAcquireEvent(HandshakeContext handoff) {
+    protected SessionChannel<SignalingPacket, ServerSession> onExecuteAcquireEvent(HandshakeContext handoff) {
+        SocketChannel socketChannel = null;
+        SessionChannel<SignalingPacket, ServerSession> sessionChannel = null;
+        ServerSession session = null;
+        boolean sessionRegistered = false;
+        boolean channelOpened = false;
         try {
-            SocketChannel socketChannel = handoff.takeChannel();
+            socketChannel = handoff.takeChannel();
             SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
-            ServerSession session = sessionFactory.apply(handoff);
-            SessionChannel<SignalingPacket, ServerSession> sessionChannel = session.getSignalingChannel();
-            sessionChannel.open(socketChannel, selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
-            if (!sessionsManager.putSession(session)) {
-                submitDisconnectEvent(sessionChannel, Event.Disconnect.Reason.INTERNAL_FAILURE);
-                return false;
+            session = sessionFactory.apply(handoff);
+            sessionChannel = session.getSignalingChannel();
+            sessionChannel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            channelOpened = true;
+            socketChannel = null;
+            if (!sessionRegistry.putSession(session)) {
+                sessionChannel.close();
+                session.close();
+                return null;
             }
-            sessionChannel.updateLastActiveTimeNanos(System.nanoTime());
+            sessionRegistered = true;
             timeWheel.schedule(sessionChannel, this);
-        } catch (IOException ignored) {
-        } finally {
-            handoff.recycle();
+            return sessionChannel;
+        } catch (Exception failure) {
+            logger.error("[{}] failed to acquire signaling channel", name, failure);
+            if (sessionRegistered && session != null) {
+                sessionRegistry.removeSession(session);
+            }
+            if (channelOpened && sessionChannel != null) {
+                try {
+                    sessionChannel.close();
+                } catch (Exception closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            } else if (socketChannel != null) {
+                try {
+                    socketChannel.close();
+                } catch (Exception closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            if (session != null) {
+                session.close();
+            }
+            return null;
         }
-        return true;
     }
 
     @Override
@@ -174,11 +187,10 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    protected boolean onExecuteDisconnectEvent(SessionChannel<SignalingPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
-        ServerSession session = channel.ownerSession();
-        sessionsManager.removeSession(session);
+    protected void onExecuteDisconnectEvent(SessionChannel<SignalingPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
+        ServerSession session = channel.getOwnerSession();
+        sessionRegistry.removeSession(session);
         session.close();
-        return true;
     }
 
     @Override
@@ -188,7 +200,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
             return false;
         }
         if (logger.isDebugEnabled()) {
-            logger.debug("heartbeat timeout [{}]", target.ownerSession().toString());
+            logger.debug("heartbeat timeout [{}]", target.getOwnerSession().toString());
         }
         submitDisconnectEvent(target, Event.Disconnect.Reason.IDLE_TIMEOUT);
         return true;
@@ -196,18 +208,10 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
 
     private void handleSignalPacket(SessionChannel<SignalingPacket, ServerSession> channel, SignalingPacket packet) {
         if (!switch (packet.getSignal()) {
-            case SignalingPacket.Signal.BusinessChannelPort_Request -> channel.ownerSession().pushSignalingPacket(
-                    ScalarSignal.ofInt(SignalingPacket.Signal.BusinessChannelPort_Response,
-                            networkRouter.choosePort(NexalithicChannel.Kind.Packet_Business, channel.getRemoteAddress().getAddress())));
-            case SignalingPacket.Signal.BusinessChannelToken_Request -> {
-                SessionKey.Immutable sessionKey = new SessionKey.Immutable(secureRandom.nextLong(), secureRandom.nextLong());
-                ServerSession session = channel.ownerSession();
-                sessionsManager.relateChannelToken(sessionKey, session);
-                yield session.pushSignalingPacket(new TokenSignal(sessionKey));
-            }
+            case SignalingPacket.Signal.ChannelAccess_Request -> handleChannelAccessRequest(channel, (ChannelAccessRequestSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                channel.ownerSession().getBusinessChannel().updateWriteRate(rate);
+                channel.getOwnerSession().getBusinessChannel().updateWriteRate(rate);
                 yield true;
             }
             default -> true;
@@ -215,5 +219,31 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
             logger.warn("ServerSessionChannel[{}] signalingPacket overflow", channel);
             submitDisconnectEvent(channel, Event.Disconnect.Reason.INTERNAL_FAILURE);
         }
+    }
+
+    private boolean handleChannelAccessRequest(SessionChannel<SignalingPacket, ServerSession> channel, ChannelAccessRequestSignal request) {
+        ChannelAccessCoordinator.Result result = channelAccessCoordinator.issue(channel.getOwnerSession(), request.getKind(), channel.getRemoteAddress().getAddress());
+        return switch (result) {
+            case ISSUED -> true;
+            case UNSUPPORTED_KIND -> {
+                logger.warn(
+                        "Unsupported channel access request [{}] from [{}]",
+                        request.getKind(),
+                        channel.getRemoteAddress()
+                );
+                submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
+                yield true;
+            }
+            case ROUTE_UNAVAILABLE -> {
+                logger.warn(
+                        "No [{}] channel route is available for [{}]",
+                        request.getKind(),
+                        channel.getRemoteAddress()
+                );
+                submitDisconnectEvent(channel, Event.Disconnect.Reason.INTERNAL_FAILURE);
+                yield true;
+            }
+            case SIGNALING_QUEUE_FULL -> false;
+        };
     }
 }

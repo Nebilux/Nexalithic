@@ -33,6 +33,7 @@ public abstract class SelectorLoop extends AbstractLoop {
             super(holder);
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(SelectorLoop.class);
     private static final int MAX_PREMATURE_SELECT_RETURNS = 512;
     private record Constant(long SelectorTimeoutMillis, long PrematureSelectThresholdNanos) {
@@ -51,14 +52,22 @@ public abstract class SelectorLoop extends AbstractLoop {
                 context.getOption(options.SelectorTimeoutMillis)
         ));
         selector = Selector.open();
-        isDrainCondition(() -> selector.keys().isEmpty());
+        isDrainCondition(() -> {
+            Selector current = selector;
+            return current == null || current.keys().isEmpty();
+        });
     }
 
     protected final SelectionKey registerSelectableChannel(SelectableChannel channel, int interest) throws ClosedChannelException {
-        return channel.register(selector, interest);
+        Selector current = selector;
+        if (current == null || !current.isOpen()) {
+            throw new ClosedChannelException();
+        }
+        return channel.register(current, interest);
     }
     protected final Set<SelectionKey> registeredKeys() {
-        return selector.keys();
+        Selector current = selector;
+        return current == null ? Set.of() : current.keys();
     }
     protected final void drainAsyncEventsCondition(BooleanSupplier condition) {
         if (getState() != State.NEW) {
@@ -71,12 +80,10 @@ public abstract class SelectorLoop extends AbstractLoop {
 
     @Override
     protected final void wakeupLoop() {
-        selector.wakeup();
-    }
-
-    @Override
-    protected void sealLoop() {
-
+        Selector current = selector;
+        if (current != null) {
+            current.wakeup();
+        }
     }
 
     @Override
@@ -170,7 +177,7 @@ public abstract class SelectorLoop extends AbstractLoop {
     }
 
     protected abstract void onSelectorKeyReady(SelectionKey key) throws IOException;
-    protected abstract void onSelectionKeyMigrated(SelectionKey oldKey, SelectionKey newKey) throws IOException;
+    protected void onSelectionKeyMigrated(SelectionKey oldKey, SelectionKey newKey) throws IOException {}
     protected void onSelectorKeyReadyFailed(SelectionKey key, Exception exception) {
         key.cancel();
     }

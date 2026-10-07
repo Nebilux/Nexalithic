@@ -5,10 +5,10 @@ import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.server.NexalithicServer;
-import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleManager;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
+import com.nebilux.nexalithic.server.lifecycle.ServerLifecycleCoordinator;
 import com.nebilux.nexalithic.server.session.ServerSession;
-import com.nebilux.nexalithic.server.manager.SessionsManager;
+import com.nebilux.nexalithic.server.session.SessionRegistry;
 
 /**
  * 服务器业务分组器
@@ -27,16 +27,16 @@ public class ServerHandlerCoordinator extends HandlerCoordinator<
             super(holder);
         }
     }
-    private final SessionsManager sessionsManager;
+    private final SessionRegistry sessionRegistry;
 
     public ServerHandlerCoordinator(NexalithicBuilderContext context) {
-        super(context, OPTIONS, context.getOption(ServerLifecycleManager.OPTIONS.ServiceUnit_Count) != 1 || context.getOption(ServiceUnit.OPTIONS.BusinessLoop_Count) != 1);
-        sessionsManager = context.getModule(NexalithicServer.MODULES.SessionsManager);
+        super(context, OPTIONS, context.getOption(ServerLifecycleCoordinator.OPTIONS.ServiceUnit_Count) != 1 || context.getOption(ServiceUnit.OPTIONS.BusinessLoop_Count) != 1);
+        sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         init(context, OPTIONS);
     }
 
     @Override
     protected ServerHandlerContext.Recyclable createRecyclableWrapper(GenericWrapperPool<ServerHandlerContext, ServerHandlerContext.Recyclable> owner) {
-        return new ServerHandlerContext.Recyclable(owner, new ServerHandlerContext(sessionsManager));
+        return new ServerHandlerContext.Recyclable(owner, new ServerHandlerContext(sessionRegistry));
     }
 }

@@ -265,23 +265,39 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
         } catch (Exception e) {
             executeFailed(task, e);
             throw e;
+        } finally {
+            if (task.getState().isTerminal()) {
+                task.getOwner().getTaskCoordinator().remove(task);
+            }
         }
     }
     private void executeComplete(NexalithicTask task) {
-        task.getOwner().getTaskCoordinator().remove(task);
-        task.complete();
+        try {
+            task.complete();
+        } finally {
+            task.getOwner().getTaskCoordinator().remove(task);
+        }
     }
     private void executeTimeout(NexalithicTask task) {
-        task.getOwner().getTaskCoordinator().remove(task);
-        task.timeout();
+        try {
+            task.timeout();
+        } finally {
+            task.getOwner().getTaskCoordinator().remove(task);
+        }
     }
     private void executeCancel(NexalithicTask task) {
-        task.getOwner().getTaskCoordinator().remove(task);
-        task.cancel();
+        try {
+            task.cancel();
+        } finally {
+            task.getOwner().getTaskCoordinator().remove(task);
+        }
     }
     private void executeFailed(NexalithicTask task, Exception exception) {
-        task.getOwner().getTaskCoordinator().remove(task);
-        task.failed(exception);
+        try {
+            task.failed(exception);
+        } finally {
+            task.getOwner().getTaskCoordinator().remove(task);
+        }
     }
 
     private boolean executeListenerEvent(Runnable event) {
