@@ -18,6 +18,7 @@ package com.nebilux.nexalithic.core.infra.concurrent.async;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -40,7 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Reonvia
  * @since 0.3.0
  */
-public final class AsyncOperation<I, R> {
+public class AsyncOperation<I, R> {
     /**
      * 异步操作的发起动作。
      *
@@ -64,6 +65,11 @@ public final class AsyncOperation<I, R> {
          */
         void execute(I input, Completer<R> completer) throws Exception;
     }
+    @FunctionalInterface
+    public interface StageAction<I, R> {
+        CompletionStage<? extends R> execute(I input) throws Exception;
+    }
+
     /**
      * 异步操作的受限完成器。
      *
@@ -130,6 +136,20 @@ public final class AsyncOperation<I, R> {
     public AsyncOperation(String name, Action<I, R> action) {
         this.name = Objects.requireNonNull(name, "name");
         this.action = Objects.requireNonNull(action, "action");
+    }
+
+    public static <I, R> AsyncOperation<I, R> fromStage(String name, StageAction<I, R> action) {
+        Objects.requireNonNull(action, "action");
+        return new AsyncOperation<>(name, (input, completer) -> action.execute(input).whenComplete((value, failure) -> {
+            if (failure == null) {
+                completer.complete(value);
+            } else {
+                while (failure instanceof CompletionException && failure.getCause() != null) {
+                    failure = failure.getCause();
+                }
+                completer.completeExceptionally(failure);
+            }
+        }));
     }
 
     /**
