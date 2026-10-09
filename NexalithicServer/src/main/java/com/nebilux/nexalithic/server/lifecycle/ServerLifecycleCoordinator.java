@@ -23,7 +23,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
-import com.nebilux.nexalithic.core.lifecycle.LifecycleCoordinator;
+import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.accept.AcceptorLoop;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeLoop;
@@ -43,7 +43,7 @@ import java.util.function.Supplier;
  * @author Reonvia
  * @since 0.1.0
  */
-public class ServerLifecycleCoordinator extends LifecycleCoordinator {
+public class ServerLifecycleCoordinator extends AbstractLifecycle {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServerLifecycleCoordinator.class);
     public static final class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> HandshakeLoop_Count = defineOption(
@@ -78,36 +78,44 @@ public class ServerLifecycleCoordinator extends LifecycleCoordinator {
     }
 
     @Override
-    protected CompletionStage<Void> onStart() {
+    protected boolean logMilestonesAtInfo() {
+        return true;
+    }
+
+    @Override
+    protected CompletionStage<Void> doStart() {
         return startSessionLoops()
                 .thenCompose(ignored -> startHandshakeLoops())
                 .thenCompose(ignored -> startAcceptorLoop());
     }
 
     @Override
-    protected CompletionStage<Void> onStop() {
-        return awaitAll(List.of(
-                invoke(this::stopAcceptorLoop),
-                invoke(this::stopHandshakeLoops),
-                invoke(this::stopSessionLoops)
-        ));
+    protected CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        return mode == ShutdownMode.DRAIN ? drainComponents() : abortComponents();
     }
 
-    @Override
-    protected CompletionStage<Void> onShutdown() {
-        CompletionStage<Void> termination = invoke(this::shutdownAcceptorLoop);
-        termination = continueAfter(termination, this::shutdownHandshakeLoops);
-        return continueAfter(termination, this::shutdownSessionLoops);
+    private CompletionStage<Void> drainComponents() {
+        CompletionStage<Void> termination = invoke(this::drainAcceptorLoop);
+        termination = continueAfter(termination, this::drainHandshakeLoops);
+        return continueAfter(termination, this::drainSessionLoops);
+    }
+
+    private CompletionStage<Void> abortComponents() {
+        return awaitAll(List.of(
+                invoke(this::abortAcceptorLoop),
+                invoke(this::abortHandshakeLoops),
+                invoke(this::abortSessionLoops)
+        ));
     }
 
     private CompletionStage<Void> startAcceptorLoop() {
         return acceptorLoop.start();
     }
-    private CompletionStage<Void> stopAcceptorLoop() {
-        return acceptorLoop.stop();
+    private CompletionStage<Void> drainAcceptorLoop() {
+        return acceptorLoop.shutdown(ShutdownMode.DRAIN);
     }
-    private CompletionStage<Void> shutdownAcceptorLoop() {
-        return acceptorLoop.shutdown();
+    private CompletionStage<Void> abortAcceptorLoop() {
+        return acceptorLoop.shutdown(ShutdownMode.ABORT);
     }
 
     private CompletionStage<Void> startHandshakeLoops() {
@@ -117,17 +125,17 @@ public class ServerLifecycleCoordinator extends LifecycleCoordinator {
         }
         return awaitAll(stages);
     }
-    private CompletionStage<Void> stopHandshakeLoops() {
+    private CompletionStage<Void> drainHandshakeLoops() {
         List<CompletionStage<Void>> stages = new ArrayList<>();
         for (HandshakeLoop loop : handshakeLoopLoadBalancer.all()) {
-            stages.add(invoke(loop::stop));
+            stages.add(invoke(() -> loop.shutdown(ShutdownMode.DRAIN)));
         }
         return awaitAll(stages);
     }
-    private CompletionStage<Void> shutdownHandshakeLoops() {
+    private CompletionStage<Void> abortHandshakeLoops() {
         List<CompletionStage<Void>> stages = new ArrayList<>();
         for (HandshakeLoop loop : handshakeLoopLoadBalancer.all()) {
-            stages.add(invoke(loop::shutdown));
+            stages.add(invoke(() -> loop.shutdown(ShutdownMode.ABORT)));
         }
         return awaitAll(stages);
     }
@@ -142,25 +150,25 @@ public class ServerLifecycleCoordinator extends LifecycleCoordinator {
         }
         return awaitAll(stages);
     }
-    private CompletionStage<Void> stopSessionLoops() {
-        List<CompletionStage<Void>> stages = new ArrayList<>();
-        for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            stages.add(invoke(serviceUnit.getSignalingLoop()::stop));
-            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
-                stages.add(invoke(businessLoop::stop));
-            }
-        }
-        return awaitAll(stages);
-    }
-    private CompletionStage<Void> shutdownSessionLoops() {
+    private CompletionStage<Void> drainSessionLoops() {
         List<CompletionStage<Void>> sessionStages = new ArrayList<>();
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            sessionStages.add(invoke(serviceUnit.getSignalingLoop()::shutdown));
+            sessionStages.add(invoke(() -> serviceUnit.getSignalingLoop().shutdown(ShutdownMode.DRAIN)));
             for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
-                sessionStages.add(invoke(businessLoop::shutdown));
+                sessionStages.add(invoke(() -> businessLoop.shutdown(ShutdownMode.DRAIN)));
             }
         }
         return awaitAll(sessionStages);
+    }
+    private CompletionStage<Void> abortSessionLoops() {
+        List<CompletionStage<Void>> stages = new ArrayList<>();
+        for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
+            stages.add(invoke(() -> serviceUnit.getSignalingLoop().shutdown(ShutdownMode.ABORT)));
+            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
+                stages.add(invoke(() -> businessLoop.shutdown(ShutdownMode.ABORT)));
+            }
+        }
+        return awaitAll(stages);
     }
 
     private static CompletionStage<Void> awaitAll(List<CompletionStage<Void>> stages) {

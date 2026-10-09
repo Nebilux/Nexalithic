@@ -161,7 +161,7 @@ public class NexalithicClient extends NexalithicEndpoint {
             ClientSessionLoop sessionLoop = new ClientSessionLoop(context);
             context.setModule(ClientLifecycleCoordinator.MODULES.SessionLoop, sessionLoop);
             sessionManager.bindSessionLoop(sessionLoop);
-            context.setModule(MODULES.LifecycleCoordinator, new ClientLifecycleCoordinator(context));
+            context.setModule(MODULES.Lifecycle, new ClientLifecycleCoordinator(context));
 
             return new NexalithicClient(context);
         }

@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.infra.concurrent.async;
 
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -265,6 +266,26 @@ public class AsyncOperation<I, R> {
      */
     public CompletionStage<R> completion() {
         return finalFuture.minimalCompletionStage();
+    }
+
+    /**
+     * 等待整个操作结束，并取得失败原因；成功时返回 {@code null}。
+     *
+     * <p>与 {@link CompletableFuture#join()} 一样，本方法不会触发操作，
+     * 且可能一直等待尚未完成的操作。失败原因作为返回值提供，调用方可在
+     * 必要的清理和日志处理后再决定是否抛出。</p>
+     *
+     * @return 失败原因，或成功时的 {@code null}
+     */
+    public Throwable joinFailure() {
+        try {
+            finalFuture.join();
+            return null;
+        } catch (CompletionException exception) {
+            return exception.getCause() == null ? exception : exception.getCause();
+        } catch (CancellationException exception) {
+            return exception;
+        }
     }
 
     /**

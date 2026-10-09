@@ -61,6 +61,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
         }
         protected abstract long MaxIdleTimeMillis_Value();
     }
+
     /**
      * 通道交接对象。
      *
@@ -168,7 +169,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             throw new NullPointerException("handoff");
         }
         if (inEventLoop()) {
-            if (submissionState.get() != SubmissionState.OPEN || getState().isTerminationStarted()) {
+            if (submissionState.get() != SubmissionState.OPEN || lifecycleState().isTerminatingOrTerminated()) {
                 return false;
             }
             executeAcquireEvent(handoff);
@@ -185,7 +186,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             throw new NullPointerException("handoff, channel and target must be non-null");
         }
         if (inEventLoop()) {
-            if (getState().isTerminationStarted()) {
+            if (lifecycleState().isTerminatingOrTerminated()) {
                 return false;
             }
             executeTransferEvent(handoff, channel, target);
@@ -265,7 +266,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
 
     @Override
     protected void sealLoop() {
-        submissionState.set(getState() == State.DRAINING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
+        submissionState.set(lifecycleState() == State.QUIESCING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
     }
 
     @Override
@@ -314,18 +315,19 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     }
 
     private boolean acceptEventSubmission(SubmissionState submission, Event<H, C> event) {
-        State lifecycle = getState();
-        if (submission == SubmissionState.CLOSED || lifecycle.isTerminationStarted()) {
+        State lifecycle = lifecycleState();
+        if (submission == SubmissionState.CLOSED || lifecycle.isTerminatingOrTerminated()) {
             return false;
         }
         if (event instanceof Event.Disconnect<?, ?>) {
             return true;
         }
-        return submission == SubmissionState.OPEN && lifecycle.isAcceptingNewWork();
+        return submission == SubmissionState.OPEN
+                && (lifecycle == State.NEW || lifecycle == State.STARTING || lifecycle == State.RUNNING);
     }
 
     private boolean acceptInterestSubmission(SubmissionState submission, LoopChannel<?, ?> channel) {
-        return submission != SubmissionState.CLOSED && !getState().isTerminationStarted();
+        return submission != SubmissionState.CLOSED && !lifecycleState().isTerminatingOrTerminated();
     }
 
     private void executeAcquireEvent(H handoff) {

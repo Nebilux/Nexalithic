@@ -85,15 +85,6 @@ public interface Lifecycle {
     CompletionStage<Void> shutdown(ShutdownMode mode);
 
     /**
-     * 以 {@link ShutdownMode#DRAIN} 策略请求关闭。
-     *
-     * @return 表示终止流程最终结果的阶段
-     */
-    default CompletionStage<Void> shutdown() {
-        return shutdown(ShutdownMode.DRAIN);
-    }
-
-    /**
      * 观察启动结果，不会自行发起启动。
      *
      * @return 启动完成阶段；若尚未请求启动或取消，阶段可以一直保持未完成

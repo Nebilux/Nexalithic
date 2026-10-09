@@ -250,7 +250,7 @@ public class NexalithicServer extends NexalithicEndpoint {
             context.setModule(ServerLifecycleCoordinator.MODULES.HandshakeLoopLoadBalancer, handshakeLoopLoadBalancer);
 
             context.setModule(ServerLifecycleCoordinator.MODULES.AcceptorLoop, new AcceptorLoop(context));
-            context.setModule(MODULES.LifecycleCoordinator, new ServerLifecycleCoordinator(context));
+            context.setModule(MODULES.Lifecycle, new ServerLifecycleCoordinator(context));
             return new NexalithicServer(context);
         }
     }

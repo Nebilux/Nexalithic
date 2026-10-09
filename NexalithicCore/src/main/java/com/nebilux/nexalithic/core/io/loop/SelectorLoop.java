@@ -86,7 +86,7 @@ public abstract class SelectorLoop extends AbstractLoop {
         return current == null ? Set.of() : current.keys();
     }
     protected final void drainAsyncEventsCondition(BooleanSupplier condition) {
-        if (getState() != State.NEW) {
+        if (lifecycleState() != State.NEW) {
             throw new IllegalStateException(
                     "drainAsyncEventsConditions can only be registered before the loop starts"
             );
@@ -178,7 +178,7 @@ public abstract class SelectorLoop extends AbstractLoop {
                 normalBlockingSelect
                 && selected == 0
                 && !explicitlyWoken
-                && getState() == State.RUNNING
+                && lifecycleState() == State.RUNNING
                 && !current.keys().isEmpty()
                 && elapsedNanos < CONSTANT.PrematureSelectThresholdNanos();
         if (!prematureReturn) {

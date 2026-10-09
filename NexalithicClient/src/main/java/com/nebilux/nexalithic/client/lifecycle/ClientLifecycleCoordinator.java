@@ -22,7 +22,7 @@ import com.nebilux.nexalithic.client.session.SessionManager;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
-import com.nebilux.nexalithic.core.lifecycle.LifecycleCoordinator;
+import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 
 import java.util.concurrent.CompletionStage;
@@ -33,7 +33,7 @@ import java.util.concurrent.CompletionStage;
  * @author Reonvia
  * @since 0.1.0
  */
-public class ClientLifecycleCoordinator extends LifecycleCoordinator {
+public class ClientLifecycleCoordinator extends AbstractLifecycle {
     public static final Modules MODULES = new Modules();
     public static final class Modules extends ModulesDefinition {
         public final NexalithicModule<ClientSessionLoop> SessionLoop = defineModule(ClientSessionLoop.class);
@@ -54,7 +54,12 @@ public class ClientLifecycleCoordinator extends LifecycleCoordinator {
     }
 
     @Override
-    protected CompletionStage<Void> onStart() {
+    protected boolean logMilestonesAtInfo() {
+        return true;
+    }
+
+    @Override
+    protected CompletionStage<Void> doStart() {
         sessionManager.start();
         return sessionLoop.start().whenComplete((ignored, failure) -> {
             if (failure != null) {
@@ -64,15 +69,19 @@ public class ClientLifecycleCoordinator extends LifecycleCoordinator {
     }
 
     @Override
-    protected CompletionStage<Void> onStop() {
-        sessionManager.stop();
-        return sessionLoop.stop().whenComplete((ignored, failure) -> taskScheduler.shutdown());
+    protected CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        return mode == ShutdownMode.DRAIN ? drainComponents() : abortComponents();
     }
 
-    @Override
-    protected CompletionStage<Void> onShutdown() {
+    private CompletionStage<Void> abortComponents() {
+        sessionManager.stop();
+        return sessionLoop.shutdown(ShutdownMode.ABORT)
+                .whenComplete((ignored, failure) -> taskScheduler.shutdown());
+    }
+
+    private CompletionStage<Void> drainComponents() {
         sessionManager.shutdown();
-        return sessionLoop.shutdown().whenComplete((ignored, failure) -> {
+        return sessionLoop.shutdown(ShutdownMode.DRAIN).whenComplete((ignored, failure) -> {
             try {
                 sessionManager.stop();
             } finally {
