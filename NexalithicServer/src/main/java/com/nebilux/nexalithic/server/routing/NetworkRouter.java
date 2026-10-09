@@ -221,7 +221,7 @@ public class NetworkRouter {
             private ExplicitAddress {
                 Objects.requireNonNull(address, "address");
                 if (address.isAnyLocalAddress()) {
-                    throw new IllegalArgumentException("Wildcard address cannot be advertised to a client");
+                    throw NexalithicRouteException.wildcardAddress();
                 }
             }
         }
@@ -232,7 +232,7 @@ public class NetworkRouter {
         private RouteTarget(AddressTarget addressTarget, int port) {
             this.addressTarget = Objects.requireNonNull(addressTarget, "addressTarget");
             if (port <= 0 || port > 65535) {
-                throw new IllegalArgumentException("Invalid route port: " + port);
+                throw NexalithicRouteException.invalidPort(port);
             }
             this.port = port;
         }
@@ -286,23 +286,23 @@ public class NetworkRouter {
             this.target = Objects.requireNonNull(target, "target");
             String[] parts = cidr.split("/", -1);
             if (parts.length != 2) {
-                throw new IllegalArgumentException("Invalid CIDR: " + cidr);
+                throw NexalithicRouteException.invalidCidr(cidr);
             }
             InetAddress address;
             try {
                 address = InetAddress.getByName(parts[0]);
             } catch (UnknownHostException failure) {
-                throw new IllegalArgumentException("Invalid CIDR address: " + cidr, failure);
+                throw NexalithicRouteException.invalidCidrAddress(cidr, failure);
             }
             byte[] rawAddress = address.getAddress();
             int totalBits = rawAddress.length * Byte.SIZE;
             try {
                 prefixLength = Integer.parseInt(parts[1]);
             } catch (NumberFormatException failure) {
-                throw new IllegalArgumentException("Invalid CIDR prefix: " + cidr, failure);
+                throw NexalithicRouteException.invalidCidrPrefix(cidr, failure);
             }
             if (prefixLength < 0 || prefixLength > totalBits) {
-                throw new IllegalArgumentException("Invalid CIDR prefix: " + cidr);
+                throw NexalithicRouteException.invalidCidrPrefix(cidr);
             }
             BigInteger addressValue = new BigInteger(1, rawAddress);
             int hostBits = totalBits - prefixLength;

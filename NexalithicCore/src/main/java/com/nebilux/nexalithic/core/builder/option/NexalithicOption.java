@@ -17,7 +17,6 @@
 package com.nebilux.nexalithic.core.builder.option;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
-import com.nebilux.nexalithic.core.exception.NexalithicOptionException;
 
 import java.util.function.Function;
 
@@ -55,7 +54,7 @@ public final class NexalithicOption<T> {
         T value = defaultValue;
         if (defaultValueLazy != null) {
             value = defaultValueLazy.apply(context);
-            validator.validate(value);
+            validate(value);
         }
         return value;
     }
@@ -64,7 +63,7 @@ public final class NexalithicOption<T> {
             try {
                 validator.validate(value);
             } catch (IllegalArgumentException e) {
-                throw new NexalithicOptionException(name, e.getMessage());
+                throw NexalithicOptionValidationException.forOption(name, e.getMessage(), e);
             }
         }
         return this;

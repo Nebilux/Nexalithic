@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.builder;
 
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
+import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.ControllerHandlerAssembler;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.ControllerHandlerAssemblerConfigurer;
@@ -161,7 +162,7 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      * @return 当前具体 Builder，用于继续链式配置
      */
     public SELF payloadRegistryConfigurer(PayloadRegistryConfigurer configurer) {
-        configurer.configure(payloadRegistryBuilder, PayloadRegistryHelper.INSTANCE);
+        configure("payload registry", () -> configurer.configure(payloadRegistryBuilder, PayloadRegistryHelper.INSTANCE));
         return self();
     }
 
@@ -177,7 +178,7 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      * @return 当前具体 Builder，用于继续链式配置
      */
     public SELF handlerRegistryConfigurer(HandlerRegistryConfigurer<HC> configurer) {
-        configurer.configure(handlerRegistryBuilder, null);
+        configure("handler registry", () -> configurer.configure(handlerRegistryBuilder, null));
         return self();
     }
 
@@ -192,7 +193,19 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      * @return 当前具体 Builder，用于继续链式配置
      */
     public SELF controllerHandlerAssemblerConfigurer(ControllerHandlerAssemblerConfigurer<HC> configurer) {
-        configurer.configure(controllerHandlerAssemblyBuilder, new ControllerHandlerAssemblerHelper<>(handlerContextType));
+        configure("controller handler assembler", () ->
+                configurer.configure(controllerHandlerAssemblyBuilder, new ControllerHandlerAssemblerHelper<>(handlerContextType)));
         return self();
+    }
+
+    /** 在面向用户的 Builder 配置入口统一转换框架及回调失败。 */
+    protected static void configure(String scope, Runnable action) {
+        try {
+            action.run();
+        } catch (NexalithicUncheckedException failure) {
+            throw failure;
+        } catch (RuntimeException failure) {
+            throw NexalithicEndpointConfigurationException.forScope(scope, failure);
+        }
     }
 }

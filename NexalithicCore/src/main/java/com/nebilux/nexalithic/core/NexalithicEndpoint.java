@@ -21,10 +21,12 @@ import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
 import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.NexalithicLifecycleException;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
 
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -42,7 +44,9 @@ import java.util.concurrent.CompletionStage;
  * 或 {@code NexalithicClient.builder()} 创建具体终端。</p>
  *
  * <p>生命周期操作统一使用 {@link Lifecycle} 的非阻塞 API。调用方若需等待，
- * 应等待 {@link #start()} 或 {@link #shutdown(ShutdownMode)} 返回的完成阶段。</p>
+ * 应等待 {@link #start()} 或 {@link #shutdown(ShutdownMode)} 返回的完成阶段。
+ * 终端入口的异步失败以 {@link com.nebilux.nexalithic.core.lifecycle.NexalithicLifecycleException}
+ * 呈现，底层原因保存在 cause 中。</p>
  *
  * @author Reonvia
  * @since 0.2.0
@@ -159,31 +163,51 @@ public abstract class NexalithicEndpoint implements Lifecycle {
     /** {@inheritDoc} */
     @Override
     public final CompletionStage<Void> start() {
-        return lifecycle.start();
+        return exposeLifecycleResult(lifecycle.start(), "start");
     }
 
     /** {@inheritDoc} */
     @Override
     public final CompletionStage<Void> shutdown(ShutdownMode mode) {
-        return lifecycle.shutdown(mode);
+        return exposeLifecycleResult(lifecycle.shutdown(mode), "shut down");
     }
 
     /** {@inheritDoc} */
     @Override
     public final CompletionStage<Void> whenStarted() {
-        return lifecycle.whenStarted();
+        return exposeLifecycleResult(lifecycle.whenStarted(), "start");
     }
 
     /** {@inheritDoc} */
     @Override
     public final CompletionStage<Void> whenTerminated() {
-        return lifecycle.whenTerminated();
+        return exposeLifecycleResult(lifecycle.whenTerminated(), "shut down");
     }
 
     /** {@inheritDoc} */
     @Override
     public final State lifecycleState() {
         return lifecycle.lifecycleState();
+    }
+
+    /** 仅在面向终端调用者的完成阶段上转换失败，保留内部生命周期的原始结果。 */
+    private CompletionStage<Void> exposeLifecycleResult(CompletionStage<Void> result, String operation) {
+        return result.handle((ignored, failure) -> {
+            if (failure == null) {
+                return null;
+            }
+            Throwable cause = failure;
+            while (cause instanceof CompletionException && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            if (cause instanceof NexalithicLifecycleException lifecycleFailure) {
+                throw lifecycleFailure;
+            }
+            throw NexalithicLifecycleException.forEndpointOperation(getClass(), operation, cause);
+        });
     }
 
     /**

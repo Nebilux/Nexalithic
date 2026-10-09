@@ -17,12 +17,15 @@
 package com.nebilux.nexalithic.core.exception;
 
 /**
- * Nexalithic 冲突例外
+ * Nexalithic 注册冲突异常。
+ *
+ * <p>当某个键或标识已被占用、框架不允许新的注册覆盖已有项时使用；
+ * 重复键与载荷标识冲突由对应的子类进一步说明。</p>
  *
  * @author Reonvia
  * @since 0.2.0
  */
-public class NexalithicConflictException extends NexalithicException {
+public class NexalithicConflictException extends NexalithicUncheckedException {
     public NexalithicConflictException(String message) {
         super(message);
     }

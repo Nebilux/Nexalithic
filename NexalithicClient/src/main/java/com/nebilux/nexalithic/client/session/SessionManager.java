@@ -32,6 +32,7 @@ import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessR
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
+import com.nebilux.nexalithic.core.session.NexalithicSessionException;
 import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.core.session.SessionKey;
 import org.slf4j.Logger;
@@ -340,21 +341,19 @@ public class SessionManager {
         long attemptStamp;
         synchronized (connectionLock) {
             if (!isAccepting()) {
-                throw new IllegalStateException("SessionManager is not running");
+                throw NexalithicSessionException.managerNotRunning();
             }
             SessionManager.State state = getState();
             if (state != SessionManager.State.INACTIVE) {
-                throw new IllegalStateException(
-                        "Cannot establish a session while in State " + state + ", must be " + SessionManager.State.INACTIVE
-                );
+                throw NexalithicSessionException.invalidConnectionState(state, SessionManager.State.INACTIVE);
             }
             SessionPair previous = sessionPair.get();
             if (previous.session() != null) {
-                throw new IllegalStateException("A client session is already active");
+                throw NexalithicSessionException.alreadyActive();
             }
             SessionPair establishing = previous.next();
             if (!sessionPair.compareAndSet(previous, establishing)) {
-                throw new IllegalStateException("Client session state changed while establishing a connection");
+                throw NexalithicSessionException.stateChangedDuringConnection();
             }
             attemptStamp = establishing.stamp();
             setServerAddress(remote);

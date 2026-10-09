@@ -353,13 +353,13 @@ public class NexalithicTask {
 
         public NexalithicTask build(NexalithicSession<?> targetSession) {
             if (requestAction == null) {
-                throw new IllegalArgumentException("requestAction is required");
+                throw NexalithicTaskException.requiredField("requestAction");
             }
             if (pattern == null) {
-                throw new IllegalArgumentException("pattern is required");
+                throw NexalithicTaskException.requiredField("pattern");
             }
             if (strategy == null) {
-                throw new IllegalArgumentException("strategy is required");
+                throw NexalithicTaskException.requiredField("strategy");
             }
             return new NexalithicTask(requestAction, responseAction, completeAction, timeoutAction, failedAction, cancelAction, finishAction,
                     requestListener, responseListener, pattern, strategy, waitTimeNanos, targetSession);

@@ -16,22 +16,28 @@
 
 package com.nebilux.nexalithic.core.infra.buffer;
 
-import com.nebilux.nexalithic.core.exception.NexalithicBufferException;
-
 /**
- * 有限视图配额异常（逻辑边界越界）
- * <p>当业务层通过 {@code LimitedView} 尝试读写超过预设 Quota 的数据时抛出。</p>
+ * 有限视图逻辑配额不足的异常。
+ *
+ * <p>通过缓冲区有限视图读写时，请求的字节数超过该视图剩余配额就会产生，
+ * 即使底层缓冲区仍有足够的物理空间或数据。</p>
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public final class LimitedViewQuotaException extends NexalithicBufferException {
+public final class LimitedViewQuotaException extends LoopBufferException {
+
+    private LimitedViewQuotaException(String message) {
+        super(message);
+    }
 
     /**
      * @param quota 当前视图剩余的配额
      * @param required 业务请求操作的字节数
      */
-    public LimitedViewQuotaException(int quota, int required) {
-        super(String.format("Logical quota exceeded: remaining %d, requested %d", quota, required));
+    public static LimitedViewQuotaException exceeded(int quota, int required) {
+        return new LimitedViewQuotaException(
+                String.format("Logical quota exceeded: remaining %d, requested %d", quota, required)
+        );
     }
 }

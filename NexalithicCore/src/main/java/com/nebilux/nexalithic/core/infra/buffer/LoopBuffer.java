@@ -553,10 +553,10 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     }
 
     private void throwOverflow(int required) {
-        throw new LoopBufferOverflowException(required, writableBytes());
+        throw LoopBufferOverflowException.forWrite(required, writableBytes());
     }
     private void throwUnderflow(int requested) {
-        throw new LoopBufferUnderflowException(requested, readableBytes());
+        throw LoopBufferUnderflowException.forRead(requested, readableBytes());
     }
 
     /**
@@ -686,7 +686,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         }
 
         private void throwQuote(int required) {
-            throw new LimitedViewQuotaException(quota, required);
+            throw LimitedViewQuotaException.exceeded(quota, required);
         }
     }
 
@@ -809,7 +809,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         }
 
         private void throwQuote(int required) {
-            throw new LimitedViewQuotaException(quota, required);
+            throw LimitedViewQuotaException.exceeded(quota, required);
         }
     }
 }

@@ -100,8 +100,9 @@ public class DefaultInterceptorFactory<HC extends HandlerContext<?>> implements 
          * @throws NexalithicDuplicateKeyException 重复注册同一拦截器类型时抛出
          */
         public Builder<HC> creator(InterceptorCreator<HC> creator) {
-            if (creators.putIfAbsent(creator.type(),  creator) != null) {
-                throw new NexalithicDuplicateKeyException("creators", creator);
+            Class<? extends HandlerInterceptor<HC>> type = creator.type();
+            if (creators.putIfAbsent(type, creator) != null) {
+                throw NexalithicDuplicateKeyException.inTarget("creators", type);
             }
             return this;
         }

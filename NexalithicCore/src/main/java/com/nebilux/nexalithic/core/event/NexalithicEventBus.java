@@ -54,12 +54,12 @@ public class NexalithicEventBus {
      * @param eventClass 订阅的事件类
      * @param handler    事件处理器
      * @return 用于注销的句柄
-     * @throws IllegalArgumentException 如果指定的事件主题未注册
+     * @throws NexalithicEventException 如果指定的事件主题未注册
      */
     public <T extends NexalithicEvent> EventSubscription subscribe(Class<T> eventClass, EventHandler<T> handler) {
         EventTopic<T> topic = getTopic(eventClass);
         if (topic == null) {
-            throw new IllegalArgumentException("No such topic for event " + eventClass.getName());
+            throw NexalithicEventException.missingTopic(eventClass);
         }
         return topic.subscribe(handler);
     }
@@ -73,7 +73,7 @@ public class NexalithicEventBus {
     public <T extends NexalithicEvent> void unsubscribe(Class<T> eventClass, EventHandler<T> handler) {
         EventTopic<T> topic = getTopic(eventClass);
         if (topic == null) {
-            throw new IllegalArgumentException("No such topic for event " + eventClass.getName());
+            throw NexalithicEventException.missingTopic(eventClass);
         }
         topic.unsubscribe(handler);
     }

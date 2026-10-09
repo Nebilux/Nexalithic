@@ -14,24 +14,21 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.exception;
+package com.nebilux.nexalithic.core.infra.buffer;
+
+import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 
 /**
- * Nexalithic异常基类
+ * 循环缓冲区读写边界异常的基类。
+ *
+ * <p>当一次读写超过物理可用空间，或超过有限视图允许的逻辑配额时，
+ * 由对应子类指出具体是哪一类边界被越过。</p>
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class NexalithicException extends RuntimeException {
-    public NexalithicException(String message) {
-        super(message);
-    }
-
-    protected NexalithicException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
-    }
-
-    protected NexalithicException(String message, boolean writableStackTrace) {
-        super(message, null, false, writableStackTrace);
+public abstract class LoopBufferException extends NexalithicUncheckedException {
+    protected LoopBufferException(String message) {
+        super(message, true);
     }
 }

@@ -116,15 +116,15 @@ public class TaskCoordinator {
 
     private void track(NexalithicTask task) {
         if (task.getOwner() != owner) {
-            throw new IllegalArgumentException("Target Session Mismatch");
+            throw NexalithicTaskException.targetSessionMismatch();
         }
         if (activeTasks.putIfAbsent(task.getTaskId(), task) != null) {
-            throw new RuntimeException("Task " + task.getTaskId() + " already registered");
+            throw NexalithicTaskException.alreadyRegistered(task.getTaskId());
         }
     }
     private void untrack(NexalithicTask task) {
         if (task.getOwner() != owner) {
-            throw new IllegalArgumentException("Target Session Mismatch");
+            throw NexalithicTaskException.targetSessionMismatch();
         }
         activeTasks.remove(task.getTaskId(), task);
     }

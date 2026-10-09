@@ -18,9 +18,9 @@ package com.nebilux.nexalithic.core.model.packet.business.payload;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
+import com.nebilux.nexalithic.core.model.packet.business.BusinessPacketException;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
@@ -47,9 +47,9 @@ public class FilePayload extends AbstractPayload<File> {
     private volatile byte[] metaBytes;
 
     public FilePayload() {}
-    public FilePayload(File file) throws FileNotFoundException {
+    public FilePayload(File file) throws FilePayloadException {
         if (!file.exists()) {
-            throw new FileNotFoundException(file.getAbsolutePath());
+            throw FilePayloadException.missingSource(file);
         }
         value = file;
         sourceFileName = file.getName();
@@ -104,7 +104,7 @@ public class FilePayload extends AbstractPayload<File> {
             clone.metaProcessed = false;
             return clone;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to duplicate FilePayload", e);
+            throw BusinessPacketException.failedToDuplicate(FilePayload.class, e);
         }
     }
 

@@ -18,7 +18,9 @@ package com.nebilux.nexalithic.core.messaging.payload;
 
 import com.nebilux.nexalithic.core.model.packet.business.payload.AbstractPayload;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -48,13 +50,17 @@ public class PayloadRegistry {
     }
 
     public static class Builder {
-        private final Map<Long, Supplier<? extends AbstractPayload<?>>> map = new ConcurrentHashMap<>();
+        private record Registration(Supplier<? extends AbstractPayload<?>> constructor, Class<?> payloadType) {}
+
+        private final Map<Long, Registration> map = new ConcurrentHashMap<>();
         private Supplier<PayloadConstructorStorage> storageSupplier = PayloadConstructorStorage.ArrayPayloadStorage::new;
 
         public Builder payloadConstructor(Supplier<? extends AbstractPayload<?>> constructor) {
             AbstractPayload<?> payload = constructor.get();
-            if (map.putIfAbsent(payload.getPayloadUID(),  constructor) instanceof AbstractPayload<?> existing) {
-                throw new PayloadCollisionException(payload.getPayloadUID(), existing.getClass(), payload.getClass());
+            long uid = payload.getPayloadUID();
+            Registration existing = map.putIfAbsent(uid, new Registration(constructor, payload.getClass()));
+            if (existing != null) {
+                throw PayloadCollisionException.forId(uid, existing.payloadType(), payload.getClass());
             }
             return this;
         }
@@ -73,7 +79,9 @@ public class PayloadRegistry {
 
 
         public PayloadRegistry build() {
-            return new PayloadRegistry(storageSupplier.get().freeze(map));
+            Map<Long, Supplier<? extends AbstractPayload<?>>> constructors = new HashMap<>();
+            map.forEach((uid, registration) -> constructors.put(uid, registration.constructor()));
+            return new PayloadRegistry(storageSupplier.get().freeze(constructors));
         }
     }
 }

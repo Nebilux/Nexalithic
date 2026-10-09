@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.model.packet.business.payload;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.model.packet.business.BusinessPacketException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,7 +52,7 @@ public class TextPayload extends AbstractPayload<String> {
         }
         totalSize += Byte.BYTES;
         if (totalSize > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException("Payload too large, maximum size is " + Integer.MAX_VALUE);
+            throw BusinessPacketException.payloadTooLarge(Integer.MAX_VALUE);
         }
     }
 

@@ -15,15 +15,21 @@
  */
 
 package com.nebilux.nexalithic.core.exception;
-
 /**
- * Nexalithic 配置异常
+ * Nexalithic 受检异常基类。
+ *
+ * <p>用于构建终端、打开服务器监听器、建立客户端连接等同步操作失败；
+ * 具体子类描述失败发生的操作。调用者需要捕获该异常或在方法签名中声明。</p>
  *
  * @author Reonvia
- * @since 0.1.0
+ * @since 0.3.1
  */
-public final class NexalithicOptionException extends NexalithicException {
-    public NexalithicOptionException(String optionName, String detail) {
-        super("Option error at [" + optionName + "]: " + detail, true);
+public abstract class NexalithicCheckedException extends Exception implements NexalithicFailure {
+    protected NexalithicCheckedException(String message) {
+        super(message);
+    }
+
+    protected NexalithicCheckedException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

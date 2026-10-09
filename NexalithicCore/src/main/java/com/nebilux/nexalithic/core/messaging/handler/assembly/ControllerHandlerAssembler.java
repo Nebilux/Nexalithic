@@ -113,14 +113,14 @@ public class ControllerHandlerAssembler<HC extends HandlerContext<?>> {
          * @param controller 标记了 {@link NexalithicHandlerController} 的 Controller 实例
          * @return 当前构建器
          * @throws IllegalArgumentException 目标实例不是 Handler Controller 时抛出
-         * @throws NexalithicDuplicateKeyException 重复注册同一实例时抛出
+         * @throws NexalithicDuplicateKeyException 已注册集合按 {@code equals}/{@code hashCode} 判定为重复时抛出
          */
         public Builder<HC> controller(Object controller) {
             if (!controller.getClass().isAnnotationPresent(NexalithicHandlerController.class)) {
                 throw new IllegalArgumentException(controller.getClass().getName() + " is not annotated with @NexalithicHandlerController");
             }
             if (!controllers.add(controller)) {
-                throw new NexalithicDuplicateKeyException("controllerSet", controller);
+                throw NexalithicDuplicateKeyException.inTarget("controllerSet", controller);
             }
             return this;
         }

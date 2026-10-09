@@ -16,6 +16,7 @@
 
 package com.nebilux.nexalithic.client;
 
+import com.nebilux.nexalithic.client.exception.NexalithicClientLinkException;
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
 import com.nebilux.nexalithic.client.lifecycle.ClientLifecycleCoordinator;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerContext;
@@ -25,29 +26,25 @@ import com.nebilux.nexalithic.client.session.ClientSession;
 import com.nebilux.nexalithic.client.session.SessionManager;
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuildException;
 import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
+import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.session.NexalithicSessionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.spec.InvalidKeySpecException;
+import java.security.GeneralSecurityException;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -83,18 +80,28 @@ public class NexalithicClient extends NexalithicEndpoint {
         return new Builder();
     }
 
-    public boolean link(InetSocketAddress remote) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException, ShortBufferException {
-        return sessionManager.connect(remote);
+    /**
+     * 建立信令连接并完成安全握手。
+     *
+     * @return 连接结果已提交给会话循环时返回 {@code true}；被拒绝时返回 {@code false}
+     * @throws NexalithicClientLinkException 网络连接或安全握手失败
+     */
+    public boolean link(InetSocketAddress remote) throws NexalithicClientLinkException {
+        try {
+            return sessionManager.connect(remote);
+        } catch (IOException | GeneralSecurityException | SecurityException exception) {
+            throw NexalithicClientLinkException.forRemote(remote, exception);
+        }
     }
     public void unlink() {
         sessionManager.disconnect();
     }
 
     public TaskHandle submit(NexalithicTask.Builder taskBuilder) {
-        return getSession().getTaskCoordinator().submit(taskBuilder);
+        return requireSession().getTaskCoordinator().submit(taskBuilder);
     }
     public boolean push(BusinessPacket packet) {
-        return getSession().pushBusinessPacket(packet);
+        return requireSession().pushBusinessPacket(packet);
     }
 
     public SessionManager.State getSessionState() {
@@ -126,6 +133,14 @@ public class NexalithicClient extends NexalithicEndpoint {
         return session;
     }
 
+    private ClientSession requireSession() {
+        ClientSession session = getSession();
+        if (session == null) {
+            throw NexalithicSessionException.noActiveClientSession();
+        }
+        return session;
+    }
+
     public static class Builder extends NexalithicEndpointBuilder<Builder, ClientHandlerContext> {
         public Builder() {
             super(ClientHandlerContext.class);
@@ -137,33 +152,39 @@ public class NexalithicClient extends NexalithicEndpoint {
         }
 
         public Builder securityPolicy(ClientSecurityPolicy securityPolicy) {
-            context.setModule(NexalithicClient.MODULES.SecurityPolicy, securityPolicy);
+            configure("client security policy", () -> context.setModule(NexalithicClient.MODULES.SecurityPolicy, securityPolicy));
             return this;
         }
 
-        public NexalithicClient build() throws Throwable {
+        public NexalithicClient build() throws NexalithicEndpointBuildException {
             return build(false);
         }
-        public NexalithicClient build(boolean showOptions) throws Throwable {
-            if (showOptions) {
-                logger.trace("NexalithicClient-Options\n{}", OptionsDefinition.toString("com.nebilux.nexalithic", context));
+        public NexalithicClient build(boolean showOptions) throws NexalithicEndpointBuildException {
+            try {
+                if (showOptions) {
+                    logger.trace("NexalithicClient-Options\n{}", OptionsDefinition.toString("com.nebilux.nexalithic", context));
+                }
+
+                controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
+                context.setModule(MODULES.EventBus, new NexalithicEventBus());
+                context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
+                context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
+                ClientHandlerCoordinator handlerCoordinator = new ClientHandlerCoordinator(context);
+                context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
+                context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
+                SessionManager sessionManager = new SessionManager(context);
+                context.setModule(MODULES.SessionManager, sessionManager);
+                ClientSessionLoop sessionLoop = new ClientSessionLoop(context);
+                context.setModule(ClientLifecycleCoordinator.MODULES.SessionLoop, sessionLoop);
+                sessionManager.bindSessionLoop(sessionLoop);
+                context.setModule(MODULES.Lifecycle, new ClientLifecycleCoordinator(context));
+
+                return new NexalithicClient(context);
+            } catch (Error | NexalithicUncheckedException failure) {
+                throw failure;
+            } catch (Throwable failure) {
+                throw NexalithicEndpointBuildException.forTarget(NexalithicClient.class, failure);
             }
-
-            controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
-            context.setModule(MODULES.EventBus, new NexalithicEventBus());
-            context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
-            context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
-            ClientHandlerCoordinator handlerCoordinator = new ClientHandlerCoordinator(context);
-            context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
-            context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
-            SessionManager sessionManager = new SessionManager(context);
-            context.setModule(MODULES.SessionManager, sessionManager);
-            ClientSessionLoop sessionLoop = new ClientSessionLoop(context);
-            context.setModule(ClientLifecycleCoordinator.MODULES.SessionLoop, sessionLoop);
-            sessionManager.bindSessionLoop(sessionLoop);
-            context.setModule(MODULES.Lifecycle, new ClientLifecycleCoordinator(context));
-
-            return new NexalithicClient(context);
         }
     }
 }
