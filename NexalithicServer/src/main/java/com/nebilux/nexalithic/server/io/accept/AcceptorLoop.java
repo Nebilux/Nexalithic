@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.server.io.accept;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
-import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicStateQueue;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.SelectorLoop;
 import com.nebilux.nexalithic.server.NexalithicServer;
@@ -58,19 +58,12 @@ public class AcceptorLoop extends SelectorLoop {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(AcceptorLoop.class);
-    private enum RegistrationState {
-        OPEN,
-        CLOSED
-    }
     private record ListenerRegistration(
             NexalithicChannel.Kind kind,
             AdmissionStrategy<?> strategy,
             NetworkRouter.RouteRegistration routeRegistration
     ) {}
-    private final AtomicStateQueue.StateHandle<RegistrationState> registrationState = new AtomicStateQueue.StateHandle<>(RegistrationState.OPEN);
-    private final AtomicStateQueue<Runnable, RegistrationState> eventQueue = new AtomicStateQueue<>(
-            new ConcurrentLinkedQueue<>(), registrationState, (state, event) -> state == RegistrationState.OPEN
-    );
+    private final AtomicAdmissionQueue<Runnable> eventQueue = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>());
     private final HandshakeIngress handshakeIngress;
     private final NetworkRouter networkRouter;
 
@@ -80,7 +73,7 @@ public class AcceptorLoop extends SelectorLoop {
         networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
         drainAsyncEventsCondition(() -> {
             eventQueue.drain(Runnable::run);
-            if (registrationState.get() == RegistrationState.CLOSED) {
+            if (!eventQueue.isAccepting()) {
                 for (SelectionKey key : registeredKeys().toArray(SelectionKey[]::new)) {
                     try {
                         closeListenerKey(key);
@@ -94,7 +87,7 @@ public class AcceptorLoop extends SelectorLoop {
     }
 
     public boolean register(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {
-        if (registrationState.get() != RegistrationState.OPEN) {
+        if (!eventQueue.isAccepting()) {
             closeRejectedListener(channel);
             return false;
         }
@@ -108,13 +101,13 @@ public class AcceptorLoop extends SelectorLoop {
 
     @Override
     protected void sealLoop() {
-        registrationState.set(RegistrationState.CLOSED);
+        eventQueue.close();
     }
 
     @Override
     protected void onSelectorKeyReady(SelectionKey key) {
         try {
-            if (registrationState.get() == RegistrationState.CLOSED) {
+            if (!eventQueue.isAccepting()) {
                 closeListenerKey(key);
                 return;
             }

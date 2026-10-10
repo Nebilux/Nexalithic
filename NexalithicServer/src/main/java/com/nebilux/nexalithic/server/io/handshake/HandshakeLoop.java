@@ -134,7 +134,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
                             TimeWheel.ScheduleWrapper<HandshakeContext>::new
                     ),

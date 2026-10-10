@@ -39,7 +39,7 @@ import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import com.nebilux.nexalithic.server.session.SessionRegistry;
 import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
-import org.jctools.queues.SpmcArrayQueue;
+import org.jctools.queues.MpmcArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +104,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
                             TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
                     ),

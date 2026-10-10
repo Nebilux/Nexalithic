@@ -34,7 +34,7 @@ import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
 import com.nebilux.nexalithic.server.messaging.ServerHandlerCoordinator;
 import com.nebilux.nexalithic.server.session.ServerSession;
-import org.jctools.queues.SpmcArrayQueue;
+import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.SpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,7 +105,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                     context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                     context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
                             TimeWheel.ScheduleWrapper<SessionChannel<BusinessPacket, ServerSession>>::new
                     ),

@@ -31,10 +31,10 @@ import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
-import org.jctools.queues.SpmcArrayQueue;
-import org.jctools.queues.SpscArrayQueue;
 
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntFunction;
 
 /**
  * 汇编器工厂
@@ -54,14 +54,12 @@ public class AssemblerFactory {
         );
         PayloadRegistry payloadRegistry = context.getModule(BusinessPacketsAssembler.MODULES.PayloadRegistry);
         TaskScheduler taskScheduler = context.getModule(modules.TaskScheduler);
-        //noinspection Convert2Diamond
-        wrapperPool = new GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper>(
-                PoolStorageFactory.bounded(
-                        switch (endpointType) {
-                            case CLIENT -> MpscArrayQueue::new;
-                            case SERVER -> MpmcArrayQueue::new;
-                        },
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
+        IntFunction<Queue<BusinessPacketAssemblyWrapper>> wrapperPoolQueueFactory = switch (endpointType) {
+            case CLIENT -> MpscArrayQueue::new;
+            case SERVER -> MpmcArrayQueue::new;
+        };
+        wrapperPool = new GenericWrapperPool<>(
+                PoolStorageFactory.bounded(wrapperPoolQueueFactory, context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
                 PoolStrategyFactory.alwaysCreate(),
                 owner -> new BusinessPacketAssemblyWrapper(owner, businessPacketAssemblyConstant, new AssemblyCallback(taskScheduler), payloadRegistry)
         );
@@ -73,10 +71,7 @@ public class AssemblerFactory {
                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                     new GenericWrapperPool<>(
                             PoolStorageFactory.bounded(
-                                    switch (endpointType) {
-                                        case CLIENT -> SpscArrayQueue::new;
-                                        case SERVER -> SpmcArrayQueue::new;
-                                    },
+                                    MpmcArrayQueue::new,
                                     context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
                             PoolStrategyFactory.alwaysCreate(),
                             TimeWheel.ScheduleWrapper<BusinessPacketAssemblyWrapper>::new

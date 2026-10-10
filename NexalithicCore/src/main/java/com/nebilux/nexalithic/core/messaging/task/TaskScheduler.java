@@ -30,14 +30,15 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.NexalithicSession;
+import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
-import org.jctools.queues.SpmcArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,7 +86,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
                 context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
                 context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                 new GenericWrapperPool<>(
-                        PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                        PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                         PoolStrategyFactory.alwaysCreate(),
                         TimeWheel.ScheduleWrapper<NexalithicTask>::new
                 ),
@@ -206,7 +207,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     }
 
     public void shutdown() {
-        timeWheel.stop();
+        timeWheel.shutdown(Lifecycle.ShutdownMode.ABORT);
         taskExecutor.shutdown();
         listenerExecutor.shutdownNow();
         activeListeners.clear();
