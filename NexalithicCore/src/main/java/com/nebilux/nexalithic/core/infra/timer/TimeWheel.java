@@ -260,6 +260,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
             if (!submissionQueue.offer(wrapper)) {
                 throw new IllegalStateException("TimeWheel rejected schedule during shutdown");
             }
+            LockSupport.unpark(worker);
         } catch (RuntimeException | Error failure) {
             if (pendingSchedules.decrementAndGet() == 0 && drainAccepted) {
                 LockSupport.unpark(worker);
@@ -606,7 +607,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
             Throwable failure = null;
             try {
                 while (!abortAccepted) {
-                    if (drainAccepted && pendingSchedules.get() == 0) {
+                    if (pendingSchedules.get() == 0 && !awaitWork()) {
                         break;
                     }
                     long now = waitNextTick();
@@ -616,7 +617,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
                     long elapsedTick = now >> tickShift;
                     while (nextTick <= elapsedTick) {
                         tick(nextTick++);
-                        if (abortAccepted || (drainAccepted && pendingSchedules.get() == 0)) {
+                        if (abortAccepted || pendingSchedules.get() == 0) {
                             break;
                         }
                     }
@@ -650,6 +651,22 @@ public class TimeWheel<T> extends AbstractLifecycle {
                     workerFinished.completeExceptionally(failure);
                 }
             }
+        }
+
+        /** 空轮停放期间不推进 tick；重新收到任务时直接跳到当前 tick。 */
+        private boolean awaitWork() {
+            while (!abortAccepted && !drainAccepted && pendingSchedules.get() == 0) {
+                LockSupport.park(this);
+                if (Thread.interrupted()) {
+                    return false;
+                }
+            }
+            if (abortAccepted || (drainAccepted && pendingSchedules.get() == 0)) {
+                return false;
+            }
+            long elapsedTick = (System.nanoTime() - startTimeNanos) >> tickShift;
+            nextTick = Math.max(nextTick, elapsedTick);
+            return true;
         }
 
         /**
