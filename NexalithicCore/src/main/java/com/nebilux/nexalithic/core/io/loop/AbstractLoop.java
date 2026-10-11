@@ -20,6 +20,7 @@ import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.exception.FailureSupport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.concurrent.async.AsyncOperation;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalanceable;
@@ -38,7 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
 
 /**
  * 抽象循环。
@@ -71,7 +76,9 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
     private final AtomicBoolean signaled = new AtomicBoolean(false);
     private final AtomicBoolean finalization = new AtomicBoolean(false);
     private final List<Supplier<CompletionStage<Void>>> startStages = new ArrayList<>(4);
-    private final List<Supplier<CompletionStage<Void>>> shutdownStages = new ArrayList<>(4);
+    private final List<Function<ShutdownMode, CompletionStage<Void>>> shutdownStages = new ArrayList<>(4);
+    /** 关闭升级只允许 DRAIN -> ABORT；最终清理开始时取一次快照。 */
+    private final AtomicReference<ShutdownMode> shutdownMode = new AtomicReference<>();
     private final List<BooleanSupplier> drainConditions = new ArrayList<>(4);
     private final AtomicReference<Throwable> loopFailure = new AtomicReference<>();
     private final CompletableFuture<Long> drainAcceptedAt = new CompletableFuture<>();
@@ -135,7 +142,7 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         try {
             CompletionStage<Void> startup = CompletableFuture.completedFuture(null);
             for (Supplier<CompletionStage<Void>> stage : startStages) {
-                startup = startup.thenCompose(ignored -> invokeStage(stage));
+                startup = startup.thenCompose(ignored -> invoke(stage));
             }
             return startup.thenCompose(ignored -> {
                 try {
@@ -146,7 +153,7 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
                 }
             }).whenComplete((ignored, failure) -> {
                 if (failure != null) {
-                    recordFailure(unwrapFailure(failure));
+                    recordFailure(unwrapCompletionException(failure));
                 }
             });
         } catch (Throwable failure) {
@@ -171,6 +178,7 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
 
     @Override
     protected final CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        recordShutdownMode(mode);
         try {
             seal();
         } catch (Throwable throwable) {
@@ -226,8 +234,12 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         startStages.add(Objects.requireNonNull(stage, "stage"));
     }
 
-    /** 登记在 Loop 清理后依次等待、完成后才发布终止结果的异步阶段。 */
-    protected final void registerShutdownStage(Supplier<CompletionStage<Void>> stage) throws IllegalStateException {
+    /**
+     * 登记在 Loop 清理后依次等待、完成后才发布终止结果的异步阶段。
+     * 参数是最终清理开始时的关闭模式快照；回调只执行一次，后续升级不会重试。
+     * DRAIN 表示选择了排空路径，不保证排空条件未因超时而提前结束。
+     */
+    protected final void registerShutdownStage(Function<ShutdownMode, CompletionStage<Void>> stage) throws IllegalStateException {
         if (lifecycleState() != State.NEW) {
             throw new IllegalStateException("Shutdown stages can only be registered before the loop starts");
         }
@@ -305,20 +317,23 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         try {
             seal();
         } catch (Throwable throwable) {
-            terminalFailure = mergeThrowable(terminalFailure, throwable);
+            terminalFailure = mergePrioritizingError(terminalFailure, throwable);
         }
         try {
             clearLoop();
         } catch (Throwable throwable) {
-            terminalFailure = mergeThrowable(terminalFailure, throwable);
+            terminalFailure = mergePrioritizingError(terminalFailure, throwable);
         }
+        // 意外退出且尚无关闭决定时，按中止清理；整个回调链使用同一快照。
+        ShutdownMode recordedMode = shutdownMode.get();
+        ShutdownMode finalMode = recordedMode == null ? ShutdownMode.ABORT : recordedMode;
         CompletionStage<Throwable> termination = CompletableFuture.completedFuture(terminalFailure);
-        for (Supplier<CompletionStage<Void>> stage : shutdownStages) {
-            termination = termination.thenCompose(previous -> invokeStage(stage)
-                    .handle((ignored, failure) -> mergeThrowable(previous, unwrapFailure(failure))));
+        for (Function<ShutdownMode, CompletionStage<Void>> stage : shutdownStages) {
+            termination = termination.thenCompose(previous -> invoke(() -> stage.apply(finalMode))
+                    .handle((ignored, failure) -> mergePrioritizingError(previous, unwrapCompletionException(failure))));
         }
         termination.whenComplete((failure, stageFailure) -> {
-            Throwable combined = mergeThrowable(failure, unwrapFailure(stageFailure));
+            Throwable combined = mergePrioritizingError(failure, unwrapCompletionException(stageFailure));
             if (combined == null) {
                 shutdownFuture.complete(null);
             } else {
@@ -348,30 +363,13 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         completer.complete(null);
     }
 
-    private static CompletionStage<Void> invokeStage(Supplier<CompletionStage<Void>> stage) {
-        try {
-            return Objects.requireNonNull(stage.get(), "lifecycle callback stage");
-        } catch (Throwable failure) {
-            return CompletableFuture.failedFuture(failure);
-        }
+    private void recordShutdownMode(ShutdownMode mode) {
+        shutdownMode.accumulateAndGet(mode, (current, accepted) ->
+                current == ShutdownMode.ABORT || accepted == ShutdownMode.ABORT
+                        ? ShutdownMode.ABORT : ShutdownMode.DRAIN);
     }
 
     private void recordFailure(Throwable failure) {
-        loopFailure.accumulateAndGet(failure, AbstractLoop::mergeThrowable);
-    }
-
-    protected static Throwable mergeThrowable(Throwable previous, Throwable current) {
-        if (previous == null) {
-            return current;
-        }
-        if (current == null || previous == current) {
-            return previous;
-        }
-        if (!(previous instanceof Error) && current instanceof Error) {
-            current.addSuppressed(previous);
-            return current;
-        }
-        previous.addSuppressed(current);
-        return previous;
+        loopFailure.accumulateAndGet(failure, FailureSupport::mergePrioritizingError);
     }
 }

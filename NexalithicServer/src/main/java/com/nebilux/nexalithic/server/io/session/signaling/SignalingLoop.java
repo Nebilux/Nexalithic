@@ -27,7 +27,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
-import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
@@ -54,7 +54,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
 /**
@@ -98,7 +97,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     private final ServerSession.ChannelFactory channelFactory;
     private final Function<HandshakeContext, ServerSession> sessionFactory;
 
-    public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
+    public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit, CodecResources codecResources) throws IOException {
         super(context, OPTIONS);
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         channelAccessCoordinator = context.getModule(NexalithicServer.MODULES.ChannelAccessCoordinator);
@@ -120,7 +119,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         timeWheel = sharedTimeWheel.component();
 
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
-        channelFactory = new ServerSession.ChannelFactory(context, unit);
+        channelFactory = new ServerSession.ChannelFactory(unit, codecResources);
         sessionFactory = handoff -> new ServerSession(
                 handoff.takeSessionKey(),
                 handoff.takeSignalingSecretContext(),
@@ -132,12 +131,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         );
 
         registerStartStage(() -> sharedTimeWheel.start(this));
-        registerStartStage(channelFactory::startAssemblerFactory);
-        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
-    }
-
-    public CompletionStage<Void> releaseAssemblerFactory() {
-        return channelFactory.releaseAssemblerFactory();
+        registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
 
     @Override

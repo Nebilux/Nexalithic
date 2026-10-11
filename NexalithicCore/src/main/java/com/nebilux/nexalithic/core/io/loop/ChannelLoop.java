@@ -33,6 +33,9 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePreservingFirst;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+
 /**
  * 通道循环
  *
@@ -351,13 +354,13 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
                 try {
                     channel.close();
                 } catch (Throwable closeFailure) {
-                    failure.addSuppressed(closeFailure);
+                    failure = mergePreservingFirst(failure, closeFailure);
                 }
             }
             try {
                 onChannelAcquireFailed(handoff, failure);
             } catch (Throwable callbackFailure) {
-                failure = mergeThrowable(failure, callbackFailure);
+                failure = mergePrioritizingError(failure, callbackFailure);
             }
             logger.error("[{}] failed to acquire channel", name, failure);
         } finally {
@@ -410,7 +413,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             try {
                 onExecuteDisconnectEvent(channel, reason);
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePrioritizingError(failure, throwable);
             } finally {
                 loadScore.decrement();
             }

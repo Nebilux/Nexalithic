@@ -30,7 +30,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
-import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
@@ -46,13 +46,19 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
+
 /**
- * 任务调度程序
+ * 任务调度程序。构造时仅创建依赖，时间轮由生命周期启动。
+ *
+ * <p>上层协调器应先排空或中止会话，再关闭本调度器。剩余任务定时器在两种关闭模式下
+ * 都执行中止清理，不等待其自然到期；工作线程和监听器执行器会收到关闭请求。</p>
  *
  * @author Reonvia
  * @since 0.2.0
  */
-public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
+public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator<NexalithicTask> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, TaskScheduler.class);
     public static final class Options extends OptionsDefinition {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {};
@@ -64,6 +70,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
             super(holder);
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(TaskScheduler.class);
     private final TimeWheel<NexalithicTask> timeWheel;
     private final FixedTaskExecutor<NexalithicTask, ?> taskExecutor;
@@ -74,13 +81,14 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
     private ScheduledFuture<?> progressPollerFuture;
 
     public TaskScheduler(NexalithicBuilderContext context) {
+        super(TaskScheduler.class.getSimpleName());
         progressPollerDelay = context.getOption(OPTIONS.ProgressPoller_Delay);
         timeWheel = initTimeWheel(context);
         taskExecutor = initTaskExecutor(context);
         listenerExecutor = initListenerExecutor();
     }
     private TimeWheel<NexalithicTask> initTimeWheel(NexalithicBuilderContext context) {
-        TimeWheel<NexalithicTask> timeWheel = new TimeWheel<>(
+        return new TimeWheel<>(
                 context.getOption(OPTIONS.TimeWheel.TickMillis),
                 context.getOption(OPTIONS.TimeWheel.SlotCount),
                 context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
@@ -93,8 +101,6 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
                 this,
                 TaskScheduler.class.getSimpleName()
         );
-        timeWheel.start();
-        return timeWheel;
     }
     private FixedTaskExecutor<NexalithicTask, ?> initTaskExecutor(NexalithicBuilderContext context) {
         return new FixedTaskExecutor<>(
@@ -133,7 +139,7 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
         return executor;
     }
 
-    public boolean schedule(NexalithicTask task, TaskEvent event) {
+    public boolean scheduleNexalithicTask(NexalithicTask task, TaskEvent event) {
         if (task.getState().isTerminal()) {
             return false;
         }
@@ -156,12 +162,12 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
         };
     }
 
-    public void activate(NexalithicTask task) {
+    public void activateNexalithicTask(NexalithicTask task) {
         task.updateLastActiveTime();
         timeWheel.schedule(task);
     }
 
-    public boolean start(TransferListener listener, TransferSnapshot snapshot) {
+    public boolean startTransferListener(TransferListener listener, TransferSnapshot snapshot) {
         return executeListenerEvent(() -> {
             if (!activeListeners.add(listener)) {
                 return;
@@ -172,21 +178,21 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
             }
         });
     }
-    public boolean pause(TransferListener listener) {
+    public boolean pauseTransferListener(TransferListener listener) {
         return executeListenerEvent(() -> {
             if (activeListeners.contains(listener)) {
                 notifyPaused(listener);
             }
         });
     }
-    public boolean resume(TransferListener listener) {
+    public boolean resumeTransferListener(TransferListener listener) {
         return executeListenerEvent(() -> {
             if (activeListeners.contains(listener)) {
                 notifyResumed(listener);
             }
         });
     }
-    public boolean finish(TransferListener listener) {
+    public boolean finishTransferListener(TransferListener listener) {
         return executeListenerEvent(() -> {
             if (!activeListeners.remove(listener)) {
                 return;
@@ -198,20 +204,12 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
             }
         });
     }
-    public boolean cancel(TransferListener listener) {
+    public boolean cancelTransferListener(TransferListener listener) {
         return executeListenerEvent(() -> {
             if (activeListeners.remove(listener) && activeListeners.isEmpty()) {
                 stopProgressPoller();
             }
         });
-    }
-
-    public void shutdown() {
-        timeWheel.shutdown(Lifecycle.ShutdownMode.ABORT);
-        taskExecutor.shutdown();
-        listenerExecutor.shutdownNow();
-        activeListeners.clear();
-        progressPollerFuture = null;
     }
 
     @Override
@@ -230,8 +228,47 @@ public class TaskScheduler implements TimerCoordinator<NexalithicTask> {
         if (System.nanoTime() < target.getExpiryTimeNanos()) {
             return false;
         }
-        schedule(target, TaskEvent.TIMEOUT());
+        scheduleNexalithicTask(target, TaskEvent.TIMEOUT());
         return true;
+    }
+
+    @Override
+    protected CompletionStage<Void> doStart() {
+        return timeWheel.start();
+    }
+
+    @Override
+    protected CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        // 会话 Loop 先结束；此处不等待剩余任务的定时器自然到期。
+        CompletionStage<Void> wheelTermination;
+        try {
+            wheelTermination = timeWheel.shutdown(ShutdownMode.ABORT);
+        } catch (Throwable failure) {
+            wheelTermination = CompletableFuture.failedFuture(failure);
+        }
+
+        Throwable cleanupFailure = null;
+        try {
+            taskExecutor.shutdown();
+        } catch (Throwable failure) {
+            cleanupFailure = mergePrioritizingError(cleanupFailure, failure);
+        }
+        try {
+            listenerExecutor.shutdownNow();
+        } catch (Throwable failure) {
+            cleanupFailure = mergePrioritizingError(cleanupFailure, failure);
+        }
+        activeListeners.clear();
+        progressPollerFuture = null;
+
+        Throwable finalCleanupFailure = cleanupFailure;
+        return wheelTermination.handle((ignored, failure) -> {
+            Throwable combined = mergePrioritizingError(finalCleanupFailure, unwrapCompletionException(failure));
+            if (combined != null) {
+                throw new CompletionException(combined);
+            }
+            return null;
+        });
     }
 
     private void execute(NexalithicTask task) {

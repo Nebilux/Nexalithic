@@ -27,7 +27,6 @@ import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
-import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.SessionChannel;
@@ -154,7 +153,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             }
         });
         registerStartStage(() -> sharedTimeWheel.start(this));
-        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
+        registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
 
     @Override

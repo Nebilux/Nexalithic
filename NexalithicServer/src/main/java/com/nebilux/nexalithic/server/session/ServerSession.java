@@ -16,23 +16,19 @@
 
 package com.nebilux.nexalithic.server.session;
 
-import com.nebilux.nexalithic.core.NexalithicEndpoint;
-import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.session.*;
-import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
 import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
-
-import java.util.concurrent.CompletionStage;
 
 /**
  * 服务器会话
@@ -98,10 +94,10 @@ public class ServerSession extends NexalithicSession<ServerSession> {
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;
 
-        public ChannelFactory(NexalithicBuilderContext context, ServiceUnit serviceUnit) {
+        public ChannelFactory(ServiceUnit serviceUnit, CodecResources resources) {
             this.serviceUnit = serviceUnit;
-            this.fragmenterFactory = new FragmenterFactory(context, NexalithicServer.MODULES);
-            this.assemblerFactory = new AssemblerFactory(context, NexalithicServer.MODULES, NexalithicEndpoint.Type.SERVER);
+            this.fragmenterFactory = resources.fragmenters();
+            this.assemblerFactory = resources.assemblers();
         }
 
         @Override
@@ -109,14 +105,6 @@ public class ServerSession extends NexalithicSession<ServerSession> {
             return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, serviceUnit.getSignalingLoop(), session,
                     fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
             );
-        }
-
-        public CompletionStage<Void> releaseAssemblerFactory() {
-            return assemblerFactory.release();
-        }
-
-        public CompletionStage<Void> startAssemblerFactory() {
-            return assemblerFactory.start();
         }
 
         @Override

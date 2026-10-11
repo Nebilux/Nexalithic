@@ -16,10 +16,12 @@
 
 package com.nebilux.nexalithic.core.lifecycle;
 
+import com.nebilux.nexalithic.core.exception.FailureSupport;
 import com.nebilux.nexalithic.core.infra.concurrent.async.AsyncOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -28,6 +30,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
 
 /**
  * 单个组件的一次性生命周期控制，实现 {@link Lifecycle} 的状态转换和完成阶段管理。
@@ -104,11 +109,11 @@ public abstract class AbstractLifecycle implements Lifecycle {
         abortOperation = AsyncOperation.fromStage(name + "-abort", ignored -> executeShutdown(ShutdownMode.ABORT));
 
         // 将钩子的异常转为正常完成的 Throwable 值，使升级路径即使遇到失败也能等待两端。
-        CompletionStage<Throwable> drainOutcome = outcomeOf(drainOperation.completion());
-        CompletionStage<Throwable> abortOutcome = outcomeOf(abortOperation.completion());
+        CompletionStage<Throwable> drainOutcome = failureOutcome(drainOperation.completion());
+        CompletionStage<Throwable> abortOutcome = failureOutcome(abortOperation.completion());
         drainOutcome.thenAccept(failure -> finishTermination(TerminationMode.DRAIN, failure));
         abortOutcome.thenAccept(failure -> finishTermination(TerminationMode.ABORT, failure));
-        drainOutcome.thenCombine(abortOutcome, AbstractLifecycle::mergeFailure)
+        drainOutcome.thenCombine(abortOutcome, FailureSupport::mergePrioritizingError)
                 .thenAccept(failure -> finishTermination(TerminationMode.ESCALATED, failure));
     }
 
@@ -353,7 +358,7 @@ public abstract class AbstractLifecycle implements Lifecycle {
             finishStart(new CancellationException(name + " was shutdown during start"), completer);
             return;
         }
-        invoke(this::doStart).whenComplete((result, failure) -> finishStart(unwrapFailure(failure), completer));
+        invoke(this::doStart).whenComplete((result, failure) -> finishStart(unwrapCompletionException(failure), completer));
     }
 
     /**
@@ -398,9 +403,9 @@ public abstract class AbstractLifecycle implements Lifecycle {
         }
         // 启动失败或启动中关闭时，保留原始原因，并把清理失败合并进启动结果。
         terminationFuture.whenComplete((result, terminationFailure) ->
-                completer.completeExceptionally(mergeFailure(
+                completer.completeExceptionally(mergePrioritizingError(
                         throwable == null ? new CancellationException(name + " was shutdown before start completed") : throwable,
-                        unwrapFailure(terminationFailure)))
+                        unwrapCompletionException(terminationFailure)))
         );
         triggerTermination(toTrigger);
     }
@@ -417,13 +422,13 @@ public abstract class AbstractLifecycle implements Lifecycle {
             }
             acceptance = mode == ShutdownMode.DRAIN ? drainAcceptance : abortAcceptance;
             if (mode == ShutdownMode.ABORT && abortIncludesDrainAcceptance) {
-                acceptance = drainAcceptance.thenCombine(abortAcceptance, AbstractLifecycle::mergeFailure);
+                acceptance = drainAcceptance.thenCombine(abortAcceptance, FailureSupport::mergePrioritizingError);
             }
         }
         logger.debug("{} {} shutdown started", name, mode);
         return acceptance.thenCompose(acceptanceFailure ->
-                outcomeOf(invoke(() -> doShutdown(mode))).thenCompose(shutdownFailure -> {
-                    Throwable failure = mergeFailure(acceptanceFailure, shutdownFailure);
+                failureOutcome(invoke(() -> doShutdown(mode))).thenCompose(shutdownFailure -> {
+                    Throwable failure = mergePrioritizingError(acceptanceFailure, shutdownFailure);
                     return failure == null
                             ? CompletableFuture.completedFuture(null)
                             : CompletableFuture.failedFuture(failure);
@@ -468,8 +473,8 @@ public abstract class AbstractLifecycle implements Lifecycle {
         }
     }
 
-    /** 将钩子的同步抛错或空返回值统一转成失败的完成阶段。 */
-    private static CompletionStage<Void> invoke(Supplier<CompletionStage<Void>> action) {
+    /** 将阶段调用的同步抛错或空返回值统一转成失败的完成阶段。 */
+    protected static CompletionStage<Void> invoke(Supplier<CompletionStage<Void>> action) {
         try {
             return Objects.requireNonNull(action.get(), "lifecycle completion stage");
         } catch (Throwable failure) {
@@ -477,33 +482,41 @@ public abstract class AbstractLifecycle implements Lifecycle {
         }
     }
 
-    /** 把完成阶段的失败转换为正常完成的 Throwable 值，供两条关闭路径合并。 */
-    private static CompletionStage<Throwable> outcomeOf(CompletionStage<Void> completion) {
-        return completion.handle((result, failure) -> unwrapFailure(failure));
+    /** 即使前一阶段失败也执行下一阶段，并合并两者的失败。 */
+    protected static CompletionStage<Void> continueAfter(CompletionStage<Void> previous, Supplier<CompletionStage<Void>> next) {
+        return previous.handle((ignored, failure) -> unwrapCompletionException(failure))
+                .thenCompose(previousFailure -> invoke(next).handle((ignored, failure) -> {
+                    Throwable combined = mergePrioritizingError(previousFailure, unwrapCompletionException(failure));
+                    if (combined != null) {
+                        throw new CompletionException(combined);
+                    }
+                    return null;
+                }));
     }
 
-    /** 去掉异步组合产生的 CompletionException 包装，保留底层失败原因。 */
-    protected static Throwable unwrapFailure(Throwable failure) {
-        Throwable result = failure;
-        while (result instanceof CompletionException && result.getCause() != null) {
-            result = result.getCause();
-        }
-        return result;
+    /** 等待所有已提交的阶段结束，并汇总每个阶段的失败。 */
+    protected static CompletionStage<Void> awaitAll(List<CompletionStage<Void>> stages) {
+        CompletableFuture<?>[] futures = stages.stream()
+                .map(CompletionStage::toCompletableFuture)
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(futures).handle((ignored, failure) -> {
+            Throwable combined = null;
+            for (CompletableFuture<?> future : futures) {
+                try {
+                    future.join();
+                } catch (Throwable stageFailure) {
+                    combined = mergePrioritizingError(combined, unwrapCompletionException(stageFailure));
+                }
+            }
+            if (combined != null) {
+                throw new CompletionException(combined);
+            }
+            return null;
+        });
     }
 
-    /** 合并失败；优先保留 Error，另一原因记录为 suppressed exception。 */
-    protected static Throwable mergeFailure(Throwable previous, Throwable current) {
-        if (previous == null) {
-            return current;
-        }
-        if (current == null || previous == current) {
-            return previous;
-        }
-        if (!(previous instanceof Error) && current instanceof Error) {
-            current.addSuppressed(previous);
-            return current;
-        }
-        previous.addSuppressed(current);
-        return previous;
+    /** 把完成阶段的失败转换为结果值；成功时结果为 {@code null}。 */
+    protected static CompletionStage<Throwable> failureOutcome(CompletionStage<Void> stage) {
+        return stage.handle((ignored, failure) -> unwrapCompletionException(failure));
     }
 }

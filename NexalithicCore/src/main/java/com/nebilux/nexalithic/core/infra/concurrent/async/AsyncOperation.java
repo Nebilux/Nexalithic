@@ -23,6 +23,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
+
 /**
  * 接受一次触发输入，并由任意线程提供最终结果的一次性异步操作。
  *
@@ -145,10 +147,7 @@ public class AsyncOperation<I, R> {
             if (failure == null) {
                 completer.complete(value);
             } else {
-                while (failure instanceof CompletionException && failure.getCause() != null) {
-                    failure = failure.getCause();
-                }
-                completer.completeExceptionally(failure);
+                completer.completeExceptionally(unwrapCompletionException(failure));
             }
         }));
     }
@@ -282,7 +281,7 @@ public class AsyncOperation<I, R> {
             finalFuture.join();
             return null;
         } catch (CompletionException exception) {
-            return exception.getCause() == null ? exception : exception.getCause();
+            return unwrapCompletionException(exception);
         } catch (CancellationException exception) {
             return exception;
         }

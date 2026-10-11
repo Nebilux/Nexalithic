@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+
 /**
  * 选择器循环
  *
@@ -115,13 +117,13 @@ public abstract class SelectorLoop extends AbstractLoop {
             try {
                 discardAsyncEvents();
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePrioritizingError(failure, throwable);
             }
             for (SelectionKey key : current.keys().toArray(SelectionKey[]::new)) {
                 try {
                     clearSelectionKey(key);
                 } catch (Throwable throwable) {
-                    failure = mergeThrowable(failure, throwable);
+                    failure = mergePrioritizingError(failure, throwable);
                 }
             }
         } finally {
@@ -129,7 +131,7 @@ public abstract class SelectorLoop extends AbstractLoop {
             try {
                 current.close();
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePrioritizingError(failure, throwable);
             }
         }
         if (failure != null) {

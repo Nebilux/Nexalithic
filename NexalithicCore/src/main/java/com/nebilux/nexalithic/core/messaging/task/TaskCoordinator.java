@@ -49,14 +49,14 @@ public class TaskCoordinator {
         track(task);
         TaskFuture future = task.getFuture();
         if (!switch (task.getStrategy()) {
-            case IMMEDIATE -> scheduler.schedule(task, TaskEvent.REQUEST());
+            case IMMEDIATE -> scheduler.scheduleNexalithicTask(task, TaskEvent.REQUEST());
             case SEQUENTIAL -> {
                 synchronized (this) {
                     if (!currentSequentialTask.compareAndSet(null, task)) {
                         yield waitingTasks.offer(task.awaitRequest());
                     }
                 }
-                yield scheduler.schedule(task, TaskEvent.REQUEST());
+                yield scheduler.scheduleNexalithicTask(task, TaskEvent.REQUEST());
             }
         }) {
             untrack(task);
@@ -70,15 +70,15 @@ public class TaskCoordinator {
             return;
         }
         activeTask.updateLastActiveTime();
-        scheduler.schedule(activeTask, TaskEvent.RESPONSE(packet));
+        scheduler.scheduleNexalithicTask(activeTask, TaskEvent.RESPONSE(packet));
     }
 
     public void activate(NexalithicTask task) {
         if (task.getPattern() == NexalithicTask.Pattern.ONE_WAY) {
-            scheduler.schedule(task, TaskEvent.COMPLETE());
+            scheduler.scheduleNexalithicTask(task, TaskEvent.COMPLETE());
             return;
         }
-        scheduler.activate(task);
+        scheduler.activateNexalithicTask(task);
     }
 
     public void remove(NexalithicTask task) {
@@ -111,7 +111,7 @@ public class TaskCoordinator {
         if (waitingTask == null) {
             return;
         }
-        scheduler.schedule(waitingTask, TaskEvent.REQUEST());
+        scheduler.scheduleNexalithicTask(waitingTask, TaskEvent.REQUEST());
     }
 
     private void track(NexalithicTask task) {

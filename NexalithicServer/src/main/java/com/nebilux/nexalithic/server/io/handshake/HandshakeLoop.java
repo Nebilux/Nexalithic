@@ -35,7 +35,6 @@ import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
-import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
@@ -170,7 +169,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         registerDrainCondition(asyncQueue::isEmpty);
         registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit()));
         registerStartStage(() -> sharedTimeWheel.start(this));
-        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
+        registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
     private FixedTaskExecutor<HandshakeContext, ExecutorThread> createFixedTaskExecutor(NexalithicBuilderContext context, boolean shared) {
         return new FixedTaskExecutor<>(

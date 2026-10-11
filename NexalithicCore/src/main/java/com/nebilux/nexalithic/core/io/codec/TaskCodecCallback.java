@@ -61,7 +61,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
             return;
         }
         transferSnapshot = new TransferSnapshot(total);
-        if (!taskScheduler.start(transferListener, transferSnapshot)) {
+        if (!taskScheduler.startTransferListener(transferListener, transferSnapshot)) {
             transferSnapshot = null;
         }
     }
@@ -81,7 +81,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
         completed = true;
         if (transferSnapshot != null) {
             transferSnapshot.updateRemaining(0);
-            taskScheduler.finish(transferListener);
+            taskScheduler.finishTransferListener(transferListener);
         }
         onComplete();
     }
@@ -89,7 +89,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
     @Override
     public void clear() {
         if (!completed && transferSnapshot != null) {
-            taskScheduler.cancel(transferListener);
+            taskScheduler.cancelTransferListener(transferListener);
         }
         session = null;
         task = null;

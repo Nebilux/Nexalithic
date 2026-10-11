@@ -25,7 +25,7 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -46,7 +46,6 @@ public class ClientLifecycleCoordinator extends AbstractLifecycle {
     private final ClientSessionLoop sessionLoop;
     private final SessionManager sessionManager;
     private final TaskScheduler taskScheduler;
-
     public ClientLifecycleCoordinator(NexalithicBuilderContext context) {
         super(NexalithicClient.class.getSimpleName());
         sessionLoop = context.getModule(MODULES.SessionLoop);
@@ -61,11 +60,13 @@ public class ClientLifecycleCoordinator extends AbstractLifecycle {
 
     @Override
     protected CompletionStage<Void> doStart() {
-        sessionManager.start();
-        return sessionLoop.start().whenComplete((ignored, failure) -> {
-            if (failure != null) {
-                sessionManager.stop();
-            }
+        return taskScheduler.start().thenCompose(ignored -> {
+            sessionManager.start();
+            return sessionLoop.start().whenComplete((result, failure) -> {
+                if (failure != null) {
+                    sessionManager.stop();
+                }
+            });
         });
     }
 
@@ -75,30 +76,27 @@ public class ClientLifecycleCoordinator extends AbstractLifecycle {
     }
 
     private CompletionStage<Void> abortComponents() {
-        sessionManager.stop();
-        return releaseAssemblyTimer(sessionLoop.shutdown(ShutdownMode.ABORT)
-                .whenComplete((ignored, failure) -> taskScheduler.shutdown()));
+        CompletionStage<Void> termination = invoke(() -> {
+            sessionManager.stop();
+            return CompletableFuture.completedFuture(null);
+        });
+        return shutdownAfterSessionLoop(continueAfter(termination, () -> sessionLoop.shutdown(ShutdownMode.ABORT)));
     }
 
     private CompletionStage<Void> drainComponents() {
-        sessionManager.shutdown();
-        return releaseAssemblyTimer(sessionLoop.shutdown(ShutdownMode.DRAIN).whenComplete((ignored, failure) -> {
-            try {
-                sessionManager.stop();
-            } finally {
-                taskScheduler.shutdown();
-            }
-        }));
+        CompletionStage<Void> termination = invoke(() -> {
+            sessionManager.shutdown();
+            return CompletableFuture.completedFuture(null);
+        });
+        termination = continueAfter(termination, () -> sessionLoop.shutdown(ShutdownMode.DRAIN));
+        termination = continueAfter(termination, () -> {
+            sessionManager.stop();
+            return CompletableFuture.completedFuture(null);
+        });
+        return shutdownAfterSessionLoop(termination);
     }
 
-    private CompletionStage<Void> releaseAssemblyTimer(CompletionStage<Void> previous) {
-        return previous.handle((ignored, failure) -> unwrapFailure(failure))
-                .thenCompose(previousFailure -> sessionLoop.releaseAssemblerFactory().handle((ignored, failure) -> {
-                    Throwable combined = mergeFailure(previousFailure, unwrapFailure(failure));
-                    if (combined != null) {
-                        throw new CompletionException(combined);
-                    }
-                    return null;
-                }));
+    private CompletionStage<Void> shutdownAfterSessionLoop(CompletionStage<Void> previous) {
+        return continueAfter(previous, () -> taskScheduler.shutdown(ShutdownMode.ABORT));
     }
 }

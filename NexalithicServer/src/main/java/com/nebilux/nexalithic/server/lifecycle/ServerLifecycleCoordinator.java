@@ -24,18 +24,15 @@ import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
+import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.accept.AcceptorLoop;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeLoop;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
-import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.function.Supplier;
 
 /**
  * 服务端生命周期协调器。
@@ -69,14 +66,14 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
     private final AcceptorLoop acceptorLoop;
     private final LoadBalancer<Void, HandshakeLoop> handshakeLoopLoadBalancer;
     private final LoadBalancer<Void, ServiceUnit> serviceUnitLoadBalancer;
-    private final NexalithicBuilderContext context;
+    private final TaskScheduler taskScheduler;
 
     public ServerLifecycleCoordinator(NexalithicBuilderContext context) {
         super(NexalithicServer.class.getSimpleName());
-        this.context = context;
         this.acceptorLoop = context.getModule(MODULES.AcceptorLoop);
         this.handshakeLoopLoadBalancer = context.getModule(MODULES.HandshakeLoopLoadBalancer);
         this.serviceUnitLoadBalancer = context.getModule(MODULES.ServiceUnitLoadBalancer);
+        this.taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
     }
 
     @Override
@@ -86,7 +83,8 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
 
     @Override
     protected CompletionStage<Void> doStart() {
-        return startSessionLoops()
+        return taskScheduler.start()
+                .thenCompose(ignored -> startServiceUnits())
                 .thenCompose(ignored -> startHandshakeLoops())
                 .thenCompose(ignored -> startAcceptorLoop());
     }
@@ -99,19 +97,17 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
     private CompletionStage<Void> drainComponents() {
         CompletionStage<Void> termination = invoke(this::drainAcceptorLoop);
         termination = continueAfter(termination, this::drainHandshakeLoops);
-        termination = continueAfter(termination, this::drainSessionLoops);
-        termination = continueAfter(termination, this::releaseAssemblyTimers);
-        return continueAfter(termination, context::whenSharedModulesTerminated);
+        termination = continueAfter(termination, this::drainServiceUnits);
+        return continueAfter(termination, () -> taskScheduler.shutdown(ShutdownMode.ABORT));
     }
 
     private CompletionStage<Void> abortComponents() {
         CompletionStage<Void> termination = awaitAll(List.of(
                 invoke(this::abortAcceptorLoop),
                 invoke(this::abortHandshakeLoops),
-                invoke(this::abortSessionLoops)
+                invoke(this::abortServiceUnits)
         ));
-        termination = continueAfter(termination, this::releaseAssemblyTimers);
-        return continueAfter(termination, context::whenSharedModulesTerminated);
+        return continueAfter(termination, () -> taskScheduler.shutdown(ShutdownMode.ABORT));
     }
 
     private CompletionStage<Void> startAcceptorLoop() {
@@ -146,82 +142,25 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
         return awaitAll(stages);
     }
 
-    private CompletionStage<Void> startSessionLoops() {
+    private CompletionStage<Void> startServiceUnits() {
         List<CompletionStage<Void>> stages = new ArrayList<>();
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            stages.add(serviceUnit.getSignalingLoop().start());
-            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
-                stages.add(businessLoop.start());
-            }
+            stages.add(invoke(serviceUnit::start));
         }
         return awaitAll(stages);
     }
-    private CompletionStage<Void> drainSessionLoops() {
-        List<CompletionStage<Void>> sessionStages = new ArrayList<>();
-        for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            sessionStages.add(invoke(() -> serviceUnit.getSignalingLoop().shutdown(ShutdownMode.DRAIN)));
-            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
-                sessionStages.add(invoke(() -> businessLoop.shutdown(ShutdownMode.DRAIN)));
-            }
-        }
-        return awaitAll(sessionStages);
-    }
-    private CompletionStage<Void> abortSessionLoops() {
+    private CompletionStage<Void> drainServiceUnits() {
         List<CompletionStage<Void>> stages = new ArrayList<>();
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            stages.add(invoke(() -> serviceUnit.getSignalingLoop().shutdown(ShutdownMode.ABORT)));
-            for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
-                stages.add(invoke(() -> businessLoop.shutdown(ShutdownMode.ABORT)));
-            }
+            stages.add(invoke(() -> serviceUnit.shutdown(ShutdownMode.DRAIN)));
         }
         return awaitAll(stages);
     }
-
-    private CompletionStage<Void> releaseAssemblyTimers() {
+    private CompletionStage<Void> abortServiceUnits() {
         List<CompletionStage<Void>> stages = new ArrayList<>();
         for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
-            stages.add(invoke(serviceUnit.getSignalingLoop()::releaseAssemblerFactory));
+            stages.add(invoke(() -> serviceUnit.shutdown(ShutdownMode.ABORT)));
         }
         return awaitAll(stages);
-    }
-
-    private static CompletionStage<Void> awaitAll(List<CompletionStage<Void>> stages) {
-        CompletableFuture<?>[] futures = stages.stream().map(CompletionStage::toCompletableFuture).toArray(CompletableFuture[]::new);
-        return CompletableFuture.allOf(futures).handle((ignored, failure) -> {
-            Throwable combined = null;
-            for (CompletableFuture<?> future : futures) {
-                try {
-                    future.join();
-                } catch (Throwable stageFailure) {
-                    combined = mergeFailure(combined, unwrapFailure(stageFailure));
-                }
-            }
-            if (combined != null) {
-                throw new CompletionException(combined);
-            }
-            return null;
-        });
-    }
-
-    private static CompletionStage<Void> continueAfter(CompletionStage<Void> previous, Supplier<CompletionStage<Void>> next) {
-        return previous.handle((ignored, failure) -> unwrapFailure(failure))
-                .thenCompose(previousFailure -> invoke(next).handle((ignored, nextFailure) -> {
-                    Throwable combined = mergeFailure(previousFailure, unwrapFailure(nextFailure));
-                    if (combined != null) {
-                        throw new CompletionException(combined);
-                    }
-                    return null;
-                }));
-    }
-
-    private static CompletionStage<Void> invoke(Supplier<CompletionStage<Void>> action) {
-        try {
-            CompletionStage<Void> stage = action.get();
-            return stage == null
-                    ? CompletableFuture.failedFuture(new NullPointerException("lifecycle completion stage"))
-                    : stage;
-        } catch (Throwable failure) {
-            return CompletableFuture.failedFuture(failure);
-        }
     }
 }

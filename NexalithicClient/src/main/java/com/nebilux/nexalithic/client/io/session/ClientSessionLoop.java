@@ -20,10 +20,12 @@ import com.nebilux.nexalithic.client.NexalithicClient;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerCoordinator;
 import com.nebilux.nexalithic.client.session.ClientSession;
 import com.nebilux.nexalithic.client.session.SessionManager;
+import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
@@ -39,7 +41,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -70,6 +71,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     private final DynamicRateController dynamicRateController;
     private final Function<ClientChannelHandoff.Signaling, ClientSession> sessionFactory;
     private final ClientSession.ChannelFactory channelFactory;
+    private final CodecResources codecResources;
     private long lastDynamicRateTickNanos;
 
     public ClientSessionLoop(NexalithicBuilderContext context) throws IOException {
@@ -92,7 +94,8 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
         TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
-        channelFactory = new ClientSession.ChannelFactory(context, this);
+        codecResources = new CodecResources(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
+        channelFactory = new ClientSession.ChannelFactory(this, codecResources);
         sessionFactory = handoff -> new ClientSession(
                 handoff.sessionKey(), handoff.signalingSecretKey(), handoff.businessSecretKey(),
                 channelFactory, taskScheduler, sessionManager
@@ -124,11 +127,8 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 lastDynamicRateTickNanos = System.nanoTime();
             }
         });
-        registerStartStage(channelFactory::startAssemblerFactory);
-    }
-
-    public CompletionStage<Void> releaseAssemblerFactory() {
-        return channelFactory.releaseAssemblerFactory();
+        registerStartStage(codecResources::start);
+        registerShutdownStage(codecResources::release);
     }
 
     @Override

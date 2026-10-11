@@ -23,6 +23,8 @@ import java.nio.channels.SelectionKey;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePreservingFirst;
+
 /**
  * 抽象通道
  *
@@ -239,30 +241,21 @@ public abstract class AbstractChannel<C extends SelectableChannel> implements Ne
                 try {
                     key.cancel();
                 } catch (Throwable throwable) {
-                    failure = mergeThrowable(failure, throwable);
+                    failure = mergePreservingFirst(failure, throwable);
                 }
             }
             try {
                 closing.selectableChannel().close();
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePreservingFirst(failure, throwable);
             }
         }
         try {
             onClose(closing);
         } catch (Throwable throwable) {
-            failure = mergeThrowable(failure, throwable);
+            failure = mergePreservingFirst(failure, throwable);
         }
         return failure;
-    }
-    private static Throwable mergeThrowable(Throwable previous, Throwable current) {
-        if (previous == null) {
-            return current;
-        }
-        if (current != null && current != previous) {
-            previous.addSuppressed(current);
-        }
-        return previous;
     }
     private static void rethrow(Throwable failure) throws IOException {
         if (failure instanceof IOException ioException) {

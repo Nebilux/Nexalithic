@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+
 /**
  * 基于单 Worker 线程推进的哈希时间轮。
  *
@@ -369,14 +371,14 @@ public class TimeWheel<T> extends AbstractLifecycle {
                 logger.error("TimeWheel task processing failed. Context: {}", current, processingFailure);
                 finished = true;
             } catch (Throwable fatalFailure) {
-                failure = mergeFailure(failure, fatalFailure);
+                failure = mergePrioritizingError(failure, fatalFailure);
                 finished = true;
             }
             if (finished) {
                 try {
                     finishSchedule(current);
                 } catch (Throwable cleanupFailure) {
-                    failure = mergeFailure(failure, cleanupFailure);
+                    failure = mergePrioritizingError(failure, cleanupFailure);
                 }
             }
             if (failure != null) {
@@ -442,7 +444,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
                 try {
                     finishSchedule(wrapper);
                 } catch (Throwable cleanupFailure) {
-                    failure = mergeFailure(failure, cleanupFailure);
+                    failure = mergePrioritizingError(failure, cleanupFailure);
                 }
             }
             if (failure != null) {
@@ -505,7 +507,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
             try {
                 finishSchedule(wrapper);
             } catch (Throwable cleanupFailure) {
-                failure = mergeFailure(failure, cleanupFailure);
+                failure = mergePrioritizingError(failure, cleanupFailure);
             }
         }
         for (int slot = 0; slot < buckets.length; slot++) {
@@ -516,7 +518,7 @@ public class TimeWheel<T> extends AbstractLifecycle {
                 try {
                     finishSchedule(current);
                 } catch (Throwable cleanupFailure) {
-                    failure = mergeFailure(failure, cleanupFailure);
+                    failure = mergePrioritizingError(failure, cleanupFailure);
                 }
                 current = next;
             }
@@ -630,15 +632,15 @@ public class TimeWheel<T> extends AbstractLifecycle {
                 try {
                     submissionQueue.close();
                 } catch (Throwable closeFailure) {
-                    failure = mergeFailure(failure, closeFailure);
+                    failure = mergePrioritizingError(failure, closeFailure);
                 }
-                failure = mergeFailure(failure, clearScheduled());
+                failure = mergePrioritizingError(failure, clearScheduled());
                 if (lifecycleState() == Lifecycle.State.STARTING || lifecycleState() == Lifecycle.State.RUNNING) {
                     // 不等待自身的完成阶段；doShutdown 会接入下方的 workerFinished。
                     try {
                         shutdown(ShutdownMode.ABORT);
                     } catch (Throwable shutdownFailure) {
-                        failure = mergeFailure(failure, shutdownFailure);
+                        failure = mergePrioritizingError(failure, shutdownFailure);
                     }
                 }
                 logger.debug("[{}] stopped", getName());

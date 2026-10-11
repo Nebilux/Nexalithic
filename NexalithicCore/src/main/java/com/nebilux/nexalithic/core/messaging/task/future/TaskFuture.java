@@ -40,7 +40,7 @@ public class TaskFuture {
         return task.getState();
     }
     public boolean cancel() {
-        return task.getOwner().getTaskCoordinator().getScheduler().schedule(task, TaskEvent.CANCEL());
+        return task.getOwner().getTaskCoordinator().getScheduler().scheduleNexalithicTask(task, TaskEvent.CANCEL());
     }
 
     /**

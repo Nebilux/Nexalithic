@@ -26,8 +26,9 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
 
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
 
 /**
  * Nexalithic 终端抽象基类。
@@ -196,10 +197,7 @@ public abstract class NexalithicEndpoint implements Lifecycle {
             if (failure == null) {
                 return null;
             }
-            Throwable cause = failure;
-            while (cause instanceof CompletionException && cause.getCause() != null) {
-                cause = cause.getCause();
-            }
+            Throwable cause = unwrapCompletionException(failure);
             if (cause instanceof Error error) {
                 throw error;
             }

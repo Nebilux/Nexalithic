@@ -16,12 +16,10 @@
 
 package com.nebilux.nexalithic.client.session;
 
-import com.nebilux.nexalithic.client.NexalithicClient;
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
-import com.nebilux.nexalithic.core.NexalithicEndpoint;
-import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
@@ -31,8 +29,6 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
 import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.core.session.SessionChannelFactory;
 import com.nebilux.nexalithic.core.session.SessionKey;
-
-import java.util.concurrent.CompletionStage;
 
 /**
  * 客户端会话
@@ -65,9 +61,9 @@ public class ClientSession extends NexalithicSession<ClientSession> {
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;
 
-        public ChannelFactory(NexalithicBuilderContext context, ClientSessionLoop loop) {
-            this.fragmenterFactory = new FragmenterFactory(context, NexalithicClient.MODULES);
-            this.assemblerFactory = new AssemblerFactory(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
+        public ChannelFactory(ClientSessionLoop loop, CodecResources resources) {
+            this.fragmenterFactory = resources.fragmenters();
+            this.assemblerFactory = resources.assemblers();
             this.loop = loop;
         }
 
@@ -76,14 +72,6 @@ public class ClientSession extends NexalithicSession<ClientSession> {
             return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, loop, session,
                     fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
             );
-        }
-
-        public CompletionStage<Void> releaseAssemblerFactory() {
-            return assemblerFactory.release();
-        }
-
-        public CompletionStage<Void> startAssemblerFactory() {
-            return assemblerFactory.start();
         }
 
         @Override
