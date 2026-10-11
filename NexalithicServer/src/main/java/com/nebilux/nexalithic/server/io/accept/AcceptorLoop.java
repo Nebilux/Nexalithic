@@ -71,7 +71,9 @@ public class AcceptorLoop extends SelectorLoop {
         super(context, OPTIONS);
         handshakeIngress = context.getModule(MODULES.HandshakeIngress);
         networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
-        drainAsyncEventsCondition(() -> {
+
+        registerDrainCondition(eventQueue::isEmpty);
+        registerPreSelectTask(() -> {
             eventQueue.drain(Runnable::run);
             if (!eventQueue.isAccepting()) {
                 for (SelectionKey key : registeredKeys().toArray(SelectionKey[]::new)) {
@@ -82,7 +84,6 @@ public class AcceptorLoop extends SelectorLoop {
                     }
                 }
             }
-            return eventQueue.isEmpty();
         });
     }
 

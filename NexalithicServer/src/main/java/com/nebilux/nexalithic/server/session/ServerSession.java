@@ -32,6 +32,8 @@ import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
 import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
 
+import java.util.concurrent.CompletionStage;
+
 /**
  * 服务器会话
  *
@@ -107,6 +109,14 @@ public class ServerSession extends NexalithicSession<ServerSession> {
             return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, serviceUnit.getSignalingLoop(), session,
                     fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
             );
+        }
+
+        public CompletionStage<Void> releaseAssemblerFactory() {
+            return assemblerFactory.release();
+        }
+
+        public CompletionStage<Void> startAssemblerFactory() {
+            return assemblerFactory.start();
         }
 
         @Override

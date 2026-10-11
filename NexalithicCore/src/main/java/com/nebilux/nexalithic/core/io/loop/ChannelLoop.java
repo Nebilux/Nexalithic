@@ -130,18 +130,20 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             }
         }
     }
-    private static final Logger logger = LoggerFactory.getLogger(ChannelLoop.class);
     private enum SubmissionState {
         OPEN,
         DRAINING,
         CLOSED
     }
+
+    private static final Logger logger = LoggerFactory.getLogger(ChannelLoop.class);
     private record Constant(int EventQueue_DrainLimit, int InterestQueue_DrainLimit) {}
     private final Constant CONSTANT;
     private final AtomicStateQueue.StateHandle<SubmissionState> submissionState = new AtomicStateQueue.StateHandle<>(SubmissionState.OPEN);
     private final AtomicStateQueue<Event<H, C>, SubmissionState> eventQueue;
     private final AtomicStateQueue<LoopChannel<?, ?>, SubmissionState> interestQueue;
     private final Set<C> ownedChannels = Collections.newSetFromMap(new IdentityHashMap<>());
+
     public ChannelLoop(NexalithicBuilderContext context, Options options) throws IOException {
         super(context, options);
         CONSTANT = context.getConstant(this.getClass(), Constant.class, () -> new Constant(
@@ -156,11 +158,11 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
                 new MpscUnboundedArrayQueue<>(context.getOption(options.InterestQueue_ChunkSize)),
                 submissionState, this::acceptInterestSubmission
         );
-        isDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
-        drainAsyncEventsCondition(() -> {
+
+        registerDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
+        registerPreSelectTask(() -> {
             eventQueue.drain(event -> event.execute(this), CONSTANT.EventQueue_DrainLimit());
             interestQueue.drain(LoopChannel::applyInterest, CONSTANT.InterestQueue_DrainLimit());
-            return eventQueue.isEmpty() && interestQueue.isEmpty();
         });
     }
 

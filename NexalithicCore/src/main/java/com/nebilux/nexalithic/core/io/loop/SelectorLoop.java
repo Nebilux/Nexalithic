@@ -32,7 +32,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 
 /**
  * 选择器循环
@@ -58,7 +57,7 @@ public abstract class SelectorLoop extends AbstractLoop {
         }
     }
     private final Constant CONSTANT;
-    private final List<BooleanSupplier> drainAsyncEventsConditions = new ArrayList<>(4);
+    private final List<Runnable> preSelectTasks = new ArrayList<>(4);
     private volatile Selector selector;
     private int prematureSelectReturns;
 
@@ -68,10 +67,20 @@ public abstract class SelectorLoop extends AbstractLoop {
                 context.getOption(options.SelectorTimeoutMillis)
         ));
         selector = Selector.open();
-        isDrainCondition(() -> {
+
+        registerDrainCondition(() -> {
             Selector current = selector;
             return current == null || current.keys().isEmpty();
         });
+    }
+
+    protected final void registerPreSelectTask(Runnable task) throws IllegalStateException {
+        if (lifecycleState() != State.NEW) {
+            throw new IllegalStateException(
+                    "drainAsyncEventsConditions can only be registered before the loop starts"
+            );
+        }
+        preSelectTasks.add(task);
     }
 
     protected final SelectionKey registerSelectableChannel(SelectableChannel channel, int interest) throws ClosedChannelException {
@@ -81,17 +90,10 @@ public abstract class SelectorLoop extends AbstractLoop {
         }
         return channel.register(current, interest);
     }
+
     protected final Set<SelectionKey> registeredKeys() {
         Selector current = selector;
         return current == null ? Set.of() : current.keys();
-    }
-    protected final void drainAsyncEventsCondition(BooleanSupplier condition) {
-        if (lifecycleState() != State.NEW) {
-            throw new IllegalStateException(
-                    "drainAsyncEventsConditions can only be registered before the loop starts"
-            );
-        }
-        drainAsyncEventsConditions.add(condition);
     }
 
     @Override
@@ -146,7 +148,8 @@ public abstract class SelectorLoop extends AbstractLoop {
         long elapsedNanos = 0;
         int selected;
         try {
-            if (!drainAsyncEvents()) {
+            drainAsyncEvents();
+            if (!isDrained()) {
                 selected = current.selectNow();
             } else if (!draining) {
                 normalBlockingSelect = true;
@@ -211,13 +214,10 @@ public abstract class SelectorLoop extends AbstractLoop {
      */
     protected void discardAsyncEvents() {}
 
-    private boolean drainAsyncEvents() {
-        for (BooleanSupplier condition : drainAsyncEventsConditions) {
-            if (!condition.getAsBoolean()) {
-                return false;
-            }
+    private void drainAsyncEvents() {
+        for (Runnable task : preSelectTasks) {
+            task.run();
         }
-        return true;
     }
     private void rebuildSelector() throws IOException {
         Selector oldSelector = selector;

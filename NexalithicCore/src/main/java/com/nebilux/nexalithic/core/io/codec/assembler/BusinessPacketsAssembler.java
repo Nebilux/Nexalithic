@@ -27,6 +27,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.codec.PacketFrame;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.NexalithicSession;
@@ -71,11 +72,13 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     public static final Modules MODULES = new Modules();
     public static final class Modules extends ModulesDefinition {
         public final NexalithicModule<PayloadRegistry> PayloadRegistry = defineModule(PayloadRegistry.class);
-        public final NexalithicModule<TimeWheel<BusinessPacketAssemblyWrapper>> TimeWheel = defineModule(TimeWheel.class);
+        public final NexalithicModule<SharedLifecycle<TimeWheel<BusinessPacketAssemblyWrapper>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(BusinessPacketsAssembler.class);
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsAssembler.class);
     private final NexalithicSession<?> owner;
     private final Map<Integer, BusinessPacketAssemblyWrapper> assemblingMap;

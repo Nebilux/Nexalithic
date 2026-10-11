@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * 抽象循环。
@@ -68,7 +70,9 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
     private final CompletableFuture<Void> shutdownFuture = new CompletableFuture<>();
     private final AtomicBoolean signaled = new AtomicBoolean(false);
     private final AtomicBoolean finalization = new AtomicBoolean(false);
-    private final List<BooleanSupplier> isDrainConditions = new ArrayList<>(4);
+    private final List<Supplier<CompletionStage<Void>>> startStages = new ArrayList<>(4);
+    private final List<Supplier<CompletionStage<Void>>> shutdownStages = new ArrayList<>(4);
+    private final List<BooleanSupplier> drainConditions = new ArrayList<>(4);
     private final AtomicReference<Throwable> loopFailure = new AtomicReference<>();
     private final CompletableFuture<Long> drainAcceptedAt = new CompletableFuture<>();
     protected final LongAdder loadScore = new LongAdder();
@@ -88,9 +92,10 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         if (signaled.compareAndSet(false, true)) {
             try {
                 wakeupLoop();
-            } catch (Throwable failure) {
+            } catch (Throwable throwable) {
                 signaled.set(false);
-                logger.error("Loop [{}] wakeupLoop() failed", name, failure);
+                logger.error("Loop [{}] wakeupLoop() failed", name, throwable);
+                throw throwable;
             }
         }
     }
@@ -109,7 +114,7 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
      * 已接受的事件、待写数据及其他异步操作是否均已完成。
      */
     public final boolean isDrained() {
-        for (BooleanSupplier condition : isDrainConditions) {
+        for (BooleanSupplier condition : drainConditions) {
             if (!condition.getAsBoolean()) {
                 return false;
             }
@@ -121,19 +126,47 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         return name;
     }
     @Override
-    public long getLoadScore() {
+    public final long getLoadScore() {
         return loadScore.sum();
     }
 
     @Override
     protected final CompletionStage<Void> doStart() {
         try {
-            thread.start();
+            CompletionStage<Void> startup = CompletableFuture.completedFuture(null);
+            for (Supplier<CompletionStage<Void>> stage : startStages) {
+                startup = startup.thenCompose(ignored -> invokeStage(stage));
+            }
+            return startup.thenCompose(ignored -> {
+                try {
+                    thread.start();
+                    return startFuture;
+                } catch (Throwable failure) {
+                    return CompletableFuture.failedFuture(failure);
+                }
+            }).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    recordFailure(unwrapFailure(failure));
+                }
+            });
         } catch (Throwable failure) {
             recordFailure(failure);
             return CompletableFuture.failedFuture(failure);
         }
-        return startFuture;
+    }
+
+    @Override
+    protected final void onShutdownAccepted(ShutdownMode mode, State previousState, State nextState, long acceptedAtNanos) {
+        if (mode == ShutdownMode.DRAIN && (previousState == State.STARTING || previousState == State.RUNNING)) {
+            drainAcceptedAt.complete(acceptedAtNanos);
+        } else if (mode == ShutdownMode.ABORT && previousState == State.STARTING) {
+            // 基类在启动完成后才运行 doShutdown；立即中止仍需尽早封闭外部入口。
+            try {
+                seal();
+            } catch (Throwable failure) {
+                recordFailure(failure);
+            }
+        }
     }
 
     @Override
@@ -151,21 +184,6 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         return shutdownFuture;
     }
 
-    @Override
-    protected final void onShutdownAccepted(ShutdownMode mode, State previousState, State nextState, long acceptedAtNanos) {
-        if (mode == ShutdownMode.DRAIN && (previousState == State.STARTING || previousState == State.RUNNING)) {
-            drainAcceptedAt.complete(acceptedAtNanos);
-        } else if (mode == ShutdownMode.ABORT && previousState == State.STARTING) {
-            // 基类在启动完成后才运行 doShutdown；立即中止仍需尽早封闭外部入口。
-            try {
-                seal();
-            } catch (Throwable failure) {
-                recordFailure(failure);
-            }
-        }
-    }
-
-    protected void initLoop() {}
     protected abstract void wakeupLoop();
     /**
      * 封闭当前 Loop 的外部工作入口。
@@ -200,14 +218,31 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
      */
     protected abstract void runIteration(boolean draining, long maxWaitNanos) throws Exception;
 
-    protected final void isDrainCondition(BooleanSupplier condition) throws IllegalStateException {
+    /** 登记在 Loop 线程启动前依次等待的异步启动阶段。 */
+    protected final void registerStartStage(Supplier<CompletionStage<Void>> stage) throws IllegalStateException {
+        if (lifecycleState() != State.NEW) {
+            throw new IllegalStateException("Start stages can only be registered before the loop starts");
+        }
+        startStages.add(Objects.requireNonNull(stage, "stage"));
+    }
+
+    /** 登记在 Loop 清理后依次等待、完成后才发布终止结果的异步阶段。 */
+    protected final void registerShutdownStage(Supplier<CompletionStage<Void>> stage) throws IllegalStateException {
+        if (lifecycleState() != State.NEW) {
+            throw new IllegalStateException("Shutdown stages can only be registered before the loop starts");
+        }
+        shutdownStages.add(Objects.requireNonNull(stage, "stage"));
+    }
+
+    protected final void registerDrainCondition(BooleanSupplier condition) throws IllegalStateException {
         if (lifecycleState() != State.NEW) {
             throw new IllegalStateException(
                     "isDrainConditions can only be registered before the loop starts"
             );
         }
-        isDrainConditions.add(condition);
+        drainConditions.add(condition);
     }
+
     protected final boolean acknowledgeWakeup() {
         return signaled.getAndSet(false);
     }
@@ -220,7 +255,6 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
             throw new IllegalStateException("Loop must be executed by its owner thread");
         }
         try {
-            initLoop();
             startFuture.complete(null);
             whenStartDecisionMade().toCompletableFuture().join();
             runLoop();
@@ -278,11 +312,19 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
         } catch (Throwable throwable) {
             terminalFailure = mergeThrowable(terminalFailure, throwable);
         }
-        if (terminalFailure == null) {
-            shutdownFuture.complete(null);
-        } else {
-            shutdownFuture.completeExceptionally(terminalFailure);
+        CompletionStage<Throwable> termination = CompletableFuture.completedFuture(terminalFailure);
+        for (Supplier<CompletionStage<Void>> stage : shutdownStages) {
+            termination = termination.thenCompose(previous -> invokeStage(stage)
+                    .handle((ignored, failure) -> mergeThrowable(previous, unwrapFailure(failure))));
         }
+        termination.whenComplete((failure, stageFailure) -> {
+            Throwable combined = mergeThrowable(failure, unwrapFailure(stageFailure));
+            if (combined == null) {
+                shutdownFuture.complete(null);
+            } else {
+                shutdownFuture.completeExceptionally(combined);
+            }
+        });
     }
 
     private void seal() throws Throwable {
@@ -304,6 +346,14 @@ public abstract class AbstractLoop extends AbstractLifecycle implements LoadBala
     private void executeSealing(Void input, AsyncOperation.Completer<Void> completer) {
         sealLoop();
         completer.complete(null);
+    }
+
+    private static CompletionStage<Void> invokeStage(Supplier<CompletionStage<Void>> stage) {
+        try {
+            return Objects.requireNonNull(stage.get(), "lifecycle callback stage");
+        } catch (Throwable failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
     }
 
     private void recordFailure(Throwable failure) {

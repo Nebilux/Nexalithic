@@ -32,6 +32,8 @@ import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.core.session.SessionChannelFactory;
 import com.nebilux.nexalithic.core.session.SessionKey;
 
+import java.util.concurrent.CompletionStage;
+
 /**
  * 客户端会话
  *
@@ -74,6 +76,14 @@ public class ClientSession extends NexalithicSession<ClientSession> {
             return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, loop, session,
                     fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
             );
+        }
+
+        public CompletionStage<Void> releaseAssemblerFactory() {
+            return assemblerFactory.release();
+        }
+
+        public CompletionStage<Void> startAssemblerFactory() {
+            return assemblerFactory.start();
         }
 
         @Override

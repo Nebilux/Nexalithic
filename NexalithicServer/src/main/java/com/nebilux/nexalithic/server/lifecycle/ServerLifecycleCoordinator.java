@@ -69,9 +69,11 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
     private final AcceptorLoop acceptorLoop;
     private final LoadBalancer<Void, HandshakeLoop> handshakeLoopLoadBalancer;
     private final LoadBalancer<Void, ServiceUnit> serviceUnitLoadBalancer;
+    private final NexalithicBuilderContext context;
 
     public ServerLifecycleCoordinator(NexalithicBuilderContext context) {
         super(NexalithicServer.class.getSimpleName());
+        this.context = context;
         this.acceptorLoop = context.getModule(MODULES.AcceptorLoop);
         this.handshakeLoopLoadBalancer = context.getModule(MODULES.HandshakeLoopLoadBalancer);
         this.serviceUnitLoadBalancer = context.getModule(MODULES.ServiceUnitLoadBalancer);
@@ -97,15 +99,19 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
     private CompletionStage<Void> drainComponents() {
         CompletionStage<Void> termination = invoke(this::drainAcceptorLoop);
         termination = continueAfter(termination, this::drainHandshakeLoops);
-        return continueAfter(termination, this::drainSessionLoops);
+        termination = continueAfter(termination, this::drainSessionLoops);
+        termination = continueAfter(termination, this::releaseAssemblyTimers);
+        return continueAfter(termination, context::whenSharedModulesTerminated);
     }
 
     private CompletionStage<Void> abortComponents() {
-        return awaitAll(List.of(
+        CompletionStage<Void> termination = awaitAll(List.of(
                 invoke(this::abortAcceptorLoop),
                 invoke(this::abortHandshakeLoops),
                 invoke(this::abortSessionLoops)
         ));
+        termination = continueAfter(termination, this::releaseAssemblyTimers);
+        return continueAfter(termination, context::whenSharedModulesTerminated);
     }
 
     private CompletionStage<Void> startAcceptorLoop() {
@@ -167,6 +173,14 @@ public class ServerLifecycleCoordinator extends AbstractLifecycle {
             for (BusinessLoop businessLoop : serviceUnit.getBusinessLoops()) {
                 stages.add(invoke(() -> businessLoop.shutdown(ShutdownMode.ABORT)));
             }
+        }
+        return awaitAll(stages);
+    }
+
+    private CompletionStage<Void> releaseAssemblyTimers() {
+        List<CompletionStage<Void>> stages = new ArrayList<>();
+        for (ServiceUnit serviceUnit : serviceUnitLoadBalancer.all()) {
+            stages.add(invoke(serviceUnit.getSignalingLoop()::releaseAssemblerFactory));
         }
         return awaitAll(stages);
     }

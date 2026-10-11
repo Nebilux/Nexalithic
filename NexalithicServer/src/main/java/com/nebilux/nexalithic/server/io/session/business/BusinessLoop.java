@@ -27,6 +27,8 @@ import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.server.NexalithicServer;
@@ -81,7 +83,8 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<TimeWheel<SessionChannel<BusinessPacket, ServerSession>>> TimeWheel = defineModule(TimeWheel.class);
+        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<BusinessPacket, ServerSession>>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(BusinessLoop.class);
         }
@@ -98,22 +101,23 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     public BusinessLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         handlerCoordinator = context.getModule(NexalithicServer.MODULES.HandlerCoordinator);
-        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<SessionChannel<BusinessPacket, ServerSession>> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<SessionChannel<BusinessPacket, ServerSession>>::new
-                    ),
-                    BusinessLoop.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
+
+        SharedLifecycle<TimeWheel<SessionChannel<BusinessPacket, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+                () -> new SharedLifecycle<>(new TimeWheel<>(
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        new GenericWrapperPool<>(
+                                PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                PoolStrategyFactory.alwaysCreate(),
+                                TimeWheel.ScheduleWrapper<SessionChannel<BusinessPacket, ServerSession>>::new
+                        ),
+                        BusinessLoop.class.getSimpleName()
+                ))
+        );
+        timeWheel = sharedTimeWheel.component();
+
         rateUpdateQueue = new SpscArrayQueue<>(context.getOption(OPTIONS.RateUpdateQueue_Capacity));
         dynamicRateController = new DynamicRateController(
                 context.getOption(OPTIONS.DynamicRateController.MinBps),
@@ -128,8 +132,9 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
         dynamicRateEnable = context.getOption(OPTIONS.DynamicRateController.Enable);
         dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
         lastDynamicRateTickNanos = System.nanoTime();
-        isDrainCondition(rateUpdateQueue::isEmpty);
-        drainAsyncEventsCondition(() -> {
+
+        registerDrainCondition(rateUpdateQueue::isEmpty);
+        registerPreSelectTask(() -> {
             if (dynamicRateEnable) {
                 rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DispatchQueue_DrainLimit());
                 long now = System.nanoTime();
@@ -147,8 +152,9 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                     }
                 }
             }
-            return rateUpdateQueue.isEmpty();
         });
+        registerStartStage(() -> sharedTimeWheel.start(this));
+        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
     }
 
     @Override

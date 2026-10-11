@@ -25,6 +25,7 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -75,18 +76,29 @@ public class ClientLifecycleCoordinator extends AbstractLifecycle {
 
     private CompletionStage<Void> abortComponents() {
         sessionManager.stop();
-        return sessionLoop.shutdown(ShutdownMode.ABORT)
-                .whenComplete((ignored, failure) -> taskScheduler.shutdown());
+        return releaseAssemblyTimer(sessionLoop.shutdown(ShutdownMode.ABORT)
+                .whenComplete((ignored, failure) -> taskScheduler.shutdown()));
     }
 
     private CompletionStage<Void> drainComponents() {
         sessionManager.shutdown();
-        return sessionLoop.shutdown(ShutdownMode.DRAIN).whenComplete((ignored, failure) -> {
+        return releaseAssemblyTimer(sessionLoop.shutdown(ShutdownMode.DRAIN).whenComplete((ignored, failure) -> {
             try {
                 sessionManager.stop();
             } finally {
                 taskScheduler.shutdown();
             }
-        });
+        }));
+    }
+
+    private CompletionStage<Void> releaseAssemblyTimer(CompletionStage<Void> previous) {
+        return previous.handle((ignored, failure) -> unwrapFailure(failure))
+                .thenCompose(previousFailure -> sessionLoop.releaseAssemblerFactory().handle((ignored, failure) -> {
+                    Throwable combined = mergeFailure(previousFailure, unwrapFailure(failure));
+                    if (combined != null) {
+                        throw new CompletionException(combined);
+                    }
+                    return null;
+                }));
     }
 }

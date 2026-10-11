@@ -35,6 +35,8 @@ import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
@@ -99,7 +101,8 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<TimeWheel<HandshakeContext>> TimeWheel = defineModule(TimeWheel.class);
+        private final NexalithicModule<SharedLifecycle<TimeWheel<HandshakeContext>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private final NexalithicModule<FixedTaskExecutor<HandshakeContext, ExecutorThread>> FixedTaskExecutor = defineModule(FixedTaskExecutor.class);
         private Modules() {
             super(HandshakeLoop.class);
@@ -127,22 +130,23 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
         serviceUnitLoadBalancer = context.getModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer);
-        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<HandshakeContext> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<HandshakeContext>::new
-                    ),
-                    HandshakeLoop.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
+
+        SharedLifecycle<TimeWheel<HandshakeContext>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+                () -> new SharedLifecycle<>(new TimeWheel<>(
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        new GenericWrapperPool<>(
+                                PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                PoolStrategyFactory.alwaysCreate(),
+                                TimeWheel.ScheduleWrapper<HandshakeContext>::new
+                        ),
+                        HandshakeLoop.class.getSimpleName()
+                ))
+        );
+        timeWheel = sharedTimeWheel.component();
+
         if (context.getOption(OPTIONS.SharedFixedTaskExecutor)) {
             executor = context.getModule(MODULES.FixedTaskExecutor, () -> createFixedTaskExecutor(context, true));
         } else {
@@ -163,10 +167,10 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
 
         asyncQueue = new MpscUnboundedArrayQueue<>(context.getOption(OPTIONS.AsyncQueue_ChunkSize));
 
-        drainAsyncEventsCondition(() -> {
-            asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit());
-            return asyncQueue.isEmpty();
-        });
+        registerDrainCondition(asyncQueue::isEmpty);
+        registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit()));
+        registerStartStage(() -> sharedTimeWheel.start(this));
+        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
     }
     private FixedTaskExecutor<HandshakeContext, ExecutorThread> createFixedTaskExecutor(NexalithicBuilderContext context, boolean shared) {
         return new FixedTaskExecutor<>(

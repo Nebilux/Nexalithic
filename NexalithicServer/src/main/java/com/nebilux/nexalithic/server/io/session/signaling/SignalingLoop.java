@@ -27,6 +27,8 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
@@ -52,6 +54,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
 /**
@@ -81,7 +84,8 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> TimeWheel = defineModule(TimeWheel.class);
+        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(SignalingLoop.class);
         }
@@ -91,30 +95,32 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     private final SessionRegistry sessionRegistry;
     private final ChannelAccessCoordinator channelAccessCoordinator;
     private final TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel;
+    private final ServerSession.ChannelFactory channelFactory;
     private final Function<HandshakeContext, ServerSession> sessionFactory;
 
     public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
         super(context, OPTIONS);
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         channelAccessCoordinator = context.getModule(NexalithicServer.MODULES.ChannelAccessCoordinator);
-        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
-                    ),
-                    SignalingLoop.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
+
+        SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+                () -> new SharedLifecycle<>(new TimeWheel<>(
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        new GenericWrapperPool<>(
+                                PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                PoolStrategyFactory.alwaysCreate(),
+                                TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
+                        ),
+                        SignalingLoop.class.getSimpleName()
+                ))
+        );
+        timeWheel = sharedTimeWheel.component();
+
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
-        ServerSession.ChannelFactory channelFactory = new ServerSession.ChannelFactory(context, unit);
+        channelFactory = new ServerSession.ChannelFactory(context, unit);
         sessionFactory = handoff -> new ServerSession(
                 handoff.takeSessionKey(),
                 handoff.takeSignalingSecretContext(),
@@ -124,6 +130,14 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
                 unit,
                 channelAccessCoordinator
         );
+
+        registerStartStage(() -> sharedTimeWheel.start(this));
+        registerStartStage(channelFactory::startAssemblerFactory);
+        registerShutdownStage(() -> sharedTimeWheel.release(this, Lifecycle.ShutdownMode.ABORT));
+    }
+
+    public CompletionStage<Void> releaseAssemblerFactory() {
+        return channelFactory.releaseAssemblerFactory();
     }
 
     @Override

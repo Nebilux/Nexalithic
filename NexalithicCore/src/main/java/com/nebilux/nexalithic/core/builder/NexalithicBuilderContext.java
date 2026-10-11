@@ -18,8 +18,11 @@ package com.nebilux.nexalithic.core.builder;
 
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -111,6 +114,17 @@ public class NexalithicBuilderContext {
                     module.name(), module.type().getSimpleName(), value.getClass().getSimpleName()));
         }
         return (V) value;
+    }
+
+    /** 等待当前上下文中所有已启动的共享生命周期模块终止。 */
+    public CompletionStage<Void> whenSharedModulesTerminated() {
+        CompletableFuture<?>[] futures = modules.values().stream()
+                .filter(SharedLifecycle.class::isInstance)
+                .map(SharedLifecycle.class::cast)
+                .filter(SharedLifecycle::wasStarted)
+                .map(shared -> shared.whenTerminated().toCompletableFuture())
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(futures);
     }
 
     @SuppressWarnings("unchecked")

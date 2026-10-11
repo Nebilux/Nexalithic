@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -68,6 +69,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     private final ClientHandlerCoordinator handlerCoordinator;
     private final DynamicRateController dynamicRateController;
     private final Function<ClientChannelHandoff.Signaling, ClientSession> sessionFactory;
+    private final ClientSession.ChannelFactory channelFactory;
     private long lastDynamicRateTickNanos;
 
     public ClientSessionLoop(NexalithicBuilderContext context) throws IOException {
@@ -90,16 +92,16 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
         );
         TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
-        ClientSession.ChannelFactory channelFactory = new ClientSession.ChannelFactory(context, this);
+        channelFactory = new ClientSession.ChannelFactory(context, this);
         sessionFactory = handoff -> new ClientSession(
                 handoff.sessionKey(), handoff.signalingSecretKey(), handoff.businessSecretKey(),
                 channelFactory, taskScheduler, sessionManager
         );
         lastDynamicRateTickNanos = System.nanoTime();
-        drainAsyncEventsCondition(() -> {
+        registerPreSelectTask(() -> {
             if (sessionManager.isShuttingDown()) {
                 sessionManager.tryFinishGracefulShutdown();
-                return true;
+                return;
             }
             ClientSession session = sessionManager.getCurrentSession();
             if (session != null) {
@@ -121,8 +123,12 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
             } else {
                 lastDynamicRateTickNanos = System.nanoTime();
             }
-            return true;
         });
+        registerStartStage(channelFactory::startAssemblerFactory);
+    }
+
+    public CompletionStage<Void> releaseAssemblerFactory() {
+        return channelFactory.releaseAssemblerFactory();
     }
 
     @Override
