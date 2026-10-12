@@ -23,7 +23,7 @@ package com.nebilux.nexalithic.core.exception;
  * 具体原因由子类说明。用户回调自行抛出的异常不一定属于此体系。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public abstract class NexalithicUncheckedException extends RuntimeException implements NexalithicFailure {
     protected NexalithicUncheckedException(String message) {

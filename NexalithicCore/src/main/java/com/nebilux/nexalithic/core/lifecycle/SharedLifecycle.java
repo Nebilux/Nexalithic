@@ -39,7 +39,7 @@ import java.util.concurrent.CompletionStage;
  * @param <T> 被共享的生命周期组件
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public class SharedLifecycle<T extends Lifecycle> {
     private final T component;

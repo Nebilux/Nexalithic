@@ -26,7 +26,7 @@ import java.util.Objects;
  * 并不保证实现此接口。包装后的原始异常可通过 {@link Throwable#getCause()} 查看。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public interface NexalithicFailure {
     /** 操作在前的消息形式，例如 {@code Failed to build NexalithicEndpoint}。 */

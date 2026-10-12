@@ -23,7 +23,7 @@ import java.util.concurrent.CompletionException;
  * 两种合并方式的主异常选择规则不同，调用方须按清理语义选用。
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public final class FailureSupport {
     private FailureSupport() {}

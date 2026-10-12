@@ -30,7 +30,7 @@ import java.util.concurrent.CompletionStage;
  * 由实现类约定。调用方不应仅凭状态推断某个异步操作已经完成。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public interface Lifecycle {
     /** 生命周期的可观察进度，不包含操作的成功或失败结果。 */

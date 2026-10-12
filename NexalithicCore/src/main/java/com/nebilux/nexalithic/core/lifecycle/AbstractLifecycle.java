@@ -58,7 +58,7 @@ import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapComplet
  * 不得返回依赖自身完成的生命周期阶段。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public abstract class AbstractLifecycle implements Lifecycle {
     /** 内部关闭路径；ESCALATED 表示排空已触发后又接受中止。 */

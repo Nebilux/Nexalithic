@@ -35,7 +35,7 @@ import java.util.concurrent.CompletionStage;
  * 客户端由会话 Loop 持有；服务端由 ServiceUnit 持有，并在所有相关 Loop 结束后释放。
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public final class CodecResources {
     private final FragmenterFactory fragmenters;

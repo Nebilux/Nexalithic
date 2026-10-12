@@ -29,7 +29,7 @@ import java.net.InetSocketAddress;
  * 底层 I/O 异常可通过 {@link #getCause()} 获取。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public final class NexalithicServerOpenException extends NexalithicCheckedException {
     private NexalithicServerOpenException(String message, Throwable cause) {

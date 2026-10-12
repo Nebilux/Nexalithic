@@ -28,7 +28,7 @@ import java.net.InetSocketAddress;
  * 原始异常可通过 {@link #getCause()} 获取。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public final class NexalithicClientLinkException extends NexalithicCheckedException {
     private NexalithicClientLinkException(String message, Throwable cause) {

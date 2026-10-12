@@ -22,7 +22,7 @@ package com.nebilux.nexalithic.core.exception;
  * 具体子类描述失败发生的操作。调用者需要捕获该异常或在方法签名中声明。</p>
  *
  * @author Reonvia
- * @since 0.3.1
+ * @since 0.4.0
  */
 public abstract class NexalithicCheckedException extends Exception implements NexalithicFailure {
     protected NexalithicCheckedException(String message) {
