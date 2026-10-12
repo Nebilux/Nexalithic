@@ -6,6 +6,12 @@ on:
       - master
     types:
       - closed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag from a failed release
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,7 +23,7 @@ concurrency:
 jobs:
   prepare:
     name: Determine release version
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -28,10 +34,10 @@ jobs:
       create_tag: ${{ steps.release.outputs.create_tag }}
 
     steps:
-      - name: Check out merged commit
+      - name: Check out release commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
       - name: Set up Java 21
@@ -46,6 +52,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
 
@@ -68,6 +75,11 @@ jobs:
 
           tag="v${version}"
           release_sha="$(git rev-parse HEAD)"
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUESTED_TAG" != "$tag" ]]; then
+            echo "::error::Requested tag $REQUESTED_TAG does not match project version $version."
+            exit 1
+          fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -122,6 +134,26 @@ jobs:
           server-username-env-var: MAVEN_CENTRAL_USERNAME
           server-password-env-var: MAVEN_CENTRAL_TOKEN
 
+      - name: Use Maven 3.9.16
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version=3.9.16
+          archive="$RUNNER_TEMP/apache-maven-$version-bin.tar.gz"
+          curl -fsSLo "$archive" \
+            "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/$version/apache-maven-$version-bin.tar.gz"
+          echo "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6  $archive" | sha512sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-$version/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Maven version
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --version
+          mvn --version | grep -q 'Apache Maven 3.9.16'
+
       - name: Validate release secrets
         shell: bash
         env:
@@ -149,6 +181,15 @@ jobs:
 
           exit "$missing"
 
+      - name: Sign, upload, and validate artifacts on Maven Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
+        run: mvn --batch-mode --no-transfer-progress -Prelease deploy
+
       - name: Create release tag
         if: needs.prepare.outputs.create_tag == 'true'
         shell: bash
@@ -162,15 +203,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag --annotate "$TAG" --message "Nexalithic $VERSION"
           git push origin "refs/tags/$TAG"
-
-      - name: Sign and upload artifacts to Maven Central
-        env:
-          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
-          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-          MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
-        run: mvn --batch-mode --no-transfer-progress -Prelease deploy
 
       - name: Create GitHub Release
         shell: bash
