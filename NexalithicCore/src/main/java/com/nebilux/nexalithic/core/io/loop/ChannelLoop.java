@@ -162,11 +162,12 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
                 submissionState, this::acceptInterestSubmission
         );
 
-        registerDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
         registerPreSelectTask(() -> {
             eventQueue.drain(event -> event.execute(this), CONSTANT.EventQueue_DrainLimit());
             interestQueue.drain(LoopChannel::applyInterest, CONSTANT.InterestQueue_DrainLimit());
         });
+        registerImmediateWorkCondition(() -> !eventQueue.isEmpty() || !interestQueue.isEmpty());
+        registerDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
     }
 
     public final boolean submitAcquireEvent(H handoff) {
@@ -270,7 +271,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     protected abstract void onChannelReady(SelectionKey selectionKey, C channel) throws IOException;
 
     @Override
-    protected void sealLoop() {
+    protected final void sealLoop() {
         submissionState.set(lifecycleState() == State.QUIESCING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
     }
 
@@ -293,14 +294,14 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
 
     @Override
     @SuppressWarnings("unchecked")
-    protected void clearSelectionKey(SelectionKey key) {
+    protected final void clearSelectionKey(SelectionKey key) {
         if (key.attachment() instanceof NexalithicChannel channel) {
             executeDisconnectEvent((C) channel, Event.Disconnect.Reason.LOOP_TERMINATING);
         }
     }
 
     @Override
-    protected void discardAsyncEvents() {
+    protected final void discardAsyncEvents() {
         submissionState.set(SubmissionState.CLOSED);
         Event<H, C> event;
         while ((event = eventQueue.poll()) != null) {

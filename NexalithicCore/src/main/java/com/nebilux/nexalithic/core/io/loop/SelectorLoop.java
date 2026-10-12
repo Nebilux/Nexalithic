@@ -27,11 +27,10 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 
 import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
 
@@ -53,13 +52,11 @@ public abstract class SelectorLoop extends AbstractLoop {
 
     private static final Logger logger = LoggerFactory.getLogger(SelectorLoop.class);
     private static final int MAX_PREMATURE_SELECT_RETURNS = 512;
-    private record Constant(long SelectorTimeoutMillis, long PrematureSelectThresholdNanos) {
-        private Constant(long selectorTimeoutMillis) {
-            this(selectorTimeoutMillis, TimeUnit.MILLISECONDS.toNanos(selectorTimeoutMillis) / 2);
-        }
-    }
+    private record Constant(long SelectorTimeoutMillis) {}
     private final Constant CONSTANT;
     private final List<Runnable> preSelectTasks = new ArrayList<>(4);
+    private final List<BooleanSupplier> immediateWorkConditions = new ArrayList<>(4);
+    private final List<LongSupplier> selectWaitLimits = new ArrayList<>(2);
     private volatile Selector selector;
     private int prematureSelectReturns;
 
@@ -79,10 +76,26 @@ public abstract class SelectorLoop extends AbstractLoop {
     protected final void registerPreSelectTask(Runnable task) throws IllegalStateException {
         if (lifecycleState() != State.NEW) {
             throw new IllegalStateException(
-                    "drainAsyncEventsConditions can only be registered before the loop starts"
+                    "Pre-select tasks can only be registered before the loop starts"
             );
         }
         preSelectTasks.add(task);
+    }
+
+    /** 登记预选任务执行后仍需立即处理的工作，不应包含活动连接等关闭排空条件。 */
+    protected final void registerImmediateWorkCondition(BooleanSupplier condition) {
+        if (lifecycleState() != State.NEW) {
+            throw new IllegalStateException("Immediate work conditions can only be registered before the loop starts");
+        }
+        immediateWorkConditions.add(Objects.requireNonNull(condition, "condition"));
+    }
+
+    /** 登记距离下一次预选任务运行所允许的最长等待时间，单位为纳秒。 */
+    protected final void registerSelectWaitLimit(LongSupplier limitNanos) {
+        if (lifecycleState() != State.NEW) {
+            throw new IllegalStateException("Select wait limits can only be registered before the loop starts");
+        }
+        selectWaitLimits.add(Objects.requireNonNull(limitNanos, "limitNanos"));
     }
 
     protected final SelectionKey registerSelectableChannel(SelectableChannel channel, int interest) throws ClosedChannelException {
@@ -148,19 +161,28 @@ public abstract class SelectorLoop extends AbstractLoop {
         boolean normalBlockingSelect = false;
         boolean explicitlyWoken;
         long elapsedNanos = 0;
+        long prematureSelectThresholdNanos = 0;
         int selected;
         try {
-            drainAsyncEvents();
-            if (!isDrained()) {
+            runPreSelectTasks();
+            if (hasImmediateWork()) {
                 selected = current.selectNow();
-            } else if (!draining) {
-                normalBlockingSelect = true;
-                long startedNanos = System.nanoTime();
-                selected = current.select(CONSTANT.SelectorTimeoutMillis);
-                elapsedNanos = System.nanoTime() - startedNanos;
             } else {
-                long timeoutMillis  = Math.min(CONSTANT.SelectorTimeoutMillis(), TimeUnit.NANOSECONDS.toMillis(maxWaitNanos));
-                selected = timeoutMillis  == 0 ? current.selectNow() : current.select(timeoutMillis );
+                long waitNanos = selectWaitNanos(draining, maxWaitNanos);
+                long timeoutMillis = TimeUnit.NANOSECONDS.toMillis(waitNanos);
+                if (!draining && waitNanos > 0 && timeoutMillis == 0) {
+                    // 正常运行时允许至多晚 1 ms，避免在定时任务边界前反复空轮询。
+                    timeoutMillis = 1;
+                }
+                if (timeoutMillis <= 0) {
+                    selected = current.selectNow();
+                } else {
+                    normalBlockingSelect = !draining;
+                    prematureSelectThresholdNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis) / 2;
+                    long startedNanos = System.nanoTime();
+                    selected = current.select(timeoutMillis);
+                    elapsedNanos = System.nanoTime() - startedNanos;
+                }
             }
         } finally {
             explicitlyWoken = acknowledgeWakeup();
@@ -185,7 +207,7 @@ public abstract class SelectorLoop extends AbstractLoop {
                 && !explicitlyWoken
                 && lifecycleState() == State.RUNNING
                 && !current.keys().isEmpty()
-                && elapsedNanos < CONSTANT.PrematureSelectThresholdNanos();
+                && elapsedNanos < prematureSelectThresholdNanos;
         if (!prematureReturn) {
             prematureSelectReturns = 0;
             return;
@@ -216,11 +238,32 @@ public abstract class SelectorLoop extends AbstractLoop {
      */
     protected void discardAsyncEvents() {}
 
-    private void drainAsyncEvents() {
+    private void runPreSelectTasks() {
         for (Runnable task : preSelectTasks) {
             task.run();
         }
     }
+
+    private boolean hasImmediateWork() {
+        for (BooleanSupplier condition : immediateWorkConditions) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private long selectWaitNanos(boolean draining, long maxWaitNanos) {
+        long waitNanos = TimeUnit.MILLISECONDS.toNanos(CONSTANT.SelectorTimeoutMillis());
+        if (draining) {
+            waitNanos = Math.min(waitNanos, maxWaitNanos);
+        }
+        for (LongSupplier limit : selectWaitLimits) {
+            waitNanos = Math.min(waitNanos, limit.getAsLong());
+        }
+        return waitNanos;
+    }
+
     private void rebuildSelector() throws IOException {
         Selector oldSelector = selector;
         Selector newSelector = oldSelector.provider().openSelector();

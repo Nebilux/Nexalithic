@@ -166,8 +166,9 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
 
         asyncQueue = new MpscUnboundedArrayQueue<>(context.getOption(OPTIONS.AsyncQueue_ChunkSize));
 
-        registerDrainCondition(asyncQueue::isEmpty);
         registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit()));
+        registerImmediateWorkCondition(() -> !asyncQueue.isEmpty());
+        registerDrainCondition(asyncQueue::isEmpty);
         registerStartStage(() -> sharedTimeWheel.start(this));
         registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }

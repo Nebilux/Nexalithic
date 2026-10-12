@@ -64,69 +64,78 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     }
 
     private static final Logger logger = LoggerFactory.getLogger(ClientSessionLoop.class);
-    private record Constant(long HeartBeat_IntervalNanos, boolean DynamicRate_Enable, long DynamicRate_TickNanos) {}
-    private final Constant CONSTANT;
     private final SessionManager sessionManager;
     private final ClientHandlerCoordinator handlerCoordinator;
-    private final DynamicRateController dynamicRateController;
     private final Function<ClientChannelHandoff.Signaling, ClientSession> sessionFactory;
     private final ClientSession.ChannelFactory channelFactory;
-    private final CodecResources codecResources;
     private long lastDynamicRateTickNanos;
 
     public ClientSessionLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
-        CONSTANT = new Constant(
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS),
-                context.getOption(OPTIONS.DynamicRateController.Enable),
-                TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS)
-        );
         sessionManager = context.getModule(NexalithicClient.MODULES.SessionManager);
         handlerCoordinator = context.getModule(NexalithicClient.MODULES.HandlerCoordinator);
-        dynamicRateController = new DynamicRateController(
-                context.getOption(OPTIONS.DynamicRateController.MinBps),
-                context.getOption(OPTIONS.DynamicRateController.MaxBps),
-                context.getOption(OPTIONS.DynamicRateController.InitialBps),
-                context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
-                context.getOption(OPTIONS.DynamicRateController.Headroom),
-                context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
-                context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
-                context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
-        );
         TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
-        codecResources = new CodecResources(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
+        CodecResources codecResources = new CodecResources(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
         channelFactory = new ClientSession.ChannelFactory(this, codecResources);
         sessionFactory = handoff -> new ClientSession(
                 handoff.sessionKey(), handoff.signalingSecretKey(), handoff.businessSecretKey(),
                 channelFactory, taskScheduler, sessionManager
         );
         lastDynamicRateTickNanos = System.nanoTime();
-        registerPreSelectTask(() -> {
-            if (sessionManager.isShuttingDown()) {
-                sessionManager.tryFinishGracefulShutdown();
-                return;
-            }
-            ClientSession session = sessionManager.getCurrentSession();
-            if (session != null) {
-                long now = System.nanoTime();
-                if (now - session.getLastActiveTimeNanos() >= CONSTANT.HeartBeat_IntervalNanos) {
-                    session.pushSignalingPacket(BareSignal.HeartBeat);
+
+        long heartBeatIntervalNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS);
+        if (context.getOption(OPTIONS.DynamicRateController.Enable)) {
+            DynamicRateController dynamicRateController = new DynamicRateController(
+                    context.getOption(OPTIONS.DynamicRateController.MinBps),
+                    context.getOption(OPTIONS.DynamicRateController.MaxBps),
+                    context.getOption(OPTIONS.DynamicRateController.InitialBps),
+                    context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
+                    context.getOption(OPTIONS.DynamicRateController.Headroom),
+                    context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
+                    context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
+                    context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
+            );
+            long dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
+            registerPreSelectTask(() -> {
+                if (sessionManager.isShuttingDown()) {
+                    sessionManager.tryFinishGracefulShutdown();
                 }
-                if (CONSTANT.DynamicRate_Enable && now - lastDynamicRateTickNanos >= CONSTANT.DynamicRate_TickNanos) {
-                    long interval = now - lastDynamicRateTickNanos;
-                    lastDynamicRateTickNanos = now;
-                    SessionChannel<?, ClientSession> businessChannel = session.getBusinessChannel();
-                    if (businessChannel.getState() == NexalithicChannel.State.Opened) {
-                        long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
-                        if (targetRate > 0) {
-                            session.setRemoteBusinessChannelWriteRate(targetRate);
+                ClientSession session = sessionManager.getCurrentSession();
+                if (session != null) {
+                    long now = System.nanoTime();
+                    if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
+                        session.pushSignalingPacket(BareSignal.HeartBeat);
+                    }
+                    if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
+                        long interval = now - lastDynamicRateTickNanos;
+                        lastDynamicRateTickNanos = now;
+                        SessionChannel<?, ClientSession> businessChannel = session.getBusinessChannel();
+                        if (businessChannel.getState() == NexalithicChannel.State.Opened) {
+                            long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
+                            if (targetRate > 0) {
+                                session.setRemoteBusinessChannelWriteRate(targetRate);
+                            }
                         }
                     }
+                } else {
+                    lastDynamicRateTickNanos = System.nanoTime();
                 }
-            } else {
-                lastDynamicRateTickNanos = System.nanoTime();
-            }
-        });
+            });
+            registerSelectWaitLimit(() -> dynamicRateTickNanos - (System.nanoTime() - lastDynamicRateTickNanos));
+        } else {
+            registerPreSelectTask(() -> {
+                if (sessionManager.isShuttingDown()) {
+                    sessionManager.tryFinishGracefulShutdown();
+                }
+                ClientSession session = sessionManager.getCurrentSession();
+                if (session != null) {
+                    long now = System.nanoTime();
+                    if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
+                        session.pushSignalingPacket(BareSignal.HeartBeat);
+                    }
+                }
+            });
+        }
         registerStartStage(codecResources::start);
         registerShutdownStage(codecResources::release);
     }
@@ -207,14 +216,6 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
             submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
         }
     }
-
-//    @SuppressWarnings("unchecked")
-//    protected void onKeyNotValid(SelectionKey selectionKey) {
-//        SessionChannel<?, ClientSession> channel = (SessionChannel<?, ClientSession>) selectionKey.attachment();
-//        if (channel.getChannelType() == AbstractPacket.PacketType.Signaling) {
-//            disconnectChannel(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
-//        }
-//    }
 
     private void handleSignalPacket(ClientSession session, SignalingPacket packet) {
         switch (packet.getSignal()) {

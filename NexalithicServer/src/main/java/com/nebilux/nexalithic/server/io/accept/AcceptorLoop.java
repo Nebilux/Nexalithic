@@ -72,7 +72,6 @@ public class AcceptorLoop extends SelectorLoop {
         handshakeIngress = context.getModule(MODULES.HandshakeIngress);
         networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
 
-        registerDrainCondition(eventQueue::isEmpty);
         registerPreSelectTask(() -> {
             eventQueue.drain(Runnable::run);
             if (!eventQueue.isAccepting()) {
@@ -85,6 +84,8 @@ public class AcceptorLoop extends SelectorLoop {
                 }
             }
         });
+        registerImmediateWorkCondition(() -> !eventQueue.isEmpty());
+        registerDrainCondition(eventQueue::isEmpty);
     }
 
     public boolean register(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {

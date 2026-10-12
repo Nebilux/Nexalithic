@@ -36,7 +36,7 @@ import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
 import com.nebilux.nexalithic.server.messaging.ServerHandlerCoordinator;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import org.jctools.queues.MpmcArrayQueue;
-import org.jctools.queues.SpscArrayQueue;
+import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,13 +88,11 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             super(BusinessLoop.class);
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(BusinessLoop.class);
     private final ServerHandlerCoordinator handlerCoordinator;
     private final TimeWheel<SessionChannel<BusinessPacket, ServerSession>> timeWheel;
-    private final SpscArrayQueue<SessionChannel<BusinessPacket, ServerSession>> rateUpdateQueue;
-    private final DynamicRateController dynamicRateController;
-    private final boolean dynamicRateEnable;
-    private final long dynamicRateTickNanos;
+    private final MpscArrayQueue<SessionChannel<BusinessPacket, ServerSession>> rateUpdateQueue;
     private long lastDynamicRateTickNanos;
 
     public BusinessLoop(NexalithicBuilderContext context) throws IOException {
@@ -117,24 +115,21 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
         );
         timeWheel = sharedTimeWheel.component();
 
-        rateUpdateQueue = new SpscArrayQueue<>(context.getOption(OPTIONS.RateUpdateQueue_Capacity));
-        dynamicRateController = new DynamicRateController(
-                context.getOption(OPTIONS.DynamicRateController.MinBps),
-                context.getOption(OPTIONS.DynamicRateController.MaxBps),
-                context.getOption(OPTIONS.DynamicRateController.InitialBps),
-                context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
-                context.getOption(OPTIONS.DynamicRateController.Headroom),
-                context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
-                context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
-                context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
-        );
-        dynamicRateEnable = context.getOption(OPTIONS.DynamicRateController.Enable);
-        dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
-        lastDynamicRateTickNanos = System.nanoTime();
-
-        registerDrainCondition(rateUpdateQueue::isEmpty);
-        registerPreSelectTask(() -> {
-            if (dynamicRateEnable) {
+        if (context.getOption(OPTIONS.DynamicRateController.Enable)) {
+            lastDynamicRateTickNanos = System.nanoTime();
+            rateUpdateQueue = new MpscArrayQueue<>(context.getOption(OPTIONS.RateUpdateQueue_Capacity));
+            DynamicRateController dynamicRateController = new DynamicRateController(
+                    context.getOption(OPTIONS.DynamicRateController.MinBps),
+                    context.getOption(OPTIONS.DynamicRateController.MaxBps),
+                    context.getOption(OPTIONS.DynamicRateController.InitialBps),
+                    context.getOption(OPTIONS.DynamicRateController.EwmaAlpha),
+                    context.getOption(OPTIONS.DynamicRateController.Headroom),
+                    context.getOption(OPTIONS.DynamicRateController.ChangeThreshold),
+                    context.getOption(OPTIONS.DynamicRateController.MinPublishIntervalMillis),
+                    context.getOption(OPTIONS.DynamicRateController.IncreaseStableTicks)
+            );
+            long dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
+            registerPreSelectTask(() -> {
                 rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DispatchQueue_DrainLimit());
                 long now = System.nanoTime();
                 if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
@@ -150,16 +145,23 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                         }
                     }
                 }
-            }
-        });
+            });
+            registerImmediateWorkCondition(() -> !rateUpdateQueue.isEmpty());
+            registerSelectWaitLimit(() -> dynamicRateTickNanos - (System.nanoTime() - lastDynamicRateTickNanos));
+            registerDrainCondition(rateUpdateQueue::isEmpty);
+        } else {
+            rateUpdateQueue = null;
+        }
         registerStartStage(() -> sharedTimeWheel.start(this));
         registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
 
     @Override
     public void postRateUpdate(SessionChannel<BusinessPacket, ServerSession> channel) {
-        rateUpdateQueue.offer(channel);
-        wakeup();
+        if (rateUpdateQueue != null) {
+            rateUpdateQueue.offer(channel);
+            wakeup();
+        }
     }
 
     @Override
