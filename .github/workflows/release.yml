@@ -8,10 +8,15 @@ on:
       - closed
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing tag from a failed release
+      release_tag:
+        description: Existing release tag for a Maven Central retry; for GitHub Release-only failures, re-run failed jobs instead
         required: true
         type: string
+      retry_maven_central:
+        description: Confirm that a new Maven Central upload is needed
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,13 +36,12 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       release_sha: ${{ steps.release.outputs.release_sha }}
       release_required: ${{ steps.release.outputs.release_required }}
-      create_tag: ${{ steps.release.outputs.create_tag }}
 
     steps:
       - name: Check out release commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
       - name: Set up Java 21
@@ -52,7 +56,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_TAG: ${{ inputs.tag }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          RETRY_MAVEN_CENTRAL: ${{ inputs.retry_maven_central }}
         run: |
           set -euo pipefail
 
@@ -76,8 +81,12 @@ jobs:
           tag="v${version}"
           release_sha="$(git rev-parse HEAD)"
 
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUESTED_TAG" != "$tag" ]]; then
-            echo "::error::Requested tag $REQUESTED_TAG does not match project version $version."
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUESTED_RELEASE_TAG" != "$tag" ]]; then
+            echo "::error::Requested tag $REQUESTED_RELEASE_TAG does not match project version $version."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$RETRY_MAVEN_CENTRAL" != true ]]; then
+            echo "::error::Confirm that a new Central upload is needed. For GitHub-only failures, re-run failed jobs instead."
             exit 1
           fi
 
@@ -85,37 +94,72 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "release_required=false" >> "$GITHUB_OUTPUT"
-            echo "create_tag=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::GitHub Release $tag already exists; no new release is required."
-            exit 0
-          fi
-
-          echo "release_required=true" >> "$GITHUB_OUTPUT"
-
+          create_tag=true
           if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
             tag_sha="$(git rev-list -n 1 "$tag")"
             if [[ "$tag_sha" != "$release_sha" ]]; then
-              echo "::error::Tag $tag already points to $tag_sha instead of $release_sha."
+              echo "::error::Tag $tag already points to $tag_sha instead of $release_sha. Bump the project version before releasing a different commit."
               exit 1
             fi
 
-            echo "create_tag=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Reusing existing tag $tag at $release_sha."
-          else
-            echo "create_tag=true" >> "$GITHUB_OUTPUT"
+            create_tag=false
+          fi
+          encoded_tag="$(jq -rn --arg value "$tag" '$value | @uri')"
+          response_file="$RUNNER_TEMP/github-release.json"
+          if ! http_status="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$encoded_tag")"; then
+            echo "::error::Unable to check whether GitHub Release $tag exists."
+            exit 1
           fi
 
-  release:
-    name: Publish Maven Central and GitHub Release
+          case "$http_status" in
+            200)
+              if [[ "$create_tag" == true ]]; then
+                echo "::error::GitHub Release $tag exists, but its tag was not found in the checkout."
+                exit 1
+              fi
+              if ! jq -e '.draft == false' "$response_file" >/dev/null; then
+                echo "::error::GitHub Release $tag is still a draft; inspect it before retrying."
+                exit 1
+              fi
+              for module in core server client; do
+                for classifier in '' -sources -javadoc; do
+                  asset="nexalithic-$module-$version$classifier.jar"
+                  if ! jq -e --arg name "$asset" '.assets | any(.name == $name and .size > 0)' "$response_file" >/dev/null; then
+                    echo "::error::GitHub Release $tag is missing $asset; repair its assets before retrying."
+                    exit 1
+                  fi
+                done
+              done
+              echo "release_required=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::GitHub Release $tag is complete and points to $release_sha."
+              ;;
+            404)
+              echo "release_required=true" >> "$GITHUB_OUTPUT"
+              if [[ "$create_tag" == false ]]; then
+                echo "::notice::Reusing existing tag $tag at $release_sha."
+              fi
+              ;;
+            *)
+              echo "::error::GitHub Release lookup for $tag returned HTTP $http_status."
+              exit 1
+              ;;
+          esac
+
+  publish-maven-central:
+    name: Publish Maven Central bundle (upload and validate)
     needs: prepare
     if: needs.prepare.outputs.release_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: maven-central
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Check out release commit
@@ -190,14 +234,94 @@ jobs:
           MAVEN_GPG_KEY_FINGERPRINT: ${{ vars.MAVEN_GPG_KEY_FINGERPRINT }}
         run: mvn --batch-mode --no-transfer-progress -Prelease deploy
 
-      - name: Create release tag
-        if: needs.prepare.outputs.create_tag == 'true'
+      - name: Package validated release artifacts
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          artifacts=(
+            "NexalithicCore/target/nexalithic-core-${VERSION}.jar"
+            "NexalithicCore/target/nexalithic-core-${VERSION}-sources.jar"
+            "NexalithicCore/target/nexalithic-core-${VERSION}-javadoc.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}-sources.jar"
+            "NexalithicServer/target/nexalithic-server-${VERSION}-javadoc.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}-sources.jar"
+            "NexalithicClient/target/nexalithic-client-${VERSION}-javadoc.jar"
+          )
+
+          for artifact in "${artifacts[@]}"; do
+            if [[ ! -f "$artifact" ]]; then
+              echo "::error::Missing release artifact: $artifact"
+              exit 1
+            fi
+          done
+
+          tar -czf release-assets.tar.gz "${artifacts[@]}"
+
+      - name: Preserve artifacts for GitHub Release retries
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}
+          path: release-assets.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-github-release:
+    name: Publish GitHub Release
+    needs: [prepare, publish-maven-central]
+    if: needs.prepare.outputs.release_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: maven-central
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Restore validated release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}
+          path: .
+
+      - name: Extract release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf release-assets.tar.gz
+
+      - name: Ensure release tag
         shell: bash
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
         run: |
           set -euo pipefail
+
+          remote_refs="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          remote_sha="$(awk -v ref="refs/tags/$TAG^{}" '$2 == ref { print $1 }' <<< "$remote_refs")"
+          if [[ -z "$remote_sha" ]]; then
+            remote_sha="$(awk -v ref="refs/tags/$TAG" '$2 == ref { print $1 }' <<< "$remote_refs")"
+          fi
+
+          if [[ -n "$remote_sha" ]]; then
+            if [[ "$remote_sha" != "$RELEASE_SHA" ]]; then
+              echo "::error::Remote tag $TAG points to $remote_sha instead of $RELEASE_SHA."
+              exit 1
+            fi
+            echo "::notice::Reusing existing tag $TAG at $RELEASE_SHA."
+            exit 0
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -231,6 +355,43 @@ jobs:
               exit 1
             fi
           done
+
+          encoded_tag="$(jq -rn --arg value "$TAG" '$value | @uri')"
+          response_file="$RUNNER_TEMP/github-release.json"
+          if ! http_status="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$encoded_tag")"; then
+            echo "::error::Unable to check whether GitHub Release $TAG exists."
+            exit 1
+          fi
+
+          case "$http_status" in
+            200)
+              if ! jq -e '.draft == false' "$response_file" >/dev/null; then
+                echo "::error::GitHub Release $TAG is still a draft; inspect it before retrying."
+                exit 1
+              fi
+              for artifact in "${artifacts[@]}"; do
+                asset="${artifact##*/}"
+                if ! jq -e --arg name "$asset" '.assets | any(.name == $name and .size > 0)' "$response_file" >/dev/null; then
+                  echo "::error::GitHub Release $TAG is missing $asset; repair its assets before retrying."
+                  exit 1
+                fi
+              done
+              echo "::notice::GitHub Release $TAG is already complete."
+              exit 0
+              ;;
+            404)
+              ;;
+            *)
+              echo "::error::GitHub Release lookup for $TAG returned HTTP $http_status."
+              exit 1
+              ;;
+          esac
 
           gh release create "$TAG" \
             "${artifacts[@]}" \
