@@ -1,9 +1,29 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.infra.concurrent.async;
 
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
 
 /**
  * 接受一次触发输入，并由任意线程提供最终结果的一次性异步操作。
@@ -24,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Reonvia
  * @since 0.3.0
  */
-public final class AsyncOperation<I, R> {
+public class AsyncOperation<I, R> {
     /**
      * 异步操作的发起动作。
      *
@@ -48,6 +68,11 @@ public final class AsyncOperation<I, R> {
          */
         void execute(I input, Completer<R> completer) throws Exception;
     }
+    @FunctionalInterface
+    public interface StageAction<I, R> {
+        CompletionStage<? extends R> execute(I input) throws Exception;
+    }
+
     /**
      * 异步操作的受限完成器。
      *
@@ -114,6 +139,17 @@ public final class AsyncOperation<I, R> {
     public AsyncOperation(String name, Action<I, R> action) {
         this.name = Objects.requireNonNull(name, "name");
         this.action = Objects.requireNonNull(action, "action");
+    }
+
+    public static <I, R> AsyncOperation<I, R> fromStage(String name, StageAction<I, R> action) {
+        Objects.requireNonNull(action, "action");
+        return new AsyncOperation<>(name, (input, completer) -> action.execute(input).whenComplete((value, failure) -> {
+            if (failure == null) {
+                completer.complete(value);
+            } else {
+                completer.completeExceptionally(unwrapCompletionException(failure));
+            }
+        }));
     }
 
     /**
@@ -229,6 +265,26 @@ public final class AsyncOperation<I, R> {
      */
     public CompletionStage<R> completion() {
         return finalFuture.minimalCompletionStage();
+    }
+
+    /**
+     * 等待整个操作结束，并取得失败原因；成功时返回 {@code null}。
+     *
+     * <p>与 {@link CompletableFuture#join()} 一样，本方法不会触发操作，
+     * 且可能一直等待尚未完成的操作。失败原因作为返回值提供，调用方可在
+     * 必要的清理和日志处理后再决定是否抛出。</p>
+     *
+     * @return 失败原因，或成功时的 {@code null}
+     */
+    public Throwable joinFailure() {
+        try {
+            finalFuture.join();
+            return null;
+        } catch (CompletionException exception) {
+            return unwrapCompletionException(exception);
+        } catch (CancellationException exception) {
+            return exception;
+        }
     }
 
     /**

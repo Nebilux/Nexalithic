@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.client.session;
 
 import com.nebilux.nexalithic.client.NexalithicClient;
@@ -16,6 +32,7 @@ import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessR
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
+import com.nebilux.nexalithic.core.session.NexalithicSessionException;
 import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.core.session.SessionKey;
 import org.slf4j.Logger;
@@ -324,21 +341,19 @@ public class SessionManager {
         long attemptStamp;
         synchronized (connectionLock) {
             if (!isAccepting()) {
-                throw new IllegalStateException("SessionManager is not running");
+                throw NexalithicSessionException.managerNotRunning();
             }
             SessionManager.State state = getState();
             if (state != SessionManager.State.INACTIVE) {
-                throw new IllegalStateException(
-                        "Cannot establish a session while in State " + state + ", must be " + SessionManager.State.INACTIVE
-                );
+                throw NexalithicSessionException.invalidConnectionState(state, SessionManager.State.INACTIVE);
             }
             SessionPair previous = sessionPair.get();
             if (previous.session() != null) {
-                throw new IllegalStateException("A client session is already active");
+                throw NexalithicSessionException.alreadyActive();
             }
             SessionPair establishing = previous.next();
             if (!sessionPair.compareAndSet(previous, establishing)) {
-                throw new IllegalStateException("Client session state changed while establishing a connection");
+                throw NexalithicSessionException.stateChangedDuringConnection();
             }
             attemptStamp = establishing.stamp();
             setServerAddress(remote);

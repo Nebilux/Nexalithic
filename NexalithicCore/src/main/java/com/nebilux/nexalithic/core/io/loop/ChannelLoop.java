@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.io.loop;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
@@ -16,6 +32,9 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePreservingFirst;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
 
 /**
  * 通道循环
@@ -45,6 +64,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
         }
         protected abstract long MaxIdleTimeMillis_Value();
     }
+
     /**
      * 通道交接对象。
      *
@@ -113,18 +133,20 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             }
         }
     }
-    private static final Logger logger = LoggerFactory.getLogger(ChannelLoop.class);
     private enum SubmissionState {
         OPEN,
         DRAINING,
         CLOSED
     }
+
+    private static final Logger logger = LoggerFactory.getLogger(ChannelLoop.class);
     private record Constant(int EventQueue_DrainLimit, int InterestQueue_DrainLimit) {}
     private final Constant CONSTANT;
     private final AtomicStateQueue.StateHandle<SubmissionState> submissionState = new AtomicStateQueue.StateHandle<>(SubmissionState.OPEN);
     private final AtomicStateQueue<Event<H, C>, SubmissionState> eventQueue;
     private final AtomicStateQueue<LoopChannel<?, ?>, SubmissionState> interestQueue;
     private final Set<C> ownedChannels = Collections.newSetFromMap(new IdentityHashMap<>());
+
     public ChannelLoop(NexalithicBuilderContext context, Options options) throws IOException {
         super(context, options);
         CONSTANT = context.getConstant(this.getClass(), Constant.class, () -> new Constant(
@@ -139,12 +161,13 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
                 new MpscUnboundedArrayQueue<>(context.getOption(options.InterestQueue_ChunkSize)),
                 submissionState, this::acceptInterestSubmission
         );
-        isDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
-        drainAsyncEventsCondition(() -> {
+
+        registerPreSelectTask(() -> {
             eventQueue.drain(event -> event.execute(this), CONSTANT.EventQueue_DrainLimit());
             interestQueue.drain(LoopChannel::applyInterest, CONSTANT.InterestQueue_DrainLimit());
-            return eventQueue.isEmpty() && interestQueue.isEmpty();
         });
+        registerImmediateWorkCondition(() -> !eventQueue.isEmpty() || !interestQueue.isEmpty());
+        registerDrainCondition(() -> eventQueue.isEmpty() && interestQueue.isEmpty() && ownedChannels.isEmpty());
     }
 
     public final boolean submitAcquireEvent(H handoff) {
@@ -152,7 +175,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             throw new NullPointerException("handoff");
         }
         if (inEventLoop()) {
-            if (submissionState.get() != SubmissionState.OPEN || getState().isTerminationStarted()) {
+            if (submissionState.get() != SubmissionState.OPEN || lifecycleState().isTerminatingOrTerminated()) {
                 return false;
             }
             executeAcquireEvent(handoff);
@@ -169,7 +192,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             throw new NullPointerException("handoff, channel and target must be non-null");
         }
         if (inEventLoop()) {
-            if (getState().isTerminationStarted()) {
+            if (lifecycleState().isTerminatingOrTerminated()) {
                 return false;
             }
             executeTransferEvent(handoff, channel, target);
@@ -248,8 +271,8 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     protected abstract void onChannelReady(SelectionKey selectionKey, C channel) throws IOException;
 
     @Override
-    protected void sealLoop() {
-        submissionState.set(getState() == State.DRAINING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
+    protected final void sealLoop() {
+        submissionState.set(lifecycleState() == State.QUIESCING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
     }
 
     @Override
@@ -271,14 +294,14 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
 
     @Override
     @SuppressWarnings("unchecked")
-    protected void clearSelectionKey(SelectionKey key) {
+    protected final void clearSelectionKey(SelectionKey key) {
         if (key.attachment() instanceof NexalithicChannel channel) {
             executeDisconnectEvent((C) channel, Event.Disconnect.Reason.LOOP_TERMINATING);
         }
     }
 
     @Override
-    protected void discardAsyncEvents() {
+    protected final void discardAsyncEvents() {
         submissionState.set(SubmissionState.CLOSED);
         Event<H, C> event;
         while ((event = eventQueue.poll()) != null) {
@@ -298,18 +321,19 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     }
 
     private boolean acceptEventSubmission(SubmissionState submission, Event<H, C> event) {
-        State lifecycle = getState();
-        if (submission == SubmissionState.CLOSED || lifecycle.isTerminationStarted()) {
+        State lifecycle = lifecycleState();
+        if (submission == SubmissionState.CLOSED || lifecycle.isTerminatingOrTerminated()) {
             return false;
         }
         if (event instanceof Event.Disconnect<?, ?>) {
             return true;
         }
-        return submission == SubmissionState.OPEN && lifecycle.isAcceptingNewWork();
+        return submission == SubmissionState.OPEN
+                && (lifecycle == State.NEW || lifecycle == State.STARTING || lifecycle == State.RUNNING);
     }
 
     private boolean acceptInterestSubmission(SubmissionState submission, LoopChannel<?, ?> channel) {
-        return submission != SubmissionState.CLOSED && !getState().isTerminationStarted();
+        return submission != SubmissionState.CLOSED && !lifecycleState().isTerminatingOrTerminated();
     }
 
     private void executeAcquireEvent(H handoff) {
@@ -331,13 +355,13 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
                 try {
                     channel.close();
                 } catch (Throwable closeFailure) {
-                    failure.addSuppressed(closeFailure);
+                    failure = mergePreservingFirst(failure, closeFailure);
                 }
             }
             try {
                 onChannelAcquireFailed(handoff, failure);
             } catch (Throwable callbackFailure) {
-                failure = mergeThrowable(failure, callbackFailure);
+                failure = mergePrioritizingError(failure, callbackFailure);
             }
             logger.error("[{}] failed to acquire channel", name, failure);
         } finally {
@@ -390,7 +414,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
             try {
                 onExecuteDisconnectEvent(channel, reason);
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePrioritizingError(failure, throwable);
             } finally {
                 loadScore.decrement();
             }

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.messaging.task;
 
 import com.nebilux.nexalithic.core.messaging.handler.NexalithicHandler;
@@ -337,13 +353,13 @@ public class NexalithicTask {
 
         public NexalithicTask build(NexalithicSession<?> targetSession) {
             if (requestAction == null) {
-                throw new IllegalArgumentException("requestAction is required");
+                throw NexalithicTaskException.requiredField("requestAction");
             }
             if (pattern == null) {
-                throw new IllegalArgumentException("pattern is required");
+                throw NexalithicTaskException.requiredField("pattern");
             }
             if (strategy == null) {
-                throw new IllegalArgumentException("strategy is required");
+                throw NexalithicTaskException.requiredField("strategy");
             }
             return new NexalithicTask(requestAction, responseAction, completeAction, timeoutAction, failedAction, cancelAction, finishAction,
                     requestListener, responseListener, pattern, strategy, waitTimeNanos, targetSession);

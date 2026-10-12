@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.io.channel;
 
 import java.io.IOException;
@@ -6,6 +22,8 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePreservingFirst;
 
 /**
  * 抽象通道
@@ -223,30 +241,21 @@ public abstract class AbstractChannel<C extends SelectableChannel> implements Ne
                 try {
                     key.cancel();
                 } catch (Throwable throwable) {
-                    failure = mergeThrowable(failure, throwable);
+                    failure = mergePreservingFirst(failure, throwable);
                 }
             }
             try {
                 closing.selectableChannel().close();
             } catch (Throwable throwable) {
-                failure = mergeThrowable(failure, throwable);
+                failure = mergePreservingFirst(failure, throwable);
             }
         }
         try {
             onClose(closing);
         } catch (Throwable throwable) {
-            failure = mergeThrowable(failure, throwable);
+            failure = mergePreservingFirst(failure, throwable);
         }
         return failure;
-    }
-    private static Throwable mergeThrowable(Throwable previous, Throwable current) {
-        if (previous == null) {
-            return current;
-        }
-        if (current != null && current != previous) {
-            previous.addSuppressed(current);
-        }
-        return previous;
     }
     private static void rethrow(Throwable failure) throws IOException {
         if (failure instanceof IOException ioException) {

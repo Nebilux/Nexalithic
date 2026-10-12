@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.messaging.handler.assembly;
 
 import com.nebilux.nexalithic.core.exception.NexalithicDuplicateKeyException;
@@ -97,14 +113,14 @@ public class ControllerHandlerAssembler<HC extends HandlerContext<?>> {
          * @param controller 标记了 {@link NexalithicHandlerController} 的 Controller 实例
          * @return 当前构建器
          * @throws IllegalArgumentException 目标实例不是 Handler Controller 时抛出
-         * @throws NexalithicDuplicateKeyException 重复注册同一实例时抛出
+         * @throws NexalithicDuplicateKeyException 已注册集合按 {@code equals}/{@code hashCode} 判定为重复时抛出
          */
         public Builder<HC> controller(Object controller) {
             if (!controller.getClass().isAnnotationPresent(NexalithicHandlerController.class)) {
                 throw new IllegalArgumentException(controller.getClass().getName() + " is not annotated with @NexalithicHandlerController");
             }
             if (!controllers.add(controller)) {
-                throw new NexalithicDuplicateKeyException("controllerSet", controller);
+                throw NexalithicDuplicateKeyException.inTarget("controllerSet", controller);
             }
             return this;
         }

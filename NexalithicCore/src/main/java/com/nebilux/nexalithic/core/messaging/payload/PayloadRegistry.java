@@ -1,8 +1,26 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.messaging.payload;
 
 import com.nebilux.nexalithic.core.model.packet.business.payload.AbstractPayload;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -32,13 +50,17 @@ public class PayloadRegistry {
     }
 
     public static class Builder {
-        private final Map<Long, Supplier<? extends AbstractPayload<?>>> map = new ConcurrentHashMap<>();
+        private record Registration(Supplier<? extends AbstractPayload<?>> constructor, Class<?> payloadType) {}
+
+        private final Map<Long, Registration> map = new ConcurrentHashMap<>();
         private Supplier<PayloadConstructorStorage> storageSupplier = PayloadConstructorStorage.ArrayPayloadStorage::new;
 
         public Builder payloadConstructor(Supplier<? extends AbstractPayload<?>> constructor) {
             AbstractPayload<?> payload = constructor.get();
-            if (map.putIfAbsent(payload.getPayloadUID(),  constructor) instanceof AbstractPayload<?> existing) {
-                throw new PayloadCollisionException(payload.getPayloadUID(), existing.getClass(), payload.getClass());
+            long uid = payload.getPayloadUID();
+            Registration existing = map.putIfAbsent(uid, new Registration(constructor, payload.getClass()));
+            if (existing != null) {
+                throw PayloadCollisionException.forId(uid, existing.payloadType(), payload.getClass());
             }
             return this;
         }
@@ -57,7 +79,9 @@ public class PayloadRegistry {
 
 
         public PayloadRegistry build() {
-            return new PayloadRegistry(storageSupplier.get().freeze(map));
+            Map<Long, Supplier<? extends AbstractPayload<?>>> constructors = new HashMap<>();
+            map.forEach((uid, registration) -> constructors.put(uid, registration.constructor()));
+            return new PayloadRegistry(storageSupplier.get().freeze(constructors));
         }
     }
 }

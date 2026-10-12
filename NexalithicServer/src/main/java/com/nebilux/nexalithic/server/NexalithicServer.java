@@ -1,11 +1,29 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.server;
 
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuildException;
 import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
+import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.nebilux.nexalithic.core.infra.loadbalance.P2CBalancer;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
@@ -16,6 +34,7 @@ import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.SessionAttachment;
+import com.nebilux.nexalithic.server.exception.NexalithicServerOpenException;
 import com.nebilux.nexalithic.server.io.accept.AcceptorLoop;
 import com.nebilux.nexalithic.server.io.accept.AdmissionStrategy;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeIngress;
@@ -80,7 +99,12 @@ public class NexalithicServer extends NexalithicEndpoint {
         return new NexalithicServer(context);
     }
 
-    public int open(NexalithicChannel.Kind channelKind, InetSocketAddress localAddress, AdmissionStrategy.Builder<?> strategyBuilder) throws IOException {
+    /**
+     * 打开并注册监听端口。
+     *
+     * @throws NexalithicServerOpenException 绑定端口或注册监听器失败
+     */
+    public int open(NexalithicChannel.Kind channelKind, InetSocketAddress localAddress, AdmissionStrategy.Builder<?> strategyBuilder) throws NexalithicServerOpenException {
         try {
             Objects.requireNonNull(channelKind, "channelKind");
             Objects.requireNonNull(localAddress, "localAddress");
@@ -96,10 +120,10 @@ public class NexalithicServer extends NexalithicEndpoint {
         } catch (IOException exception) {
             logger.error("Failed to bind to local [{}]. ChannelKind [{}], Strategy [{}]",
                     localAddress, channelKind, strategyBuilder.getName(), exception);
-            throw exception;
+            throw NexalithicServerOpenException.forListener(localAddress, channelKind, exception);
         }
     }
-    public int open(NexalithicChannel.Kind kind, InetSocketAddress address) throws IOException {
+    public int open(NexalithicChannel.Kind kind, InetSocketAddress address) throws NexalithicServerOpenException {
         return open(kind, address, AdmissionStrategy.builder(AdmissionStrategy.Mode.DIRECT));
     }
 
@@ -183,59 +207,68 @@ public class NexalithicServer extends NexalithicEndpoint {
          * @return 当前 Builder
          */
         public Builder networkRouterConfigurer(NetworkRouterConfigurer configurer) {
-            NetworkRouter router = context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
-            configurer.configure(router);
+            configure("network router", () -> {
+                NetworkRouter router = context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
+                configurer.configure(router);
+            });
             return this;
         }
 
         public Builder securityPolicy(ServerSecurityPolicy securityPolicy) {
-            context.setModule(NexalithicServer.MODULES.SecurityPolicy, securityPolicy);
+            configure("server security policy", () ->
+                    context.setModule(NexalithicServer.MODULES.SecurityPolicy, securityPolicy));
             return this;
         }
 
-        public NexalithicServer build() throws Throwable {
+        public NexalithicServer build() throws NexalithicEndpointBuildException {
             return build(false);
         }
-        public NexalithicServer build(boolean showOptions) throws Throwable {
-            if (showOptions) {
-                logger.trace("NexalithicServer-Options\n{}", OptionsDefinition.toString("com.nebilux.nexalithic", context));
-            }
-
-            controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
-            context.setModule(MODULES.EventBus, new NexalithicEventBus());
-            context.setModule(MODULES.SessionRegistry, new SessionRegistry(context));
-            context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
-            context.setModule(MODULES.ChannelAccessCoordinator, new ChannelAccessCoordinator(context));
-            context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
-            context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
-            ServerHandlerCoordinator handlerCoordinator = new ServerHandlerCoordinator(context);
-            context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
-            context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
-
-            ServiceUnit[] serviceUnits = new ServiceUnit[context.getOption(ServerLifecycleCoordinator.OPTIONS.ServiceUnit_Count)];
-            for (int i = 0; i < serviceUnits.length; i++) {
-                serviceUnits[i] = new ServiceUnit(context);
-            }
-            context.setModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
-
-            HandshakeLoop[] handshakeLoops = new HandshakeLoop[context.getOption(ServerLifecycleCoordinator.OPTIONS.HandshakeLoop_Count)];
-            for (int i = 0; i < handshakeLoops.length; i++) {
-                handshakeLoops[i] = new HandshakeLoop(context);
-            }
-
-            LoadBalancer<Void, HandshakeLoop> handshakeLoopLoadBalancer = new P2CBalancer<>(handshakeLoops);
-            context.setModule(AcceptorLoop.MODULES.HandshakeIngress, new HandshakeIngress() {
-                private final LoadBalancer<Void, HandshakeLoop> loopLoadBalancer = handshakeLoopLoadBalancer;
-                @Override
-                public boolean submit(NexalithicChannel.Kind kind, SocketChannel channel) {
-                    return loopLoadBalancer.select(null).submit(kind, channel);
+        public NexalithicServer build(boolean showOptions) throws NexalithicEndpointBuildException {
+            try {
+                if (showOptions) {
+                    logger.trace("NexalithicServer-Options\n{}", OptionsDefinition.toString("com.nebilux.nexalithic", context));
                 }
-            });
-            context.setModule(ServerLifecycleCoordinator.MODULES.HandshakeLoopLoadBalancer, handshakeLoopLoadBalancer);
 
-            context.setModule(ServerLifecycleCoordinator.MODULES.AcceptorLoop, new AcceptorLoop(context));
-            context.setModule(MODULES.LifecycleCoordinator, new ServerLifecycleCoordinator(context));
-            return new NexalithicServer(context);
+                controllerHandlerAssemblyBuilder.build().assembleInto(handlerRegistryBuilder);
+                context.setModule(MODULES.EventBus, new NexalithicEventBus());
+                context.setModule(MODULES.SessionRegistry, new SessionRegistry(context));
+                context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
+                context.setModule(MODULES.ChannelAccessCoordinator, new ChannelAccessCoordinator(context));
+                context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
+                context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
+                ServerHandlerCoordinator handlerCoordinator = new ServerHandlerCoordinator(context);
+                context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
+                context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));
+
+                ServiceUnit[] serviceUnits = new ServiceUnit[context.getOption(ServerLifecycleCoordinator.OPTIONS.ServiceUnit_Count)];
+                for (int i = 0; i < serviceUnits.length; i++) {
+                    serviceUnits[i] = new ServiceUnit(context);
+                }
+                context.setModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer, new P2CBalancer<>(serviceUnits));
+
+                HandshakeLoop[] handshakeLoops = new HandshakeLoop[context.getOption(ServerLifecycleCoordinator.OPTIONS.HandshakeLoop_Count)];
+                for (int i = 0; i < handshakeLoops.length; i++) {
+                    handshakeLoops[i] = new HandshakeLoop(context);
+                }
+
+                LoadBalancer<Void, HandshakeLoop> handshakeLoopLoadBalancer = new P2CBalancer<>(handshakeLoops);
+                context.setModule(AcceptorLoop.MODULES.HandshakeIngress, new HandshakeIngress() {
+                    private final LoadBalancer<Void, HandshakeLoop> loopLoadBalancer = handshakeLoopLoadBalancer;
+                    @Override
+                    public boolean submit(NexalithicChannel.Kind kind, SocketChannel channel) {
+                        return loopLoadBalancer.select(null).submit(kind, channel);
+                    }
+                });
+                context.setModule(ServerLifecycleCoordinator.MODULES.HandshakeLoopLoadBalancer, handshakeLoopLoadBalancer);
+
+                context.setModule(ServerLifecycleCoordinator.MODULES.AcceptorLoop, new AcceptorLoop(context));
+                context.setModule(MODULES.Lifecycle, new ServerLifecycleCoordinator(context));
+                return new NexalithicServer(context);
+            } catch (Error | NexalithicUncheckedException failure) {
+                throw failure;
+            } catch (Throwable failure) {
+                throw NexalithicEndpointBuildException.forTarget(NexalithicServer.class, failure);
+            }
         }
     }
 }

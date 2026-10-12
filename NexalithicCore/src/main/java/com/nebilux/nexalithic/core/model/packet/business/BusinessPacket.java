@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.model.packet.business;
 
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
@@ -543,7 +559,7 @@ public class BusinessPacket extends AbstractPacket {
         this.way = (short) way.ordinal();
         if (path != null && path.length > 0) {
             if (path.length > MAX_PATH_DEPTH) {
-                throw new IllegalArgumentException("path length exceeds maximum of " + MAX_PATH_DEPTH);
+                throw BusinessPacketException.pathDepthExceeded(MAX_PATH_DEPTH);
             }
             this.path = path;
         }
@@ -554,14 +570,14 @@ public class BusinessPacket extends AbstractPacket {
 
     public final BusinessPacket attach(AbstractPayload<?> payload) {
         if (sealed) {
-            throw new IllegalStateException("Cannot attach payload to a sealed packet.");
+            throw BusinessPacketException.attachmentToSealedPacket();
         }
         if (payload != null) {
             if (this.payloads == null) {
                 this.payloads = new ArrayList<>();
             }
             if (payloadCount + 1 > MAX_PAYLOAD_COUNT) {
-                throw new PayloadOverflowException(payloadCount, 1, MAX_PAYLOAD_COUNT);
+                throw PayloadOverflowException.exceeding(payloadCount, 1, MAX_PAYLOAD_COUNT);
             }
             this.payloads.add(payload);
         }
@@ -569,7 +585,7 @@ public class BusinessPacket extends AbstractPacket {
     }
     public final BusinessPacket attach(AbstractPayload<?>... payloads) {
         if (sealed) {
-            throw new IllegalStateException("Cannot attach payload to a sealed packet.");
+            throw BusinessPacketException.attachmentToSealedPacket();
         }
         if (payloads != null && payloads.length > 0) {
             if (this.payloads == null) {
@@ -577,7 +593,7 @@ public class BusinessPacket extends AbstractPacket {
             }
             int newCount = payloads.length;
             if (payloadCount + newCount > MAX_PAYLOAD_COUNT) {
-                throw new PayloadOverflowException(payloadCount, newCount, MAX_PAYLOAD_COUNT);
+                throw PayloadOverflowException.exceeding(payloadCount, newCount, MAX_PAYLOAD_COUNT);
             }
             for (AbstractPayload<?> payload : payloads) {
                 if (payload != null) {
@@ -589,7 +605,7 @@ public class BusinessPacket extends AbstractPacket {
     }
     public final BusinessPacket attach(Collection<AbstractPayload<?>> payloads) {
         if (sealed) {
-            throw new IllegalStateException("Cannot attach payload to a sealed packet.");
+            throw BusinessPacketException.attachmentToSealedPacket();
         }
         if (payloads != null && !payloads.isEmpty()) {
             if (this.payloads == null) {
@@ -597,7 +613,7 @@ public class BusinessPacket extends AbstractPacket {
             }
             int newCount = payloads.size();
             if (payloadCount + newCount > MAX_PAYLOAD_COUNT) {
-                throw new PayloadOverflowException(payloadCount, newCount, MAX_PAYLOAD_COUNT);
+                throw PayloadOverflowException.exceeding(payloadCount, newCount, MAX_PAYLOAD_COUNT);
             }
             for (AbstractPayload<?> payload : payloads) {
                 if (payload != null) {
@@ -648,7 +664,7 @@ public class BusinessPacket extends AbstractPacket {
      */
     public BusinessPacket duplicate() {
         if (!this.sealed) {
-            throw new IllegalStateException("Only sealed packets can be duplicated for broadcast.");
+            throw BusinessPacketException.broadcastDuplicationRequiresSealedPacket();
         }
         BusinessPacket clone = new BusinessPacket(this.getWay(), this.path);
         clone.taskId = this.taskId;

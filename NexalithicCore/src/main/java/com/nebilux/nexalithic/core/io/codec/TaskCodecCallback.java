@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.io.codec;
 
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
@@ -45,7 +61,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
             return;
         }
         transferSnapshot = new TransferSnapshot(total);
-        if (!taskScheduler.start(transferListener, transferSnapshot)) {
+        if (!taskScheduler.startTransferListener(transferListener, transferSnapshot)) {
             transferSnapshot = null;
         }
     }
@@ -65,7 +81,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
         completed = true;
         if (transferSnapshot != null) {
             transferSnapshot.updateRemaining(0);
-            taskScheduler.finish(transferListener);
+            taskScheduler.finishTransferListener(transferListener);
         }
         onComplete();
     }
@@ -73,7 +89,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
     @Override
     public void clear() {
         if (!completed && transferSnapshot != null) {
-            taskScheduler.cancel(transferListener);
+            taskScheduler.cancelTransferListener(transferListener);
         }
         session = null;
         task = null;

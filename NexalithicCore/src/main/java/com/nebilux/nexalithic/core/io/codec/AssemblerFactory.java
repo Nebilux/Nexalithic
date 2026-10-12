@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.io.codec;
 
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
@@ -15,10 +31,10 @@ import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
-import org.jctools.queues.SpmcArrayQueue;
-import org.jctools.queues.SpscArrayQueue;
 
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntFunction;
 
 /**
  * 汇编器工厂
@@ -31,45 +47,24 @@ public class AssemblerFactory {
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
     private final int PacketQueue_Capacity_;
 
-    public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules, NexalithicEndpoint.Type endpointType) {
+    public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules,
+                            NexalithicEndpoint.Type type, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel) {
+        this.timeWheel = timeWheel;
         PacketQueue_Capacity_ = context.getOption(BusinessPacketsAssembler.OPTIONS.PacketQueue_Capacity);
         BusinessPacketAssemblyWrapper.Constant businessPacketAssemblyConstant = new BusinessPacketAssemblyWrapper.Constant(
                 TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketsAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS)
         );
         PayloadRegistry payloadRegistry = context.getModule(BusinessPacketsAssembler.MODULES.PayloadRegistry);
         TaskScheduler taskScheduler = context.getModule(modules.TaskScheduler);
-        //noinspection Convert2Diamond
-        wrapperPool = new GenericWrapperPool<BusinessPacketAssemblyWrapper, BusinessPacketAssemblyWrapper>(
-                PoolStorageFactory.bounded(
-                        switch (endpointType) {
-                            case CLIENT -> MpscArrayQueue::new;
-                            case SERVER -> MpmcArrayQueue::new;
-                        },
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
+        IntFunction<Queue<BusinessPacketAssemblyWrapper>> wrapperPoolQueueFactory = switch (type) {
+            case CLIENT -> MpscArrayQueue::new;
+            case SERVER -> MpmcArrayQueue::new;
+        };
+        wrapperPool = new GenericWrapperPool<>(
+                PoolStorageFactory.bounded(wrapperPoolQueueFactory, context.getOption(BusinessPacketsAssembler.OPTIONS.WrapperPool_Capacity)),
                 PoolStrategyFactory.alwaysCreate(),
                 owner -> new BusinessPacketAssemblyWrapper(owner, businessPacketAssemblyConstant, new AssemblyCallback(taskScheduler), payloadRegistry)
         );
-        timeWheel = context.getModule(BusinessPacketsAssembler.MODULES.TimeWheel, () -> {
-            TimeWheel<BusinessPacketAssemblyWrapper> timeWheel = new TimeWheel<>(
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(
-                                    switch (endpointType) {
-                                        case CLIENT -> SpscArrayQueue::new;
-                                        case SERVER -> SpmcArrayQueue::new;
-                                    },
-                                    context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<BusinessPacketAssemblyWrapper>::new
-                    ),
-                    BusinessPacketsAssembler.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
     }
 
     public PacketsAssembler<SignalingPacket> createSignaling() {

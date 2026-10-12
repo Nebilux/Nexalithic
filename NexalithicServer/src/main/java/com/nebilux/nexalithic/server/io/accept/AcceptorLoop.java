@@ -1,9 +1,25 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.server.io.accept;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
-import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicStateQueue;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.SelectorLoop;
 import com.nebilux.nexalithic.server.NexalithicServer;
@@ -42,19 +58,12 @@ public class AcceptorLoop extends SelectorLoop {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(AcceptorLoop.class);
-    private enum RegistrationState {
-        OPEN,
-        CLOSED
-    }
     private record ListenerRegistration(
             NexalithicChannel.Kind kind,
             AdmissionStrategy<?> strategy,
             NetworkRouter.RouteRegistration routeRegistration
     ) {}
-    private final AtomicStateQueue.StateHandle<RegistrationState> registrationState = new AtomicStateQueue.StateHandle<>(RegistrationState.OPEN);
-    private final AtomicStateQueue<Runnable, RegistrationState> eventQueue = new AtomicStateQueue<>(
-            new ConcurrentLinkedQueue<>(), registrationState, (state, event) -> state == RegistrationState.OPEN
-    );
+    private final AtomicAdmissionQueue<Runnable> eventQueue = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>());
     private final HandshakeIngress handshakeIngress;
     private final NetworkRouter networkRouter;
 
@@ -62,9 +71,10 @@ public class AcceptorLoop extends SelectorLoop {
         super(context, OPTIONS);
         handshakeIngress = context.getModule(MODULES.HandshakeIngress);
         networkRouter = context.getModule(NexalithicServer.MODULES.NetworkRouter);
-        drainAsyncEventsCondition(() -> {
+
+        registerPreSelectTask(() -> {
             eventQueue.drain(Runnable::run);
-            if (registrationState.get() == RegistrationState.CLOSED) {
+            if (!eventQueue.isAccepting()) {
                 for (SelectionKey key : registeredKeys().toArray(SelectionKey[]::new)) {
                     try {
                         closeListenerKey(key);
@@ -73,12 +83,13 @@ public class AcceptorLoop extends SelectorLoop {
                     }
                 }
             }
-            return eventQueue.isEmpty();
         });
+        registerImmediateWorkCondition(() -> !eventQueue.isEmpty());
+        registerDrainCondition(eventQueue::isEmpty);
     }
 
     public boolean register(ServerSocketChannel channel, NexalithicChannel.Kind kind, AdmissionStrategy.Builder<?> strategyBuilder) {
-        if (registrationState.get() != RegistrationState.OPEN) {
+        if (!eventQueue.isAccepting()) {
             closeRejectedListener(channel);
             return false;
         }
@@ -92,13 +103,13 @@ public class AcceptorLoop extends SelectorLoop {
 
     @Override
     protected void sealLoop() {
-        registrationState.set(RegistrationState.CLOSED);
+        eventQueue.close();
     }
 
     @Override
     protected void onSelectorKeyReady(SelectionKey key) {
         try {
-            if (registrationState.get() == RegistrationState.CLOSED) {
+            if (!eventQueue.isAccepting()) {
                 closeListenerKey(key);
                 return;
             }

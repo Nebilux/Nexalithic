@@ -1,0 +1,522 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.nebilux.nexalithic.core.lifecycle;
+
+import com.nebilux.nexalithic.core.exception.FailureSupport;
+import com.nebilux.nexalithic.core.infra.concurrent.async.AsyncOperation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
+
+/**
+ * 单个组件的一次性生命周期控制，实现 {@link Lifecycle} 的状态转换和完成阶段管理。
+ *
+ * <p>启动、排空关闭和中止关闭各自最多触发一次；重复调用共享相应的最终结果。
+ * 在 {@link State#STARTING} 接受关闭时，仅记录关闭模式，待启动钩子结束后
+ * 才执行关闭钩子。启动钩子失败时改走中止清理；成功但已接受关闭时，
+ * 启动阶段最终以取消异常完成，并等待关闭流程结束后才发布该结果。</p>
+ *
+ * <p>运行中请求排空会进入 {@link State#QUIESCING}。随后请求中止时，
+ * 如果排空操作尚未触发，则只运行中止钩子；否则进入升级路径，
+ * 两个关闭钩子可能并行，终止结果等待两者都完成。中止钩子的实现须使
+ * 已开始的排空钩子最终结束，否则升级路径的终止阶段也无法完成。</p>
+ *
+ * <p>对尚未启动的组件请求关闭会改走中止路径，且不会执行启动钩子。
+ * 当前实现会先使 {@link #whenStarted()} 异常完成，再触发中止清理；
+ * 非异步完成回调可能在调用 {@link #shutdown(ShutdownMode)} 的线程中执行。
+ * 因此，启动失败回调不得同步等待 {@link #whenTerminated()}，否则可能阻止
+ * 中止清理被触发。这是当前执行顺序的限制，而非终止已完成的保证。</p>
+ *
+ * <p>状态只描述进度，不表示操作成功；应检查 {@link #whenStarted()} 和
+ * {@link #whenTerminated()} 的结果。钩子返回的阶段必须在实际工作结束后才完成，
+ * 不得返回依赖自身完成的生命周期阶段。</p>
+ *
+ * @author Reonvia
+ * @since 0.4.0
+ */
+public abstract class AbstractLifecycle implements Lifecycle {
+    /** 内部关闭路径；ESCALATED 表示排空已触发后又接受中止。 */
+    private enum TerminationMode {
+        NONE,
+        DRAIN,
+        ABORT,
+        ESCALATED
+    }
+    private static final Logger logger = LoggerFactory.getLogger(AbstractLifecycle.class);
+    /** 状态更新受 lifecycleLock 保护；读取可不持锁。 */
+    private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
+    /** 串行化状态转换和关闭模式选择，不覆盖钩子的实际执行时间。 */
+    private final Object lifecycleLock = new Object();
+    /** 启动与两种关闭操作分别占有一次性触发权。 */
+    private final AsyncOperation<Throwable, Void> startOperation;
+    private final AsyncOperation<Void, Void> drainOperation;
+    private final AsyncOperation<Void, Void> abortOperation;
+    /** doStart 完成后状态已离开 STARTING，不依赖启动或终止阶段的最终结果。 */
+    private final CompletableFuture<Void> startDecisionFuture = new CompletableFuture<>();
+    /** 由当前最终关闭路径完成；升级时须等待排空与中止两个结果。 */
+    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+    /** 仅在 lifecycleLock 内读写；已接受的关闭决定可以从 DRAIN 升级为 ABORT 或 ESCALATED。 */
+    private TerminationMode terminationMode = TerminationMode.NONE;
+    /** 通知钩子在锁外执行；关闭操作等待其结果后再执行清理并汇总失败。 */
+    private CompletableFuture<Throwable> drainAcceptance = CompletableFuture.completedFuture(null);
+    private CompletableFuture<Throwable> abortAcceptance = CompletableFuture.completedFuture(null);
+    /** 未触发的 DRAIN 被 ABORT 取代时，后者还须承接前者的通知失败。 */
+    private boolean abortIncludesDrainAcceptance;
+    protected final String name;
+
+    /**
+     * @param name 用于标识组件及其异步操作的名称，不可为 {@code null}
+     */
+    public AbstractLifecycle(String name) {
+        this(ignored -> name);
+    }
+
+    /**
+     * 在基类构造期间使用实际运行时类型生成名称，不访问尚未初始化的子类字段。
+     *
+     * @param nameFactory 只依赖参数和已构造的外部对象的名称函数
+     */
+    protected AbstractLifecycle(Function<Class<?>, String> nameFactory) {
+        name = Objects.requireNonNull(Objects.requireNonNull(nameFactory, "nameFactory").apply(getClass()), "name");
+        startOperation = new AsyncOperation<>(name + "-start", this::executeStart);
+        drainOperation = AsyncOperation.fromStage(name + "-drain", ignored -> executeShutdown(ShutdownMode.DRAIN));
+        abortOperation = AsyncOperation.fromStage(name + "-abort", ignored -> executeShutdown(ShutdownMode.ABORT));
+
+        // 将钩子的异常转为正常完成的 Throwable 值，使升级路径即使遇到失败也能等待两端。
+        CompletionStage<Throwable> drainOutcome = failureOutcome(drainOperation.completion());
+        CompletionStage<Throwable> abortOutcome = failureOutcome(abortOperation.completion());
+        drainOutcome.thenAccept(failure -> finishTermination(TerminationMode.DRAIN, failure));
+        abortOutcome.thenAccept(failure -> finishTermination(TerminationMode.ABORT, failure));
+        drainOutcome.thenCombine(abortOutcome, FailureSupport::mergePrioritizingError)
+                .thenAccept(failure -> finishTermination(TerminationMode.ESCALATED, failure));
+    }
+
+    /**
+     * 仅从 NEW 转入 STARTING 并触发一次启动；其他状态直接返回已有启动结果。
+     *
+     * <p>首次启动被接受后先在生命周期锁外调用 {@link #onStartAccepted()}，再触发启动操作。
+     * 钩子和触发动作都可能在调用线程中同步执行；返回的阶段才表示启动的最终结果。</p>
+     *
+     * @return 启动完成阶段
+     */
+    @Override
+    public final CompletionStage<Void> start() {
+        State currentState;
+        synchronized (lifecycleLock) {
+            currentState = state.get();
+            if (currentState == State.NEW) {
+                state.set(State.STARTING);
+            }
+        }
+        if (currentState != State.NEW) {
+            if (currentState == State.STARTING) {
+                logger.debug("{} startup already in progress", name);
+            } else if (currentState == State.RUNNING) {
+                logger.debug("{} already running", name);
+            } else {
+                logger.debug("{} start ignored in state {}", name, currentState);
+            }
+            return whenStarted();
+        }
+        logMilestone("{} startup accepted", name);
+        Throwable acceptanceFailure = null;
+        try {
+            onStartAccepted();
+        } catch (Throwable failure) {
+            acceptanceFailure = failure;
+        }
+        startOperation.trigger(acceptanceFailure);
+        return whenStarted();
+    }
+
+    /**
+     * 请求关闭并返回共享的终止完成阶段。
+     *
+     * <p>NEW 状态总是走 ABORT，即使请求的是 DRAIN；STARTING 状态只记录已接受的关闭决定，
+     * 待启动钩子结束后再触发关闭。QUIESCING 状态下的 ABORT 可能升级为并行清理。
+     * 关闭钩子和非异步完成回调都可能在当前调用线程中执行，故本方法的调用本身
+     * 不保证立即返回。</p>
+     *
+     * @param mode 请求的关闭策略，不可为 {@code null}
+     * @return 终止完成阶段；关闭失败时异常完成
+     */
+    @Override
+    public final CompletionStage<Void> shutdown(ShutdownMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        TerminationMode previousMode ,toTrigger;
+        State currentState, nextState;
+        boolean accepted, noOp = false;
+        long acceptedAtNanos;
+        CompletableFuture<Throwable> acceptanceOutcome = null;
+        synchronized (lifecycleLock) {
+            currentState = state.get();
+            previousMode = terminationMode;
+            switch (currentState) {
+                case NEW -> {
+                    terminationMode = TerminationMode.ABORT;
+                    state.set(State.TERMINATING);
+                }
+                case STARTING -> {
+                    if (mode == ShutdownMode.ABORT) {
+                        terminationMode = TerminationMode.ABORT;
+                    } else if (terminationMode == TerminationMode.NONE) {
+                        terminationMode = TerminationMode.DRAIN;
+                    }
+                }
+                case RUNNING -> {
+                    terminationMode = mode == ShutdownMode.DRAIN ? TerminationMode.DRAIN : TerminationMode.ABORT;
+                    state.set(mode == ShutdownMode.DRAIN ? State.QUIESCING : State.TERMINATING);
+                }
+                case QUIESCING -> {
+                    if (mode == ShutdownMode.DRAIN) {
+                        noOp = true;
+                    } else {
+                        terminationMode = drainOperation.isTriggered() ? TerminationMode.ESCALATED : TerminationMode.ABORT;
+                        state.set(State.TERMINATING);
+                    }
+                }
+                case TERMINATING, TERMINATED -> noOp = true;
+                default -> throw new IllegalStateException("Unexpected Lifecycle.State: " + currentState);
+            }
+            toTrigger = terminationMode;
+            nextState = state.get();
+            accepted = previousMode != toTrigger || currentState != nextState;
+            acceptedAtNanos = accepted ? System.nanoTime() : 0L;
+            if (previousMode == TerminationMode.DRAIN && toTrigger == TerminationMode.ABORT) {
+                abortIncludesDrainAcceptance = true;
+            }
+            if (accepted) {
+                acceptanceOutcome = new CompletableFuture<>();
+                if (toTrigger == TerminationMode.DRAIN) {
+                    drainAcceptance = acceptanceOutcome;
+                } else {
+                    abortAcceptance = acceptanceOutcome;
+                }
+            }
+        }
+        if (accepted) {
+            logMilestone("{} shutdown {} accepted: {} -> {} (mode {} -> {})",
+                    name, mode, currentState, nextState, previousMode, toTrigger);
+        } else {
+            logger.debug("{} shutdown {} unchanged in state {} (mode {})",
+                    name, mode, currentState, toTrigger);
+        }
+        if (noOp) {
+            return whenTerminated();
+        }
+        if (accepted) {
+            Throwable acceptanceFailure = null;
+            try {
+                onShutdownAccepted(mode, currentState, nextState, acceptedAtNanos);
+            } catch (Throwable throwable) {
+                acceptanceFailure = throwable;
+            }
+            acceptanceOutcome.complete(acceptanceFailure);
+            if (acceptanceFailure != null) {
+                logger.debug("{} shutdown acceptance hook failed; failure will be reported after cleanup", name,
+                        acceptanceFailure);
+            }
+        }
+        if (currentState == State.NEW) {
+            startDecisionFuture.complete(null);
+            // 当前顺序会先发布启动取消，再触发下面的 ABORT。若启动完成回调在本线程
+            // 同步等待 whenTerminated()，该回调会阻塞 triggerTermination 的执行。
+            startOperation.abort(new CancellationException(name + " was shutdown before start"));
+        }
+        if (currentState != State.STARTING) {
+            triggerTermination(toTrigger);
+        }
+        return whenTerminated();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> whenStarted() {
+        return startOperation.completion();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> whenTerminated() {
+        return terminationFuture.minimalCompletionStage();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public final State lifecycleState() {
+        return state.get();
+    }
+
+    /**
+     * 返回构造时指定的组件名称。
+     *
+     * @return 组件名称
+     */
+    public final String name() {
+        return name;
+    }
+
+    /**
+     * 执行组件启动，并返回覆盖全部启动工作的完成阶段。
+     *
+     * <p>不得返回 {@link #whenStarted()}，否则自身完成将依赖自身。
+     * 启动失败或启动期间已接受关闭后，本类会决定后续清理路径。</p>
+     *
+     * @return 实际启动工作的完成阶段，不可为 {@code null}
+     */
+    protected abstract CompletionStage<Void> doStart();
+
+    /**
+     * 执行指定关闭模式的清理，并返回覆盖全部清理工作的完成阶段。
+     *
+     * <p>ABORT 可能在 doStart 从未执行、启动仅部分完成或 DRAIN 正在执行时被调用。
+     * 升级时两种模式可能并行；ABORT 实现应促使正在进行的 DRAIN 最终完成。
+     * 不得返回 {@link #whenTerminated()}，否则终止结果将依赖自身。</p>
+     *
+     * @param mode 实际执行的关闭模式
+     * @return 实际清理工作的完成阶段，不可为 {@code null}
+     */
+    protected abstract CompletionStage<Void> doShutdown(ShutdownMode mode);
+
+    /**
+     * 首次启动被接受、状态从 NEW 转为 STARTING 后，在 {@link #doStart()} 执行前调用一次。
+     *
+     * <p>本钩子在生命周期锁外执行。并发关闭可能在钩子执行期间被接受；钩子不得
+     * 同步等待启动或终止阶段。若钩子抛出异常，基类跳过 doStart，执行 ABORT 回滚，
+     * 并在回滚结束后使启动阶段异常完成。</p>
+     */
+    protected void onStartAccepted() {}
+
+    /**
+     * 关闭决定被接受后的通知，在生命周期锁外、实际关闭钩子触发前调用。
+     *
+     * <p>STARTING 时这里只发布关闭意图，{@link #doShutdown(ShutdownMode)} 仍在启动钩子
+     * 完成后执行。实现可立即封闭外部入口，但不得等待启动或终止完成阶段；通知期间的
+     * 异常会并入相应关闭操作的失败结果，但不会跳过后续清理。若尚未触发的 DRAIN
+     * 被 ABORT 取代，DRAIN 通知的失败会并入 ABORT 的结果。</p>
+     *
+     * @param mode 本次被接受调用所指定的模式，可能与实际清理模式不同
+     * @param previousState 本次关闭被接受前的状态
+     * @param nextState 本次关闭被接受后的状态；STARTING 时仍为 STARTING
+     * @param acceptedAtNanos 接受关闭决定时的 {@link System#nanoTime()} 值
+     */
+    protected void onShutdownAccepted(ShutdownMode mode, State previousState, State nextState, long acceptedAtNanos) {}
+
+    /**
+     * 顶层终端可将正常启动与关闭的关键节点记录为 INFO；内部组件默认使用 DEBUG。
+     * 重复调用和中间步骤仍使用 DEBUG，失败仍使用 ERROR。
+     */
+    protected boolean logMilestonesAtInfo() {
+        return false;
+    }
+
+    /**
+     * 等待启动钩子的结果已被转换为 RUNNING、QUIESCING 或 TERMINATING 状态。
+     * 与 {@link #whenStarted()} 不同，启动期间已接受关闭时本阶段不会等待清理完成。
+     */
+    protected final CompletionStage<Void> whenStartDecisionMade() {
+        return startDecisionFuture.minimalCompletionStage();
+    }
+
+    /** 启动操作取得触发权后检查是否已接受关闭，并接入 doStart 的完成结果。 */
+    private void executeStart(Throwable acceptanceFailure, AsyncOperation.Completer<Void> completer) {
+        if (acceptanceFailure != null) {
+            finishStart(acceptanceFailure, completer);
+            return;
+        }
+        boolean cancelled;
+        synchronized (lifecycleLock) {
+            cancelled = terminationMode != TerminationMode.NONE;
+        }
+        if (cancelled) {
+            finishStart(new CancellationException(name + " was shutdown during start"), completer);
+            return;
+        }
+        invoke(this::doStart).whenComplete((result, failure) -> finishStart(unwrapCompletionException(failure), completer));
+    }
+
+    /**
+     * 根据启动钩子的结果和已接受的关闭决定，确定下一状态与关闭路径。
+     *
+     * <p>启动失败时强制选择 ABORT；启动成功但已接受关闭时先转入
+     * QUIESCING 或 TERMINATING，再触发相应操作，允许并发接受的 ABORT
+     * 正确识别和升级排空。此处只在终止完成后才发布未成功启动的结果。</p>
+     */
+    private void finishStart(Throwable throwable, AsyncOperation.Completer<Void> completer) {
+        TerminationMode toTrigger;
+        boolean started;
+        boolean shutdownAccepted;
+        synchronized (lifecycleLock) {
+            shutdownAccepted = terminationMode != TerminationMode.NONE;
+            started = throwable == null && this.terminationMode == TerminationMode.NONE;
+            if (started) {
+                state.set(State.RUNNING);
+            } else if (throwable != null) {
+                if (terminationMode == TerminationMode.DRAIN) {
+                    abortIncludesDrainAcceptance = true;
+                }
+                terminationMode = TerminationMode.ABORT;
+                state.set(State.TERMINATING);
+            } else {
+                state.set(terminationMode == TerminationMode.DRAIN ? State.QUIESCING : State.TERMINATING);
+            }
+            toTrigger = terminationMode;
+        }
+        startDecisionFuture.complete(null);
+        if (started) {
+            logMilestone("{} startup completed", name);
+            completer.complete(null);
+            return;
+        }
+        if (throwable == null) {
+            logger.debug("{} startup completed with pending {} shutdown", name, toTrigger);
+        } else if (shutdownAccepted && throwable instanceof CancellationException) {
+            logger.debug("{} startup cancelled after shutdown acceptance", name);
+        } else {
+            logger.error("{} startup failed; aborting", name, throwable);
+        }
+        // 启动失败或启动中关闭时，保留原始原因，并把清理失败合并进启动结果。
+        terminationFuture.whenComplete((result, terminationFailure) ->
+                completer.completeExceptionally(mergePrioritizingError(
+                        throwable == null ? new CancellationException(name + " was shutdown before start completed") : throwable,
+                        unwrapCompletionException(terminationFailure)))
+        );
+        triggerTermination(toTrigger);
+    }
+
+    /**
+     * 执行关闭钩子；若尚未触发的 DRAIN 已被 ABORT 取代，则跳过过期的排空动作。
+     * 已触发的 DRAIN 在 ESCALATED 模式下仍需完成，以便汇总两条关闭路径。
+     */
+    private CompletionStage<Void> executeShutdown(ShutdownMode mode) {
+        CompletionStage<Throwable> acceptance;
+        synchronized (lifecycleLock) {
+            if (mode == ShutdownMode.DRAIN && terminationMode == TerminationMode.ABORT) {
+                return CompletableFuture.completedFuture(null);
+            }
+            acceptance = mode == ShutdownMode.DRAIN ? drainAcceptance : abortAcceptance;
+            if (mode == ShutdownMode.ABORT && abortIncludesDrainAcceptance) {
+                acceptance = drainAcceptance.thenCombine(abortAcceptance, FailureSupport::mergePrioritizingError);
+            }
+        }
+        logger.debug("{} {} shutdown started", name, mode);
+        return acceptance.thenCompose(acceptanceFailure ->
+                failureOutcome(invoke(() -> doShutdown(mode))).thenCompose(shutdownFailure -> {
+                    Throwable failure = mergePrioritizingError(acceptanceFailure, shutdownFailure);
+                    return failure == null
+                            ? CompletableFuture.completedFuture(null)
+                            : CompletableFuture.failedFuture(failure);
+                }));
+    }
+
+    /** 根据已选择的模式触发一次性关闭操作；升级时 DRAIN 已由先前接受的关闭触发。 */
+    private void triggerTermination(TerminationMode mode) {
+        switch (mode) {
+            case DRAIN -> drainOperation.trigger();
+            case ABORT, ESCALATED -> abortOperation.trigger();
+            case NONE -> {}
+            default -> throw new IllegalArgumentException("Unexpected Termination.Mode: " + mode);
+        }
+    }
+
+    /**
+     * 只接受当前模式对应的最终结果。升级后单个钩子的结果不会提前结束生命周期。
+     * TERMINATED 表示关闭流程结束，即使其完成阶段携带失败。
+     */
+    private void finishTermination(TerminationMode mode, Throwable throwable) {
+        synchronized (lifecycleLock) {
+            if (terminationMode != mode || state.get() == State.TERMINATED) {
+                return;
+            }
+            state.set(State.TERMINATED);
+        }
+        if (throwable == null) {
+            logMilestone("{} terminated after {} shutdown", name, mode);
+            terminationFuture.complete(null);
+        } else {
+            logger.error("{} termination failed after {} shutdown", name, mode, throwable);
+            terminationFuture.completeExceptionally(throwable);
+        }
+    }
+
+    private void logMilestone(String format, Object... arguments) {
+        if (logMilestonesAtInfo()) {
+            logger.info(format, arguments);
+        } else {
+            logger.debug(format, arguments);
+        }
+    }
+
+    /** 将阶段调用的同步抛错或空返回值统一转成失败的完成阶段。 */
+    protected static CompletionStage<Void> invoke(Supplier<CompletionStage<Void>> action) {
+        try {
+            return Objects.requireNonNull(action.get(), "lifecycle completion stage");
+        } catch (Throwable failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    /** 即使前一阶段失败也执行下一阶段，并合并两者的失败。 */
+    protected static CompletionStage<Void> continueAfter(CompletionStage<Void> previous, Supplier<CompletionStage<Void>> next) {
+        return previous.handle((ignored, failure) -> unwrapCompletionException(failure))
+                .thenCompose(previousFailure -> invoke(next).handle((ignored, failure) -> {
+                    Throwable combined = mergePrioritizingError(previousFailure, unwrapCompletionException(failure));
+                    if (combined != null) {
+                        throw new CompletionException(combined);
+                    }
+                    return null;
+                }));
+    }
+
+    /** 等待所有已提交的阶段结束，并汇总每个阶段的失败。 */
+    protected static CompletionStage<Void> awaitAll(List<CompletionStage<Void>> stages) {
+        CompletableFuture<?>[] futures = stages.stream()
+                .map(CompletionStage::toCompletableFuture)
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(futures).handle((ignored, failure) -> {
+            Throwable combined = null;
+            for (CompletableFuture<?> future : futures) {
+                try {
+                    future.join();
+                } catch (Throwable stageFailure) {
+                    combined = mergePrioritizingError(combined, unwrapCompletionException(stageFailure));
+                }
+            }
+            if (combined != null) {
+                throw new CompletionException(combined);
+            }
+            return null;
+        });
+    }
+
+    /** 把完成阶段的失败转换为结果值；成功时结果为 {@code null}。 */
+    protected static CompletionStage<Throwable> failureOutcome(CompletionStage<Void> stage) {
+        return stage.handle((ignored, failure) -> unwrapCompletionException(failure));
+    }
+}

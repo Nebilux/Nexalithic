@@ -1,5 +1,22 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.server.io.session;
 
+import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
@@ -7,18 +24,24 @@ import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalanceable;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.nebilux.nexalithic.core.infra.loadbalance.P2CBalancer;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
+import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
+import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
 
 /**
- * 服务单元
+ * 管理一组会话 Loop 及其共用编解码资源的生命周期。
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public class ServiceUnit implements LoadBalanceable {
+public class ServiceUnit extends AbstractLifecycle implements LoadBalanceable {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, ServiceUnit.class);
     public static final class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> BusinessLoop_Count = defineOption(
@@ -28,12 +51,16 @@ public class ServiceUnit implements LoadBalanceable {
             super(holder);
         }
     }
+
     private final SignalingLoop signalingLoop;
     private final BusinessLoop[] businessLoops;
     private final LoadBalancer<Void, BusinessLoop> businessBalancer;
+    private final CodecResources codecResources;
 
     public ServiceUnit(NexalithicBuilderContext context) throws IOException {
-        signalingLoop = new SignalingLoop(context, this);
+        super(ServiceUnit.class.getSimpleName() + "-" + context.nextOrdinal(ServiceUnit.class, ServiceUnit.class));
+        codecResources = new CodecResources(context, NexalithicServer.MODULES, NexalithicEndpoint.Type.SERVER);
+        signalingLoop = new SignalingLoop(context, this, codecResources);
         businessLoops = new BusinessLoop[context.getOption(OPTIONS.BusinessLoop_Count)];
         for (int i = 0; i < businessLoops.length; i++) {
             businessLoops[i] = new BusinessLoop(context);
@@ -41,14 +68,39 @@ public class ServiceUnit implements LoadBalanceable {
         businessBalancer = new P2CBalancer<>(businessLoops);
     }
 
+    @Override
+    protected CompletionStage<Void> doStart() {
+        return codecResources.start().thenCompose(ignored -> startLoops());
+    }
+
+    @Override
+    protected CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        return continueAfter(shutdownLoops(mode), () -> codecResources.release(mode));
+    }
+
+    private CompletionStage<Void> startLoops() {
+        List<CompletionStage<Void>> stages = new ArrayList<>(businessLoops.length + 1);
+        stages.add(invoke(signalingLoop::start));
+        for (BusinessLoop loop : businessLoops) {
+            stages.add(invoke(loop::start));
+        }
+        return awaitAll(stages);
+    }
+
+    private CompletionStage<Void> shutdownLoops(ShutdownMode mode) {
+        List<CompletionStage<Void>> stages = new ArrayList<>(businessLoops.length + 1);
+        stages.add(invoke(() -> signalingLoop.shutdown(mode)));
+        for (BusinessLoop loop : businessLoops) {
+            stages.add(invoke(() -> loop.shutdown(mode)));
+        }
+        return awaitAll(stages);
+    }
+
     public SignalingLoop getSignalingLoop() {
         return signalingLoop;
     }
     public BusinessLoop selectBusinessLoop() {
         return businessBalancer.select(null);
-    }
-    public BusinessLoop[] getBusinessLoops() {
-        return businessLoops;
     }
 
     @Override

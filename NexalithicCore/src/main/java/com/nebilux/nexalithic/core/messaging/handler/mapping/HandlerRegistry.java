@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.messaging.handler.mapping;
 
 import com.nebilux.nexalithic.core.exception.NexalithicDuplicateKeyException;
@@ -130,10 +146,10 @@ public class HandlerRegistry<HC extends HandlerContext<?>> {
             }
             List<short[]> levels = matcher.getLevels();
             if (levels.isEmpty()) {
-                bindHandler(root, handler);
+                bindHandler(root, handler, "/");
                 return this;
             }
-            doRegister(root, levels, 0, handler);
+            doRegister(root, levels, 0, handler, "");
             return this;
         }
 
@@ -159,33 +175,35 @@ public class HandlerRegistry<HC extends HandlerContext<?>> {
         /**
          * 递归注册指定深度的路径层级。
          */
-        private void doRegister(MutableNode<HC> parent, List<short[]> levels, int depth, NexalithicHandler<HC> handler) {
+        private void doRegister(MutableNode<HC> parent, List<short[]> levels, int depth,
+                                NexalithicHandler<HC> handler, String path) {
             short[] level = levels.get(depth);
             if (level.length == 0) {
-                registerNext(parent.getOrCreateWildcard(), levels, depth, handler);
+                registerNext(parent.getOrCreateWildcard(), levels, depth, handler, path + "/*");
             } else {
                 for (short key : level) {
-                    registerNext(parent.getOrCreateChild(key), levels, depth, handler);
+                    registerNext(parent.getOrCreateChild(key), levels, depth, handler, path + "/" + key);
                 }
             }
         }
         /**
          * 注册当前层级后的下一步。
          */
-        private void registerNext(MutableNode<HC> child, List<short[]> levels, int depth, NexalithicHandler<HC> handler) {
+        private void registerNext(MutableNode<HC> child, List<short[]> levels, int depth,
+                                  NexalithicHandler<HC> handler, String path) {
             if (depth == levels.size() - 1) {
-                bindHandler(child, handler);
+                bindHandler(child, handler, path);
                 return;
             }
-            doRegister(child, levels, depth + 1, handler);
+            doRegister(child, levels, depth + 1, handler, path);
         }
         /**
          * 将 Handler 绑定到当前 Trie 节点。
          */
-        private void bindHandler(MutableNode<HC> node, NexalithicHandler<HC> handler) {
+        private void bindHandler(MutableNode<HC> node, NexalithicHandler<HC> handler, String path) {
             NexalithicHandler<HC> existing = node.handler;
             if (existing != null) {
-                throw new NexalithicDuplicateKeyException("HandlerRegistry", existing.getMetadata());
+                throw NexalithicDuplicateKeyException.inTarget("HandlerRegistry", path);
             }
             node.handler = handler;
             logger.debug("Registered handler mappings, {}", handler.getMetadata());

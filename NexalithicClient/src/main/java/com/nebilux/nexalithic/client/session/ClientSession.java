@@ -1,11 +1,25 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.client.session;
 
-import com.nebilux.nexalithic.client.NexalithicClient;
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
-import com.nebilux.nexalithic.core.NexalithicEndpoint;
-import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
@@ -47,9 +61,9 @@ public class ClientSession extends NexalithicSession<ClientSession> {
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;
 
-        public ChannelFactory(NexalithicBuilderContext context, ClientSessionLoop loop) {
-            this.fragmenterFactory = new FragmenterFactory(context, NexalithicClient.MODULES);
-            this.assemblerFactory = new AssemblerFactory(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
+        public ChannelFactory(ClientSessionLoop loop, CodecResources resources) {
+            this.fragmenterFactory = resources.fragmenters();
+            this.assemblerFactory = resources.assemblers();
             this.loop = loop;
         }
 

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.server.io.session.signaling;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
@@ -11,6 +27,8 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
@@ -23,7 +41,7 @@ import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import com.nebilux.nexalithic.server.session.SessionRegistry;
 import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
-import org.jctools.queues.SpmcArrayQueue;
+import org.jctools.queues.MpmcArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,7 +83,8 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> TimeWheel = defineModule(TimeWheel.class);
+        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(SignalingLoop.class);
         }
@@ -75,30 +94,32 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     private final SessionRegistry sessionRegistry;
     private final ChannelAccessCoordinator channelAccessCoordinator;
     private final TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel;
+    private final ServerSession.ChannelFactory channelFactory;
     private final Function<HandshakeContext, ServerSession> sessionFactory;
 
-    public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit) throws IOException {
+    public SignalingLoop(NexalithicBuilderContext context, ServiceUnit unit, CodecResources codecResources) throws IOException {
         super(context, OPTIONS);
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         channelAccessCoordinator = context.getModule(NexalithicServer.MODULES.ChannelAccessCoordinator);
-        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
-                    ),
-                    SignalingLoop.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
+
+        SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+                () -> new SharedLifecycle<>(new TimeWheel<>(
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        new GenericWrapperPool<>(
+                                PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                PoolStrategyFactory.alwaysCreate(),
+                                TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
+                        ),
+                        SignalingLoop.class.getSimpleName()
+                ))
+        );
+        timeWheel = sharedTimeWheel.component();
+
         TaskScheduler taskScheduler = context.getModule(NexalithicServer.MODULES.TaskScheduler);
-        ServerSession.ChannelFactory channelFactory = new ServerSession.ChannelFactory(context, unit);
+        channelFactory = new ServerSession.ChannelFactory(unit, codecResources);
         sessionFactory = handoff -> new ServerSession(
                 handoff.takeSessionKey(),
                 handoff.takeSignalingSecretContext(),
@@ -108,6 +129,9 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
                 unit,
                 channelAccessCoordinator
         );
+
+        registerStartStage(() -> sharedTimeWheel.start(this));
+        registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
 
     @Override

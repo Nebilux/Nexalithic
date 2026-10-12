@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.infra.concurrent.atomic;
 
 import java.util.Objects;
@@ -17,7 +33,8 @@ import java.util.function.Predicate;
  * 当状态转换方法返回时，所有基于旧状态通过准入检查的入队操作都已经结束。</p>
  *
  * <p>多个 {@code AtomicStateQueue} 可以共享同一个 {@code StateHandle}，
- * 从而建立跨队列的统一状态转换边界。</p>
+ * 从而建立跨队列的统一状态转换边界。需要转换状态的调用方应自行保留传入构造
+ * 方法的句柄；队列不提供获取内部句柄的公开入口。</p>
  *
  * <p>该类只负责协调状态与入队操作，不会改变底层队列本身的并发能力。
  * 当多个线程并发访问队列时，调用方必须提供符合相应并发模型的
@@ -387,7 +404,7 @@ public class AtomicStateQueue<E, S> {
     }
 
     private final Queue<E> delegateQueue;
-    private final StateHandle<S> stateHandle;
+    protected final StateHandle<S> stateHandle;
     private final BiPredicate<? super S, ? super E> offerPolicy;
 
     public AtomicStateQueue(Queue<E> delegateQueue, StateHandle<S> stateHandle, BiPredicate<? super S, ? super E> offerPolicy) {
@@ -502,14 +519,5 @@ public class AtomicStateQueue<E, S> {
      */
     public boolean isEmpty() {
         return delegateQueue.isEmpty();
-    }
-
-    /**
-     * 返回该队列使用的共享状态句柄。
-     *
-     * @return 状态句柄
-     */
-    public StateHandle<S> state() {
-        return stateHandle;
     }
 }

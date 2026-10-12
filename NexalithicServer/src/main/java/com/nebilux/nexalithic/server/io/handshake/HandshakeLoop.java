@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.server.io.handshake;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
@@ -19,6 +35,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
@@ -83,7 +100,8 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<TimeWheel<HandshakeContext>> TimeWheel = defineModule(TimeWheel.class);
+        private final NexalithicModule<SharedLifecycle<TimeWheel<HandshakeContext>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private final NexalithicModule<FixedTaskExecutor<HandshakeContext, ExecutorThread>> FixedTaskExecutor = defineModule(FixedTaskExecutor.class);
         private Modules() {
             super(HandshakeLoop.class);
@@ -111,22 +129,23 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
         serviceUnitLoadBalancer = context.getModule(ServerLifecycleCoordinator.MODULES.ServiceUnitLoadBalancer);
-        timeWheel = context.getModule(MODULES.TimeWheel, () -> {
-            TimeWheel<HandshakeContext> timeWheel = new TimeWheel<>(
-                    context.getOption(OPTIONS.TimeWheel.TickMillis),
-                    context.getOption(OPTIONS.TimeWheel.SlotCount),
-                    context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
-                    context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
-                    new GenericWrapperPool<>(
-                            PoolStorageFactory.bounded(SpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
-                            PoolStrategyFactory.alwaysCreate(),
-                            TimeWheel.ScheduleWrapper<HandshakeContext>::new
-                    ),
-                    HandshakeLoop.class.getSimpleName()
-            );
-            timeWheel.start();
-            return timeWheel;
-        });
+
+        SharedLifecycle<TimeWheel<HandshakeContext>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+                () -> new SharedLifecycle<>(new TimeWheel<>(
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        new GenericWrapperPool<>(
+                                PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                PoolStrategyFactory.alwaysCreate(),
+                                TimeWheel.ScheduleWrapper<HandshakeContext>::new
+                        ),
+                        HandshakeLoop.class.getSimpleName()
+                ))
+        );
+        timeWheel = sharedTimeWheel.component();
+
         if (context.getOption(OPTIONS.SharedFixedTaskExecutor)) {
             executor = context.getModule(MODULES.FixedTaskExecutor, () -> createFixedTaskExecutor(context, true));
         } else {
@@ -147,10 +166,11 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
 
         asyncQueue = new MpscUnboundedArrayQueue<>(context.getOption(OPTIONS.AsyncQueue_ChunkSize));
 
-        drainAsyncEventsCondition(() -> {
-            asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit());
-            return asyncQueue.isEmpty();
-        });
+        registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit()));
+        registerImmediateWorkCondition(() -> !asyncQueue.isEmpty());
+        registerDrainCondition(asyncQueue::isEmpty);
+        registerStartStage(() -> sharedTimeWheel.start(this));
+        registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
     private FixedTaskExecutor<HandshakeContext, ExecutorThread> createFixedTaskExecutor(NexalithicBuilderContext context, boolean shared) {
         return new FixedTaskExecutor<>(

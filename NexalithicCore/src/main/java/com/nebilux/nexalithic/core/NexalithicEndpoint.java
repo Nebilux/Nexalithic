@@ -1,16 +1,34 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
-import com.nebilux.nexalithic.core.lifecycle.LifecycleCoordinator;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
+import com.nebilux.nexalithic.core.lifecycle.NexalithicLifecycleException;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
 
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.unwrapCompletionException;
 
 /**
  * Nexalithic 终端抽象基类。
@@ -26,12 +44,17 @@ import java.util.concurrent.CompletionStage;
  * <p>普通用户通常不会直接继承或实例化该类，而是通过 {@code NexalithicServer.builder()}
  * 或 {@code NexalithicClient.builder()} 创建具体终端。</p>
  *
+ * <p>生命周期操作统一使用 {@link Lifecycle} 的非阻塞 API。调用方若需等待，
+ * 应等待 {@link #start()} 或 {@link #shutdown(ShutdownMode)} 返回的完成阶段。
+ * 终端入口的异步失败以 {@link com.nebilux.nexalithic.core.lifecycle.NexalithicLifecycleException}
+ * 呈现，底层原因保存在 cause 中。</p>
+ *
  * @author Reonvia
  * @since 0.2.0
  */
-public abstract class NexalithicEndpoint {
+public abstract class NexalithicEndpoint implements Lifecycle {
     public static class Modules extends ModulesDefinition {
-        public final NexalithicModule<LifecycleCoordinator> LifecycleCoordinator = defineModule(LifecycleCoordinator.class);
+        public final NexalithicModule<Lifecycle> Lifecycle = defineModule(Lifecycle.class);
         public final NexalithicModule<HandlerCoordinator<?, ?, ?>> HandlerCoordinator = defineModule(HandlerCoordinator.class);
         public final NexalithicModule<TaskScheduler> TaskScheduler = defineModule(TaskScheduler.class);
         public final NexalithicModule<SecurityPolicy> SecurityPolicy = defineModule(SecurityPolicy.class);
@@ -110,12 +133,12 @@ public abstract class NexalithicEndpoint {
     }
 
     /**
-     * 终端生命周期协调器。
+     * 终端生命周期实现。
      *
-     * <p>所有生命周期操作都会委托给该对象执行。协调器是终端基类的实现细节，
+     * <p>所有生命周期操作都会委托给该对象执行。它是终端基类的实现细节，
      * 具体终端需要访问的运行时组件应由其直接持有。</p>
      */
-    private final LifecycleCoordinator lifecycleCoordinator;
+    private final Lifecycle lifecycle;
 
     /**
      * 终端事件总线。
@@ -128,91 +151,61 @@ public abstract class NexalithicEndpoint {
      * 创建终端基类。
      *
      * <p>该构造器由具体终端调用，并根据终端的模块定义从构建上下文中取得
-     * 生命周期协调器和事件总线。</p>
+     * 生命周期实现和事件总线。</p>
      *
      * @param context 终端构建上下文
      * @param modules 具体终端的基础模块定义
      */
     protected NexalithicEndpoint(NexalithicBuilderContext context, Modules modules) {
-        this.lifecycleCoordinator = context.getModule(modules.LifecycleCoordinator);
+        this.lifecycle = context.getModule(modules.Lifecycle);
         this.eventBus = context.getModule(modules.EventBus);
     }
 
-    /**
-     * 启动终端。
-     *
-     * <p>该方法会阻塞当前线程，直到所有组件完成启动。需要非阻塞启动时，
-     * 使用 {@link #startAsync()}。</p>
-     */
-    public final void start() {
-        await(startAsync());
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> start() {
+        return exposeLifecycleResult(lifecycle.start(), "start");
     }
 
-    /**
-     * 异步启动终端。
-     *
-     * <p>该方法只负责触发启动，不等待所有组件完成启动。合法状态转换由
-     * {@link LifecycleCoordinator} 负责校验。</p>
-     *
-     * @return 终端启动完成阶段
-     */
-    public final CompletionStage<Void> startAsync() {
-        return lifecycleCoordinator.start();
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> shutdown(ShutdownMode mode) {
+        return exposeLifecycleResult(lifecycle.shutdown(mode), "shut down");
     }
 
-    /**
-     * 停止终端。
-     *
-     * <p>该方法会阻塞当前线程，直到终端完成立即终止并释放运行期资源。
-     * 不得从终止过程所依赖的 Loop 线程中调用本方法；这种场景应使用
-     * {@link #stopAsync()}，避免等待当前线程自身退出。</p>
-     */
-    public final void stop() {
-        await(stopAsync());
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> whenStarted() {
+        return exposeLifecycleResult(lifecycle.whenStarted(), "start");
     }
 
-    /**
-     * 异步停止终端。
-     *
-     * @return 终端终止完成阶段
-     */
-    public final CompletionStage<Void> stopAsync() {
-        return lifecycleCoordinator.stop();
+    /** {@inheritDoc} */
+    @Override
+    public final CompletionStage<Void> whenTerminated() {
+        return exposeLifecycleResult(lifecycle.whenTerminated(), "shut down");
     }
 
-    /**
-     * 关闭终端。
-     *
-     * <p>该方法用于触发终端的优雅关闭流程；终端会先拒绝新工作，
-     * 再等待已经接受的工作完成并释放资源。该方法会阻塞当前线程直到关闭完成；
-     * 从终止过程所依赖的 Loop 线程中发起关闭时，应使用 {@link #shutdownAsync()}。</p>
-     */
-    public final void shutdown() {
-        await(shutdownAsync());
+    /** {@inheritDoc} */
+    @Override
+    public final State lifecycleState() {
+        return lifecycle.lifecycleState();
     }
 
-    /**
-     * 异步优雅关闭终端。
-     *
-     * @return 终端优雅关闭完成阶段
-     */
-    public final CompletionStage<Void> shutdownAsync() {
-        return lifecycleCoordinator.shutdown();
-    }
-
-    private static void await(CompletionStage<Void> completion) {
-        try {
-            completion.toCompletableFuture().join();
-        } catch (CompletionException exception) {
-            Throwable failure = exception.getCause() == null ? exception : exception.getCause();
-            if (failure instanceof Error error) {
+    /** 仅在面向终端调用者的完成阶段上转换失败，保留内部生命周期的原始结果。 */
+    private CompletionStage<Void> exposeLifecycleResult(CompletionStage<Void> result, String operation) {
+        return result.handle((ignored, failure) -> {
+            if (failure == null) {
+                return null;
+            }
+            Throwable cause = unwrapCompletionException(failure);
+            if (cause instanceof Error error) {
                 throw error;
             }
-            if (failure instanceof RuntimeException runtimeException) {
-                throw runtimeException;
+            if (cause instanceof NexalithicLifecycleException lifecycleFailure) {
+                throw lifecycleFailure;
             }
-            throw new IllegalStateException("Lifecycle operation failed", failure);
-        }
+            throw NexalithicLifecycleException.forEndpointOperation(getClass(), operation, cause);
+        });
     }
 
     /**
@@ -224,18 +217,5 @@ public abstract class NexalithicEndpoint {
      */
     public final NexalithicEventBus getEventBus() {
         return eventBus;
-    }
-
-    /**
-     * 返回当前生命周期状态。
-     *
-     * <p>该状态直接来自生命周期协调器，可用于判断终端是否仍处于
-     * {@link LifecycleCoordinator.State#NEW}、{@link LifecycleCoordinator.State#RUNNING}、
-     * {@link LifecycleCoordinator.State#TERMINATED} 或其他生命周期阶段。</p>
-     *
-     * @return 当前生命周期状态
-     */
-    public final LifecycleCoordinator.State getLifecycleState() {
-        return lifecycleCoordinator.getState();
     }
 }

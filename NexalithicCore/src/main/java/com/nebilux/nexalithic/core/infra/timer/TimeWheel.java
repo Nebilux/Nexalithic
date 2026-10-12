@@ -1,38 +1,64 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.infra.timer;
 
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
+import com.nebilux.nexalithic.core.lifecycle.AbstractLifecycle;
+import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import org.jctools.queues.MpscUnboundedArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+
+import static com.nebilux.nexalithic.core.exception.FailureSupport.mergePrioritizingError;
 
 /**
  * 基于单 Worker 线程推进的哈希时间轮。
  *
- * <p>一个实例只能启动一次。调用 {@link #stop()} 后不再接受新调度，也不能重新启动。</p>
+ * <p>一个实例只能启动一次。DRAIN 关闭会拒绝新注册，但让此前接受的注册继续运行，
+ * 直到其触发完成、取消或处理失败；同一注册在到期回调返回 {@code false} 后的重新调度
+ * 仍属于此前接受的工作。因此 DRAIN 可能无限期等待。ABORT 则尽快停止 Worker 并清理节点。</p>
  *
  * <p>时间轮不保证具有相同到期时间的目标按照提交顺序执行回调。等待队列允许多个生产者并发提交，
  * 调度节点转入槽位时采用头部合并，因此调用方不得依赖同一 tick 内的回调先后顺序；
  * 存在顺序依赖的业务应在时间轮之外进行串行化。</p>
  *
  * <p>多个生产者可以并发调用 {@link #schedule(Object, long, TimerCoordinator)}，但调用方必须负责
- * 协调提交线程与生命周期操作：调用 {@link #stop()} 前必须先停止并等待所有生产者退出，且从
- * {@code stop()} 开始执行后不得再提交目标。本类不会在 {@code schedule()} 与 {@code stop()} 之间建立
- * 提交—清理屏障；{@code acceptingSchedules} 仅用于尽早拒绝已经观察到停止状态的提交，不能替代调用方对生命周期的串行化。</p>
+ * 协调目标自身与关闭的关系。时间轮在注册入口和关闭入口之间建立接收屏障；
+ * 关闭入口封闭后，新的 {@code schedule()} 调用会被拒绝。成功入队才算已接受注册；
+ * 已开始但尚在获取包装器的调用可能在关闭后被拒绝。</p>
  *
  * @param <T> 被调度的目标类型
  * @author Reonvia
  * @since 0.2.0
  */
-public class TimeWheel<T> {
+public class TimeWheel<T> extends AbstractLifecycle {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, TimeWheel.class);
     /**
      * 时间轮配置项。
@@ -80,6 +106,7 @@ public class TimeWheel<T> {
             return defineOption(256, OptionValidator.positive());
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(TimeWheel.class);
     /** {@code log2(tickNanos)}，用于把纳秒差换算为 tick 序号。 */
     private final int tickShift;
@@ -93,14 +120,20 @@ public class TimeWheel<T> {
     private final ScheduleWrapper<T>[] buckets;
     /** 调度节点分配与回收所使用的对象池。 */
     private final WrapperPool<ScheduleWrapper<T>> wrapperPool;
-    /** 多生产者向单 Worker 提交调度节点的入口队列。 */
+    /** Worker 使用的原始队列；已接受注册的内部重新调度不经过外部准入策略。 */
     private final MpscUnboundedArrayQueue<ScheduleWrapper<T>> waitQueue;
+    /** 外部注册的状态与入队屏障。 */
+    private final AtomicAdmissionQueue<ScheduleWrapper<T>> submissionQueue;
     /** 未单独指定协调器时使用的默认协调器，可以为空。 */
     private final TimerCoordinator<T> defaultCoordinator;
     /** 推进时间轮并独占管理槽位的单一线程。 */
     private final Worker worker;
-    /** 生命周期入口开关；停止后永久关闭。 */
-    private volatile boolean acceptingSchedules = true;
+    /** 已接受但尚未触发完成、取消或处理失败的注册数。 */
+    private final AtomicLong pendingSchedules = new AtomicLong();
+    private volatile boolean drainAccepted;
+    private volatile boolean abortAccepted;
+    /** Worker 完成最终清理后才完成；启动前的 ABORT 由关闭钩子直接完成。 */
+    private final CompletableFuture<Void> workerFinished = new CompletableFuture<>();
 
     /**
      * 创建时间轮。
@@ -112,7 +145,7 @@ public class TimeWheel<T> {
      * @param slotCount 参见{@link Options#SlotCount}
      * @param tickQuotaShift 参见{@link Options#TickQuotaShift}
      * @param waitQueueChunkSize 参见{@link Options#WaitQueue_ChunkSize}
-     * @param wrapperPool 调度节点池，不可为空
+     * @param wrapperPool 调度节点池，不可为空；必须支持多个线程并发获取和回收节点
      * @param defaultCoordinator 默认协调器；允许为空，但此时每次调度都必须显式提供协调器
      * @param name Worker 名称后缀；为空时使用默认名称
      * @throws IllegalArgumentException 当 {@code tickQuotaShift} 不在有效范围内，或 {@code tickMillis}/{@code slotCount} 无法向上规范化为正数 2 次幂时抛出
@@ -120,6 +153,7 @@ public class TimeWheel<T> {
      */
     @SuppressWarnings("unchecked")
     public TimeWheel(long tickMillis, int slotCount, int tickQuotaShift, int waitQueueChunkSize, WrapperPool<ScheduleWrapper<T>> wrapperPool, TimerCoordinator<T> defaultCoordinator, String name) {
+        super(name == null ? "TimeWheel" : "TimeWheel-" + name);
         if (tickQuotaShift < 1 || tickQuotaShift > 63) {
             throw new IllegalArgumentException("tickQuotaShift must be between 1 and 63");
         }
@@ -132,6 +166,7 @@ public class TimeWheel<T> {
         this.buckets = (ScheduleWrapper<T>[]) new ScheduleWrapper[normalizedSlotCount];
         this.wrapperPool = Objects.requireNonNull(wrapperPool, "wrapperPool");
         this.waitQueue = new MpscUnboundedArrayQueue<>(waitQueueChunkSize);
+        this.submissionQueue = new AtomicAdmissionQueue<>(waitQueue);
         this.defaultCoordinator = defaultCoordinator;
         this.worker = new Worker(name);
     }
@@ -167,38 +202,37 @@ public class TimeWheel<T> {
         this(tickMillis, slotCount, tickQuotaShift, waitQueueChunkSize, wrapperPool, null, null);
     }
 
-    /**
-     * 启动 Worker 并开始推进时间轮。
-     *
-     * <p>底层 Worker 是一次性线程，因此本方法只能成功调用一次。时间轮停止后也不能重新启动。</p>
-     *
-     * @throws IllegalStateException 当时间轮已经停止，或底层线程已经启动过时抛出
-     */
-    public synchronized void start() {
-        if (!acceptingSchedules) {
-            throw new IllegalStateException("TimeWheel has been stopped");
-        }
+    @Override
+    protected CompletionStage<Void> doStart() {
         worker.start();
+        return CompletableFuture.completedFuture(null);
     }
-    /**
-     * 停止时间轮并回收尚未完成的调度节点。
-     *
-     * <p>若 Worker 尚未启动，当前线程会直接清空等待队列和全部槽位；若 Worker 已经启动，
-     * 本方法通过中断请求其退出，最终清理由 Worker 的 {@code finally} 块完成。本方法可以重复调用。</p>
-     *
-     * <p>调用方必须在调用本方法前停止并等待所有提交线程退出。本方法不得与任何 {@code schedule()}
-     * 调用并发执行，否则提交可能发生在最终清理之后，导致节点留在无人消费的等待队列中。</p>
-     */
-    public synchronized void stop() {
-        if (!acceptingSchedules) {
-            return;
-        }
-        acceptingSchedules = false;
-        if (worker.getState() == Thread.State.NEW) {
-            clearScheduled();
+
+    @Override
+    protected void onShutdownAccepted(ShutdownMode mode, State previousState, State nextState, long acceptedAtNanos) {
+        submissionQueue.close();
+    }
+
+    @Override
+    protected CompletionStage<Void> doShutdown(ShutdownMode mode) {
+        if (mode == ShutdownMode.DRAIN) {
+            drainAccepted = true;
+            LockSupport.unpark(worker);
         } else {
-            worker.interrupt();
+            abortAccepted = true;
+            if (worker.getState() == Thread.State.NEW) {
+                Throwable cleanupFailure = clearScheduled();
+                if (cleanupFailure == null) {
+                    workerFinished.complete(null);
+                } else {
+                    workerFinished.completeExceptionally(cleanupFailure);
+                }
+            } else if (Thread.currentThread() != worker) {
+                worker.interrupt();
+                LockSupport.unpark(worker);
+            }
         }
+        return workerFinished;
     }
 
     /**
@@ -208,20 +242,36 @@ public class TimeWheel<T> {
      * @param stamp 由调用方定义的不透明注册标识
      * @param coordinator 当前注册使用的协调器
      * @throws NullPointerException 当coordinator为null时抛出
-     * @throws IllegalStateException 当时间轮已经停止、节点池返回空值或等待队列拒绝提交时抛出
-     * @apiNote 本方法允许由多个生产者并发调用，但不得与 {@link #stop()} 并发；生命周期协调由调用方负责
+     * @throws IllegalStateException 当时间轮已接受关闭、节点池返回空值或等待队列拒绝提交时抛出
+     * @apiNote 本方法允许由多个生产者并发调用；成功返回表示注册已被时间轮接受
      */
     public void schedule(T target, long stamp, TimerCoordinator<T> coordinator) {
         Objects.requireNonNull(coordinator, "TimerCoordinator");
-        if (!acceptingSchedules) {
-            throw new IllegalStateException("TimeWheel has been stopped");
+        if (!submissionQueue.isAccepting()) {
+            throw new IllegalStateException("TimeWheel is shutting down");
         }
         ScheduleWrapper<T> wrapper = wrapperPool.acquire();
         if (wrapper == null) {
             throw new IllegalStateException("ScheduleWrapper pool returned null");
         }
-        waitQueue.offer(wrapper.wrap(target, stamp, coordinator));
+        try {
+            pendingSchedules.incrementAndGet();
+            wrapper.wrap(target, stamp, coordinator);
+            if (!submissionQueue.offer(wrapper)) {
+                throw new IllegalStateException("TimeWheel rejected schedule during shutdown");
+            }
+            LockSupport.unpark(worker);
+        } catch (RuntimeException | Error failure) {
+            if (pendingSchedules.decrementAndGet() == 0 && drainAccepted) {
+                LockSupport.unpark(worker);
+            }
+            if (wrapper.isActive()) {
+                wrapper.recycle();
+            }
+            throw failure;
+        }
     }
+
     /**
      * 使用指定标识和默认协调器提交目标。
      *
@@ -289,13 +339,15 @@ public class TimeWheel<T> {
         buckets[slot] = null;
         ScheduleWrapper<T> unexpiredHead = null;
         ScheduleWrapper<T> unexpiredTail = null;
+        Throwable failure = null;
         while (current != null) {
             ScheduleWrapper<T> next = current.getNext();
             current.setNext(null);
+            boolean finished = false;
             try {
                 TimerCoordinator<T> coordinator = coordinatorOf(current);
                 if (coordinator.isCancelled(current)) {
-                    current.recycle();
+                    finished = true;
                 } else {
                     if (current.remainingRounds > 0) {
                         current.remainingRounds--;
@@ -306,21 +358,48 @@ public class TimeWheel<T> {
                         }
                         unexpiredTail = current;
                     } else {
-                        if (!acceptingSchedules || coordinator.onExpiryTrigger(current)) {
-                            current.recycle();
+                        if (coordinator.onExpiryTrigger(current)) {
+                            finished = true;
                         } else {
-                            waitQueue.offer(current);
+                            // 这是已接受注册的续期，不能经过拒绝新注册的 submissionQueue。
+                            if (!waitQueue.offer(current)) {
+                                throw new IllegalStateException("TimeWheel rejected an existing schedule renewal");
+                            }
                         }
                     }
                 }
-            } catch (Exception e) {
-                logger.error("TimeWheel task processing failed. Context: {}", current, e);
-                current.recycle();
+            } catch (Exception processingFailure) {
+                logger.error("TimeWheel task processing failed. Context: {}", current, processingFailure);
+                finished = true;
+            } catch (Throwable fatalFailure) {
+                failure = mergePrioritizingError(failure, fatalFailure);
+                finished = true;
+            }
+            if (finished) {
+                try {
+                    finishSchedule(current);
+                } catch (Throwable cleanupFailure) {
+                    failure = mergePrioritizingError(failure, cleanupFailure);
+                }
+            }
+            if (failure != null) {
+                // 当前槽位已从 buckets 摘除，故障时必须归还尚未遍历的链表。
+                if (next != null) {
+                    ScheduleWrapper<T> tail = next;
+                    while (tail.getNext() != null) {
+                        tail = tail.getNext();
+                    }
+                    mergeBack(slot, next, tail);
+                }
+                break;
             }
             current = next;
         }
         if (unexpiredHead != null) {
             mergeBack(slot, unexpiredHead, unexpiredTail);
+        }
+        if (failure != null) {
+            throwUnchecked(failure);
         }
     }
 
@@ -336,10 +415,12 @@ public class TimeWheel<T> {
         int processed = 0;
         ScheduleWrapper<T> wrapper;
         while ((wrapper = waitQueue.poll()) != null) {
+            boolean finished = false;
+            Throwable failure = null;
             try {
                 TimerCoordinator<T> coordinator = coordinatorOf(wrapper);
                 if (coordinator.isCancelled(wrapper)) {
-                    wrapper.recycle();
+                    finished = true;
                 } else {
                     long deadlineTick = deadlineTick(coordinator.getExpiryTimeNanos(wrapper));
                     if (deadlineTick <= tickIndex) {
@@ -353,9 +434,22 @@ public class TimeWheel<T> {
                         mergeBack((int) (deadlineTick & slotMask), wrapper, wrapper);
                     }
                 }
-            } catch (Exception e) {
-                logger.error("TimeWheel task processing failed. Context: {}", wrapper, e);
-                wrapper.recycle();
+            } catch (Exception processingFailure) {
+                logger.error("TimeWheel task processing failed. Context: {}", wrapper, processingFailure);
+                finished = true;
+            } catch (Throwable fatalFailure) {
+                failure = fatalFailure;
+                finished = true;
+            }
+            if (finished) {
+                try {
+                    finishSchedule(wrapper);
+                } catch (Throwable cleanupFailure) {
+                    failure = mergePrioritizingError(failure, cleanupFailure);
+                }
+            }
+            if (failure != null) {
+                throwUnchecked(failure);
             }
             if ((++processed & 63) == 0 && System.nanoTime() - startNanos >= transferQuotaNanos) {
                 break;
@@ -392,24 +486,52 @@ public class TimeWheel<T> {
     }
 
     private void mergeBack(int slot, ScheduleWrapper<T> head, ScheduleWrapper<T> tail) {
-        ScheduleWrapper<T> current = buckets[slot];
-        tail.setNext(current);
+        tail.setNext(buckets[slot]);
         buckets[slot] = head;
     }
 
-    private void clearScheduled() {
+    private static void throwUnchecked(Throwable failure) {
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        if (failure instanceof RuntimeException exception) {
+            throw exception;
+        }
+        throw new IllegalStateException("TimeWheel processing failed", failure);
+    }
+
+    /** 尽量回收全部节点，并汇总回收时的失败。 */
+    private Throwable clearScheduled() {
+        Throwable failure = null;
         ScheduleWrapper<T> wrapper;
         while ((wrapper = waitQueue.poll()) != null) {
-            wrapper.recycle();
+            try {
+                finishSchedule(wrapper);
+            } catch (Throwable cleanupFailure) {
+                failure = mergePrioritizingError(failure, cleanupFailure);
+            }
         }
         for (int slot = 0; slot < buckets.length; slot++) {
             ScheduleWrapper<T> current = buckets[slot];
             buckets[slot] = null;
             while (current != null) {
                 ScheduleWrapper<T> next = current.getNext();
-                current.recycle();
+                try {
+                    finishSchedule(current);
+                } catch (Throwable cleanupFailure) {
+                    failure = mergePrioritizingError(failure, cleanupFailure);
+                }
                 current = next;
             }
+        }
+        return failure;
+    }
+
+    private void finishSchedule(ScheduleWrapper<T> wrapper) {
+        try {
+            wrapper.recycle();
+        } finally {
+            pendingSchedules.decrementAndGet();
         }
     }
 
@@ -482,8 +604,12 @@ public class TimeWheel<T> {
         public void run() {
             startTimeNanos = System.nanoTime();
             logger.debug("[{}] started", getName());
+            Throwable failure = null;
             try {
-                while (!isInterrupted()) {
+                while (!abortAccepted) {
+                    if (pendingSchedules.get() == 0 && !awaitWork()) {
+                        break;
+                    }
                     long now = waitNextTick();
                     if (now < 0) {
                         break;
@@ -491,16 +617,56 @@ public class TimeWheel<T> {
                     long elapsedTick = now >> tickShift;
                     while (nextTick <= elapsedTick) {
                         tick(nextTick++);
-                        if (isInterrupted()) {
+                        if (abortAccepted || pendingSchedules.get() == 0) {
                             break;
                         }
                     }
                 }
+            } catch (Throwable throwable) {
+                failure = throwable;
+                logger.error("[{}] failed", getName(), throwable);
             } finally {
-                acceptingSchedules = false;
-                clearScheduled();
+                if (failure == null && !abortAccepted && !(drainAccepted && pendingSchedules.get() == 0)) {
+                    failure = new IllegalStateException(getName() + " stopped without completing shutdown");
+                    logger.error("[{}] stopped unexpectedly", getName(), failure);
+                }
+                try {
+                    submissionQueue.close();
+                } catch (Throwable closeFailure) {
+                    failure = mergePrioritizingError(failure, closeFailure);
+                }
+                failure = mergePrioritizingError(failure, clearScheduled());
+                if (lifecycleState() == Lifecycle.State.STARTING || lifecycleState() == Lifecycle.State.RUNNING) {
+                    // 不等待自身的完成阶段；doShutdown 会接入下方的 workerFinished。
+                    try {
+                        shutdown(ShutdownMode.ABORT);
+                    } catch (Throwable shutdownFailure) {
+                        failure = mergePrioritizingError(failure, shutdownFailure);
+                    }
+                }
                 logger.debug("[{}] stopped", getName());
+                if (failure == null) {
+                    workerFinished.complete(null);
+                } else {
+                    workerFinished.completeExceptionally(failure);
+                }
             }
+        }
+
+        /** 空轮停放期间不推进 tick；重新收到任务时直接跳到当前 tick。 */
+        private boolean awaitWork() {
+            while (!abortAccepted && !drainAccepted && pendingSchedules.get() == 0) {
+                LockSupport.park(this);
+                if (Thread.interrupted()) {
+                    return false;
+                }
+            }
+            if (abortAccepted || (drainAccepted && pendingSchedules.get() == 0)) {
+                return false;
+            }
+            long elapsedTick = (System.nanoTime() - startTimeNanos) >> tickShift;
+            nextTick = Math.max(nextTick, elapsedTick);
+            return true;
         }
 
         /**
@@ -511,6 +677,9 @@ public class TimeWheel<T> {
         private long waitNextTick() {
             long deadline = nextTick << tickShift;
             while (true) {
+                if (abortAccepted || (drainAccepted && pendingSchedules.get() == 0)) {
+                    return -1;
+                }
                 long now = System.nanoTime() - startTimeNanos;
                 long sleep = deadline - now;
                 if (sleep <= 0) {

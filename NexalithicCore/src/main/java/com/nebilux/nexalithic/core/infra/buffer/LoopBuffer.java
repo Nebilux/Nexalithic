@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.infra.buffer;
 
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
@@ -537,10 +553,10 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     }
 
     private void throwOverflow(int required) {
-        throw new LoopBufferOverflowException(required, writableBytes());
+        throw LoopBufferOverflowException.forWrite(required, writableBytes());
     }
     private void throwUnderflow(int requested) {
-        throw new LoopBufferUnderflowException(requested, readableBytes());
+        throw LoopBufferUnderflowException.forRead(requested, readableBytes());
     }
 
     /**
@@ -670,7 +686,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         }
 
         private void throwQuote(int required) {
-            throw new LimitedViewQuotaException(quota, required);
+            throw LimitedViewQuotaException.exceeded(quota, required);
         }
     }
 
@@ -793,7 +809,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         }
 
         private void throwQuote(int required) {
-            throw new LimitedViewQuotaException(quota, required);
+            throw LimitedViewQuotaException.exceeded(quota, required);
         }
     }
 }

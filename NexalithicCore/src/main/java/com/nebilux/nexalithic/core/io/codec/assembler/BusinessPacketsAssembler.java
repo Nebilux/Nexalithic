@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Nebilux
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
@@ -11,6 +27,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.codec.PacketFrame;
+import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.session.NexalithicSession;
@@ -55,11 +72,13 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     public static final Modules MODULES = new Modules();
     public static final class Modules extends ModulesDefinition {
         public final NexalithicModule<PayloadRegistry> PayloadRegistry = defineModule(PayloadRegistry.class);
-        public final NexalithicModule<TimeWheel<BusinessPacketAssemblyWrapper>> TimeWheel = defineModule(TimeWheel.class);
+        public final NexalithicModule<SharedLifecycle<TimeWheel<BusinessPacketAssemblyWrapper>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(BusinessPacketsAssembler.class);
         }
     }
+
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsAssembler.class);
     private final NexalithicSession<?> owner;
     private final Map<Integer, BusinessPacketAssemblyWrapper> assemblingMap;
