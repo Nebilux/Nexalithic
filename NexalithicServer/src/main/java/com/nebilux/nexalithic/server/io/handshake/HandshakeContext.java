@@ -270,10 +270,6 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
         targetSession = null;
         return result;
     }
-
-    public NexalithicChannel.Kind getKind() {
-        return kind;
-    }
     public Phase getPhase() {
         return phase;
     }
@@ -291,6 +287,11 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
     }
     public HandshakeLoop ownerLoop() {
         return ownerLoop;
+    }
+
+    @Override
+    public NexalithicChannel.Kind getKind() {
+        return kind;
     }
 
     @Override

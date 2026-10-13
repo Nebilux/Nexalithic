@@ -103,6 +103,8 @@ public interface NexalithicChannel {
         }
     }
 
+    Kind getKind();
+
     State getState();
     default boolean isOpen() {
         State state = getState();

@@ -98,12 +98,12 @@ public abstract class LoopChannel<L extends ChannelLoop<?, ?>, C extends Selecta
     }
 
     @Override
-    protected void onOpen(Transport<C> transport) {
-        targetInterest.set(transport.selectionKey().interestOps());
+    protected void onOpen(Binding<C> binding) {
+        targetInterest.set(binding.selectionKey().interestOps());
     }
 
     @Override
-    protected void onClose(Transport<C> transport) {
+    protected void onClose(Binding<C> binding) {
         targetInterest.set(0);
     }
 

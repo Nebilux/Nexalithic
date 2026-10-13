@@ -38,7 +38,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.TimeUnit;
@@ -221,9 +220,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     private void openTransferredChannel(ClientChannelHandoff handoff, SessionChannel<?, ClientSession> channel) throws Exception {
         SocketChannel socketChannel = handoff.takeChannel();
         try {
-            socketChannel.configureBlocking(false);
-            SelectionKey selectionKey = registerSelectableChannel(socketChannel, SelectionKey.OP_READ);
-            channel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            channel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
             if (!channel.fragmenterIsEmpty()) {
                 channel.updateInterest(SelectionKey.OP_WRITE, true);
             }

@@ -46,7 +46,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.function.Function;
@@ -142,10 +141,9 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         boolean channelOpened = false;
         try {
             socketChannel = handoff.takeChannel();
-            SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
             session = sessionFactory.apply(handoff);
             sessionChannel = session.getSignalingChannel();
-            sessionChannel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            sessionChannel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
             channelOpened = true;
             socketChannel = null;
             return sessionChannel;

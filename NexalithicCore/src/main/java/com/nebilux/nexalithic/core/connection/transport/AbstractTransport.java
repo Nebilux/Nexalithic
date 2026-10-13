@@ -17,7 +17,9 @@
 package com.nebilux.nexalithic.core.connection.transport;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.channels.SelectableChannel;
+import java.util.Objects;
 
 /**
  * 抽象数据传输
@@ -27,9 +29,19 @@ import java.nio.channels.SelectableChannel;
  */
 public abstract class AbstractTransport<C extends SelectableChannel> implements NexalithicTransport {
     protected final C channel;
+    private final InetSocketAddress remoteAddress;
 
-    protected AbstractTransport(C channel) {
-        this.channel = channel;
+    protected AbstractTransport(C channel, InetSocketAddress remoteAddress) {
+        this.channel = Objects.requireNonNull(channel, "channel");
+        this.remoteAddress = Objects.requireNonNull(remoteAddress, "remoteAddress");
+    }
+
+    public final C selectableChannel() {
+        return channel;
+    }
+
+    public final InetSocketAddress remoteAddress() {
+        return remoteAddress;
     }
 
     @Override

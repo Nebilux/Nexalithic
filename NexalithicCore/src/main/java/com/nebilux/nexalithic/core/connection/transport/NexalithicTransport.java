@@ -31,20 +31,32 @@ import java.io.IOException;
  */
 public interface NexalithicTransport extends Closeable {
     /**
-     * 将已可交付的数据写入目标缓冲区。
+     * 按本次调用的字节上限读取数据。
      *
      * <p>返回正数时，目标缓冲区的写入位置应推进相同的字节数。返回 {@code 0} 表示
      * 当前没有进展，例如暂时没有可交付数据或目标缓冲区没有可写空间。
      * 保留消息边界的实现不得向目标缓冲区交付不完整的消息。</p>
      *
      * @param dst 接收数据的缓冲区
+     * @param limit 本次最多写入的字节数；非正数时不读取
+     * @return 实际写入的字节数；输入端正常结束时返回 {@code -1}
+     * @throws IOException 读取或传输处理失败时
+     */
+    long read(LoopBuffer dst, int limit) throws IOException;
+
+    /**
+     * 将已可交付的数据写入目标缓冲区。
+     *
+     * @param dst 接收数据的缓冲区
      * @return 已写入的字节数；传输的输入端正常结束且没有剩余数据时返回 {@code -1}
      * @throws IOException 读取或传输处理失败时
      */
-    long read(LoopBuffer dst) throws IOException;
+    default long read(LoopBuffer dst) throws IOException {
+        return read(dst, Integer.MAX_VALUE);
+    }
 
     /**
-     * 从源缓冲区接受待发送的数据。
+     * 按本次调用的字节上限接受待发送数据。
      *
      * <p>返回正数时，源缓冲区的读取位置应推进相同的字节数；返回 {@code 0} 表示
      * 当前没有进展，例如没有可读数据或传输暂时无法接受数据。返回值只表示本地已接受
@@ -53,10 +65,22 @@ public interface NexalithicTransport extends Closeable {
      * 保留消息边界的实现应将源缓冲区当前可读内容视为一条完整消息，整条接受或不接受。</p>
      *
      * @param src 包含待发送数据的缓冲区
+     * @param limit 本次最多接受的字节数；非正数时不接受
+     * @return 已接受的字节数，不表示已经送达对端
+     * @throws IOException 写入或传输处理失败时
+     */
+    long write(LoopBuffer src, int limit) throws IOException;
+
+    /**
+     * 从源缓冲区接受待发送的数据。
+     *
+     * @param src 包含待发送数据的缓冲区
      * @return 已接受的字节数
      * @throws IOException 写入或传输处理失败时
      */
-    long write(LoopBuffer src) throws IOException;
+    default long write(LoopBuffer src) throws IOException {
+        return write(src, Integer.MAX_VALUE);
+    }
 
     /**
      * 关闭传输并释放其持有的资源。

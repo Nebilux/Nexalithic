@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
+import com.nebilux.nexalithic.core.connection.transport.TCP_Transport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.rate.RateLimiter;
@@ -62,6 +63,13 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
         this.fragmenter = fragmenter;
         this.assembler = assembler;
         securityCodec = new SecurityCodec(secretKeyContext);
+    }
+
+    public final void open(SelectionKey selectionKey) throws IOException {
+        if (!(selectionKey.channel() instanceof SocketChannel socketChannel)) {
+            throw new IllegalArgumentException("SessionChannel requires a SocketChannel");
+        }
+        super.open(selectionKey, new TCP_Transport(socketChannel));
     }
 
     public void updateReadRate(long rate) {
@@ -131,7 +139,7 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
                 progressed = true;
             }
         } while (progressed);
-        long written = writeCipheBuffer.writeToChannel(getSelectableChannel(), writeCredit > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) writeCredit);
+        long written = getTransport().write(writeCipheBuffer, (int) Math.min(writeCredit, Integer.MAX_VALUE));
         rateLimiter.consumeWrite(written);
         if (written > 0) {
             writeBytesWindow.add(written);
@@ -164,7 +172,7 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
         if (readCredit <= 0) {
             return 0;
         }
-        long read = readCipheBuffer.readFromChannel(getSelectableChannel(), readCredit > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readCredit);
+        long read = getTransport().read(readCipheBuffer, (int) Math.min(readCredit, Integer.MAX_VALUE));
         if (read < 0) {
             return -1;
         }
@@ -194,8 +202,8 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
     }
 
     @Override
-    protected void onClose(Transport<SocketChannel> transport) {
-        super.onClose(transport);
+    protected void onClose(Binding<SocketChannel> binding) {
+        super.onClose(binding);
         if (readPlainBuffer != null) {
             readPlainBuffer.recycle();
             readPlainBuffer = null;

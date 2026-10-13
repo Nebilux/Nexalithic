@@ -41,7 +41,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.TimeUnit;
@@ -155,8 +154,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             socketChannel = handoff.takeChannel();
             ServerSession session = handoff.takeTargetSession();
             sessionChannel = session.getBusinessChannel();
-            SelectionKey selectionKey = registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ);
-            sessionChannel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
+            sessionChannel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
             channelOpened = true;
             socketChannel = null;
             if (!sessionChannel.fragmenterIsEmpty()) {
