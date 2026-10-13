@@ -22,8 +22,10 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import com.nebilux.nexalithic.core.infra.executor.BlockingTaskQueue;
 import com.nebilux.nexalithic.core.infra.executor.FixedTaskExecutor;
+import com.nebilux.nexalithic.core.infra.executor.RejectedTaskHandler;
 import com.nebilux.nexalithic.core.infra.executor.TypedThreadFactory;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
@@ -108,7 +110,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         }
     }
 
-    protected record Constant(long MaxIdleTimeNanos, int AsyncQueue_DrainLimit) {}
+    protected record Constant(long MaxIdleTimeNanos) {}
     protected final Constant CONSTANT;
     private static final Logger logger = LoggerFactory.getLogger(HandshakeLoop.class);
     private final SessionRegistry sessionRegistry;
@@ -117,14 +119,13 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
     private final LoadBalancer<Void, ServiceUnit> serviceUnitLoadBalancer;
     private final TimeWheel<HandshakeContext> timeWheel;
     private final FixedTaskExecutor<HandshakeContext, ExecutorThread> executor;
-    private final MpscUnboundedArrayQueue<HandshakeContext> asyncQueue;
+    private final AtomicAdmissionQueue<HandshakeContext> asyncQueue;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public HandshakeLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         CONSTANT = context.getConstant(HandshakeLoop.class, Constant.class, () -> new Constant(
-                TimeUnit.MILLISECONDS.toNanos(context.getOption(OPTIONS.MaxIdleTimeMillis)),
-                context.getOption(OPTIONS.AsyncQueue_DrainLimit)
+                TimeUnit.MILLISECONDS.toNanos(context.getOption(OPTIONS.MaxIdleTimeMillis))
         ));
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         securityPolicy = context.getModule(NexalithicServer.MODULES.SecurityPolicy);
@@ -164,9 +165,12 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                 owner -> new HandshakeContext(owner, this, handshakeContext_ReadBufferCapacity, handshakeContext_WriteBufferCapacity)
         ).warmUp(context.getOption(OPTIONS.WrapperPool.PrefillRatio));
 
-        asyncQueue = new MpscUnboundedArrayQueue<>(context.getOption(OPTIONS.AsyncQueue_ChunkSize));
+        asyncQueue = new AtomicAdmissionQueue<>(
+                new MpscUnboundedArrayQueue<>(context.getOption(OPTIONS.AsyncQueue_ChunkSize))
+        );
+        int asyncQueue_DrainLimit = context.getOption(OPTIONS.AsyncQueue_DrainLimit);
 
-        registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, CONSTANT.AsyncQueue_DrainLimit()));
+        registerPreSelectTask(() -> asyncQueue.drain(this::consumeAsyncCompletion, asyncQueue_DrainLimit));
         registerImmediateWorkCondition(() -> !asyncQueue.isEmpty());
         registerDrainCondition(asyncQueue::isEmpty);
         registerStartStage(() -> sharedTimeWheel.start(this));
@@ -196,7 +200,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                         return thread;
                     }
                 },
-                (handshakeContext, executor) -> handshakeContext.ownerLoop().submitDisconnectEvent(handshakeContext, Event.Disconnect.Reason.INTERNAL_FAILURE),
+                RejectedTaskHandler.discard(),
                 this::executeAsyncTask
         );
     }
@@ -251,6 +255,12 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         } else {
             channel.recycle();
         }
+    }
+
+    @Override
+    protected void onOwnedChannelsCleared() {
+        asyncQueue.close();
+        asyncQueue.drain(HandshakeContext::recycle);
     }
 
     @Override
@@ -366,10 +376,17 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         }
     }
     private void submitToExecutor(SelectionKey key, HandshakeContext context) {
-        key.interestOps(0);
-        if (!executor.submit(context)) {
-            context.setPhase(HandshakeContext.Phase.RECYCLE_PENDING);
+        try {
+            key.interestOps(0);
+        } catch (RuntimeException failure) {
+            logger.warn("[{}] failed to suspend handshake channel before async work", name, failure);
             submitDisconnectEvent(context, Event.Disconnect.Reason.INTERNAL_FAILURE);
+            context.recycle();
+            return;
+        }
+        if (!executor.submit(context)) {
+            submitDisconnectEvent(context, Event.Disconnect.Reason.INTERNAL_FAILURE);
+            context.recycle();
         }
     }
 
@@ -424,7 +441,10 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         if (failure != null) {
             context.setAsyncFailure(failure);
         }
-        asyncQueue.offer(context);
+        if (!asyncQueue.offer(context)) {
+            context.recycle();
+            return;
+        }
         wakeup();
     }
     private void consumeAsyncCompletion(HandshakeContext context) {

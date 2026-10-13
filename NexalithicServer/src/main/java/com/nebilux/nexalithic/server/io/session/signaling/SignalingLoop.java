@@ -45,15 +45,10 @@ import org.jctools.queues.MpmcArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
 import java.util.function.Function;
 
 /**
@@ -135,11 +130,15 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
+    protected boolean supportsRateUpdates(NexalithicBuilderContext context) {
+        return false;
+    }
+
+    @Override
     protected SessionChannel<SignalingPacket, ServerSession> onExecuteAcquireEvent(HandshakeContext handoff) {
         SocketChannel socketChannel = null;
         SessionChannel<SignalingPacket, ServerSession> sessionChannel = null;
         ServerSession session = null;
-        boolean sessionRegistered = false;
         boolean channelOpened = false;
         try {
             socketChannel = handoff.takeChannel();
@@ -149,19 +148,9 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
             sessionChannel.open(selectionKey, (InetSocketAddress) socketChannel.getRemoteAddress());
             channelOpened = true;
             socketChannel = null;
-            if (!sessionRegistry.putSession(session)) {
-                sessionChannel.close();
-                session.close();
-                return null;
-            }
-            sessionRegistered = true;
-            timeWheel.schedule(sessionChannel, this);
             return sessionChannel;
         } catch (Exception failure) {
             logger.error("[{}] failed to acquire signaling channel", name, failure);
-            if (sessionRegistered && session != null) {
-                sessionRegistry.removeSession(session);
-            }
             if (channelOpened && sessionChannel != null) {
                 try {
                     sessionChannel.close();
@@ -183,31 +172,11 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<SignalingPacket, ServerSession> channel) {
-        try {
-            if (selectionKey.isReadable()) {
-                if (channel.read() == -1) {
-                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
-                }
-                SignalingPacket packet;
-                while ((packet = channel.get()) != null) {
-                    handleSignalPacket(channel, packet);
-                }
-            } else if (selectionKey.isWritable()) {
-                channel.write();
-            } else {
-                submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
-            }
-        } catch (InvalidAlgorithmParameterException | ShortBufferException | IllegalBlockSizeException |
-                 BadPaddingException | InvalidKeyException e) {
-            logger.warn("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
-        } catch (IOException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            }
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
+    protected void onChannelAcquired(HandshakeContext handoff, SessionChannel<SignalingPacket, ServerSession> channel) {
+        if (!sessionRegistry.putSession(channel.getOwnerSession())) {
+            throw new IllegalStateException("Session key already registered");
         }
+        timeWheel.schedule(channel, this);
     }
 
     @Override
@@ -215,6 +184,14 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         ServerSession session = channel.getOwnerSession();
         sessionRegistry.removeSession(session);
         session.close();
+    }
+
+    @Override
+    protected void dispatchReceivedPackets(SessionChannel<SignalingPacket, ServerSession> channel) {
+        SignalingPacket packet;
+        while ((packet = channel.get()) != null) {
+            handleSignalPacket(channel, packet);
+        }
     }
 
     @Override

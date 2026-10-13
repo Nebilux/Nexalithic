@@ -152,7 +152,9 @@ public class SessionRegistry {
         if (session == null) {
             return;
         }
-        idToSessions.remove(session.getSessionKey());
+        if (!idToSessions.remove(session.getSessionKey(), session)) {
+            return;
+        }
         removeChannelTokens(session);
         String sessionName = session.getSessionName();
         if (sessionName != null) {

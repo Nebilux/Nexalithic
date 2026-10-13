@@ -60,11 +60,6 @@ public abstract class ServerSessionLoop<P extends AbstractPacket> extends Sessio
     }
 
     @Override
-    protected boolean onExecuteReleaseEvent(SessionChannel<P, ServerSession> channel) {
-        return true;
-    }
-
-    @Override
     public long getExpiryTimeNanos(TimerContext<SessionChannel<P, ServerSession>> context) {
         return getChannelExpiryTimeNanos(context.target());
     }

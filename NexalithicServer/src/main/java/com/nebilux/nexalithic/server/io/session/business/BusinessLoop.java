@@ -36,19 +36,13 @@ import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
 import com.nebilux.nexalithic.server.messaging.ServerHandlerCoordinator;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import org.jctools.queues.MpmcArrayQueue;
-import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,9 +63,6 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             }
         };
         public final DynamicRateController.Options DynamicRateController = new DynamicRateController.Options(holder) {};
-        public final NexalithicOption<Integer> RateUpdateQueue_Capacity = defineOption(
-                1024, OptionValidator.positive()
-        );
         private Options(Class<?> holder) {
             super(holder);
         }
@@ -92,7 +83,6 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     private static final Logger logger = LoggerFactory.getLogger(BusinessLoop.class);
     private final ServerHandlerCoordinator handlerCoordinator;
     private final TimeWheel<SessionChannel<BusinessPacket, ServerSession>> timeWheel;
-    private final MpscArrayQueue<SessionChannel<BusinessPacket, ServerSession>> rateUpdateQueue;
     private long lastDynamicRateTickNanos;
 
     public BusinessLoop(NexalithicBuilderContext context) throws IOException {
@@ -117,7 +107,6 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
 
         if (context.getOption(OPTIONS.DynamicRateController.Enable)) {
             lastDynamicRateTickNanos = System.nanoTime();
-            rateUpdateQueue = new MpscArrayQueue<>(context.getOption(OPTIONS.RateUpdateQueue_Capacity));
             DynamicRateController dynamicRateController = new DynamicRateController(
                     context.getOption(OPTIONS.DynamicRateController.MinBps),
                     context.getOption(OPTIONS.DynamicRateController.MaxBps),
@@ -130,7 +119,6 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             );
             long dynamicRateTickNanos = TimeUnit.NANOSECONDS.convert(context.getOption(OPTIONS.DynamicRateController.TickMillis), TimeUnit.MILLISECONDS);
             registerPreSelectTask(() -> {
-                rateUpdateQueue.drain(SessionChannel::applyRate, CONSTANT.DispatchQueue_DrainLimit());
                 long now = System.nanoTime();
                 if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
                     long interval = now - lastDynamicRateTickNanos;
@@ -146,22 +134,15 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
                     }
                 }
             });
-            registerImmediateWorkCondition(() -> !rateUpdateQueue.isEmpty());
             registerSelectWaitLimit(() -> dynamicRateTickNanos - (System.nanoTime() - lastDynamicRateTickNanos));
-            registerDrainCondition(rateUpdateQueue::isEmpty);
-        } else {
-            rateUpdateQueue = null;
         }
         registerStartStage(() -> sharedTimeWheel.start(this));
         registerShutdownStage(mode -> sharedTimeWheel.release(this, mode));
     }
 
     @Override
-    public void postRateUpdate(SessionChannel<BusinessPacket, ServerSession> channel) {
-        if (rateUpdateQueue != null) {
-            rateUpdateQueue.offer(channel);
-            wakeup();
-        }
+    protected boolean supportsRateUpdates(NexalithicBuilderContext context) {
+        return context.getOption(OPTIONS.DynamicRateController.Enable);
     }
 
     @Override
@@ -207,30 +188,10 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     }
 
     @Override
-    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<BusinessPacket, ServerSession> channel) {
-        try {
-            if (selectionKey.isReadable()) {
-                if (channel.read() == -1) {
-                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
-                }
-                BusinessPacket packet;
-                while ((packet = channel.get()) != null) {
-                    handlerCoordinator.accept(channel.getOwnerSession(), packet);
-                }
-            } else if (selectionKey.isWritable()) {
-                channel.write();
-            } else {
-                submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
-            }
-        } catch (InvalidAlgorithmParameterException | ShortBufferException | IllegalBlockSizeException |
-                 BadPaddingException | InvalidKeyException e) {
-            logger.warn("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
-        } catch (IOException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Channel[{}] onReadyEvent[{}] error", channel, name, e);
-            }
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
+    protected void dispatchReceivedPackets(SessionChannel<BusinessPacket, ServerSession> channel) {
+        BusinessPacket packet;
+        while ((packet = channel.get()) != null) {
+            handlerCoordinator.accept(channel.getOwnerSession(), packet);
         }
     }
 }

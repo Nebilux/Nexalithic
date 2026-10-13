@@ -228,6 +228,12 @@ public abstract class SelectorLoop extends AbstractLoop {
         if (newKey != null) {
             newKey.cancel();
         }
+        try {
+            clearSelectionKey(oldKey);
+        } catch (Exception cleanupFailure) {
+            exception.addSuppressed(cleanupFailure);
+            logger.error("Failed to clear key after selector migration failure", cleanupFailure);
+        }
     }
     /**
      * 清理一个已经注册到当前 Selector 的 Key 及其关联资源。

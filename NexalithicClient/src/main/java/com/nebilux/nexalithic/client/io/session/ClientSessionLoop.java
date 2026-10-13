@@ -141,6 +141,11 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     }
 
     @Override
+    protected boolean supportsRateUpdates(NexalithicBuilderContext context) {
+        return context.getOption(OPTIONS.DynamicRateController.Enable);
+    }
+
+    @Override
     protected SessionChannel<?, ClientSession> onExecuteAcquireEvent(ClientChannelHandoff handoff) throws Exception {
         if (sessionManager.isShuttingDown() || !sessionManager.isAccepting()) {
             return null;
@@ -170,50 +175,21 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     }
 
     @Override
-    protected boolean onExecuteReleaseEvent(SessionChannel<?, ClientSession> channel) {
-        SelectionKey key = channel.getSelectionKey();
-        if (key != null) {
-            key.cancel();
-        }
-        return true;
-    }
-
-    @Override
     protected void onExecuteDisconnectEvent(SessionChannel<?, ClientSession> channel, Event.Disconnect.Reason reason) {
         sessionManager.onChannelDisconnected(channel, reason);
     }
 
     @Override
-    protected void onChannelReady(SelectionKey selectionKey, SessionChannel<?, ClientSession> channel) {
-        try {
-            if (selectionKey.isReadable()) {
-                if (channel.read() == -1) {
-                    submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
-                    return;
-                }
-                ClientSession ownerSession = channel.getOwnerSession();
-                if (channel.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
-                    while (channel.get() instanceof SignalingPacket packet) {
-                        handleSignalPacket(ownerSession, packet);
-                    }
-                } else {
-                    while (channel.get() instanceof BusinessPacket packet) {
-                        handlerCoordinator.accept(ownerSession, packet);
-                    }
-                }
-            } else if (selectionKey.isWritable()) {
-                channel.write();
-            } else {
-                submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
+    protected void dispatchReceivedPackets(SessionChannel<?, ClientSession> channel) {
+        ClientSession ownerSession = channel.getOwnerSession();
+        if (channel.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
+            while (channel.get() instanceof SignalingPacket packet) {
+                handleSignalPacket(ownerSession, packet);
             }
-        } catch (IOException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Channel[{}] onReadyEvent[{}] error", channel.toString(), name, e);
+        } else {
+            while (channel.get() instanceof BusinessPacket packet) {
+                handlerCoordinator.accept(ownerSession, packet);
             }
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
-        } catch (Exception e) {
-            logger.warn("Channel[{}] onReadyEvent[{}] error", channel.toString(), name, e);
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.PROTOCOL_VIOLATION);
         }
     }
 

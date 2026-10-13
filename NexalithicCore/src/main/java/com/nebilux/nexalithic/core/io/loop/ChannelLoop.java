@@ -270,6 +270,9 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     protected abstract void onExecuteDisconnectEvent(C channel, Event.Disconnect.Reason reason) throws Exception;
     protected abstract void onChannelReady(SelectionKey selectionKey, C channel) throws IOException;
 
+    /** 已丢弃待执行事件并断开全部自有通道，供子类清理其他异步结果。 */
+    protected void onOwnedChannelsCleared() {}
+
     @Override
     protected final void sealLoop() {
         submissionState.set(lifecycleState() == State.QUIESCING ? SubmissionState.DRAINING : SubmissionState.CLOSED);
@@ -279,7 +282,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     @SuppressWarnings("unchecked")
     protected final void onSelectorKeyReady(SelectionKey key) {
         Object attachment = key.attachment();
-        if (!(attachment instanceof NexalithicChannel)) {
+        if (!(attachment instanceof NexalithicChannel) || !ownedChannels.contains(attachment)) {
             key.cancel();
             return;
         }
@@ -295,7 +298,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
     @Override
     @SuppressWarnings("unchecked")
     protected final void clearSelectionKey(SelectionKey key) {
-        if (key.attachment() instanceof NexalithicChannel channel) {
+        if (key.attachment() instanceof NexalithicChannel channel && ownedChannels.contains(channel)) {
             executeDisconnectEvent((C) channel, Event.Disconnect.Reason.LOOP_TERMINATING);
         }
     }
@@ -318,6 +321,7 @@ public abstract class ChannelLoop<H extends ChannelLoop.Handoff, C extends Nexal
         for (C channel : List.copyOf(ownedChannels)) {
             executeDisconnectEvent(channel, Event.Disconnect.Reason.LOOP_TERMINATING);
         }
+        onOwnedChannelsCleared();
     }
 
     private boolean acceptEventSubmission(SubmissionState submission, Event<H, C> event) {
