@@ -21,15 +21,17 @@ import com.nebilux.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 
 /**
  * <h3>环形缓冲区</h3>
+ * <ul>
  * <li><b>零 GC 开销：</b>内部持有并复用 ByteBuffer 视图数组，避免在 I/O 循环中产生临时对象。</li>
  * <li><b>位运算索引：</b>强制容量为 2 的幂（Power of 2），利用位掩码快速计算回绕偏移。</li>
  * <li><b>Scatter/Gather 优化：</b>原生支持 {@code ByteBuffer[]} 视图，适配系统级分散/聚集 I/O。</li>
- * <li><b>单线程优化：</b>移除了非必要的 Volatile 语义，完美适配 Reactor 或 EventLoop 线程模型。</li>
+ * <li><b>非线程安全：</b>同一实例不得在缺少外部同步的情况下被多个线程并发访问；返回的视图共享底层存储，也受此约束。适用于 Reactor 或 EventLoop 单线程模型。</li>
  * </ul>
  * @author Reonvia
  * @since 0.1.0
@@ -52,20 +54,20 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
 
     /**
      * 初始化环形缓冲区。
-     * @param buffer 外部分配的底层缓冲区，其 {@code remaining()} 必须为 2 的幂。
-     * @throws IllegalArgumentException 如果容量不是 2 的幂。
+     * @param buffer 外部分配的底层缓冲区，使用其当前位置到上限的窗口，且 {@code remaining()} 必须为正的 2 的幂。内部统一使用大端序，不改变传入缓冲区的字节序。
+     * @throws IllegalArgumentException 如果容量不是正的 2 的幂。
      */
     public LoopBuffer(GenericWrapperPool<LoopBuffer, LoopBuffer> owner, ByteBuffer buffer) {
         super(owner);
         this.capacity = buffer.remaining();
-        if ((capacity & (capacity - 1)) != 0) {
-            throw new IllegalArgumentException("Capacity must be a power of 2");
+        if (capacity <= 0 || (capacity & (capacity - 1)) != 0) {
+            throw new IllegalArgumentException("Capacity must be a positive power of 2");
         }
         mask = capacity - 1;
-        this.buffer = buffer;
+        this.buffer = buffer.slice().order(ByteOrder.BIG_ENDIAN);
         for (int i = 0; i < 2; i++) {
-            this.readViews[i] = buffer.duplicate();
-            this.writeViews[i] = buffer.duplicate();
+            this.readViews[i] = this.buffer.duplicate().order(ByteOrder.BIG_ENDIAN);
+            this.writeViews[i] = this.buffer.duplicate().order(ByteOrder.BIG_ENDIAN);
         }
     }
 
@@ -278,11 +280,11 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
     /**
      * 尝试重置指针索引。
      * <p>
-     * 当缓冲区为空时，将指针重置为 0，这能确保下一次写入拥有最大的连续内存空间，
+     * 当缓冲区为空且没有活动标记时，将指针重置为 0，这能确保下一次写入拥有最大的连续内存空间，
      * 有效避免因回绕导致的 I/O 段碎片化。
      */
     public void tryReset() {
-        if (isEmpty()) {
+        if (isEmpty() && markedHead == -1 && markedTail == -1) {
             head = 0;
             tail = 0;
         }
@@ -376,8 +378,14 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         return Double.longBitsToDouble(getLong());
     }
     public byte[] getBytes(int length) {
+        if (length < 0) {
+            throw new IllegalArgumentException("length must be non-negative");
+        }
+        if (readableBytes() < length) {
+            throwUnderflow(length);
+        }
         byte[] bytes = new byte[length];
-        getBytes(bytes);
+        unsafeGetBytes(bytes, length);
         return bytes;
     }
     public void getBytes(byte[] dst) {
@@ -404,7 +412,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
             buffer.putShort(writePos, value);
         } else {
             buffer.put(writePos, (byte) (value >>> 8));
-            buffer.put(0, (byte) (value & 0xFF));
+            buffer.put(0, (byte) value);
         }
         tail += Short.BYTES;
     }
@@ -513,7 +521,7 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
         int firstPartLen = Math.min(length, capacity - readPos);
         buffer.get(readPos, dst, offset, firstPartLen);
         if (length > firstPartLen) {
-            buffer.get(0, dst, firstPartLen, length - firstPartLen);
+            buffer.get(0, dst, offset + firstPartLen, length - firstPartLen);
         }
         head += length;
     }
@@ -641,12 +649,15 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
             ByteBuffer[] views = readableViews();
             int written = 0;
             for (ByteBuffer src : views) {
-                int canWrite = Math.min(Math.min(src.remaining(), dst.remaining()), quota);
+                int canWrite = Math.min(Math.min(src.remaining(), dst.remaining()), quota - written);
                 if (canWrite <= 0) {
                     break;
                 }
-                src.limit(src.position() + canWrite);
-                dst.put(src);
+                int dstPosition = dst.position();
+                int srcPosition = src.position();
+                dst.put(dstPosition, src, srcPosition, canWrite);
+                dst.position(dstPosition + canWrite);
+                src.position(srcPosition + canWrite);
                 written += canWrite;
             }
             advanceHead(written);
@@ -765,12 +776,15 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
             ByteBuffer[] views = writableViews();
             int read = 0;
             for (ByteBuffer dst : views) {
-                int canRead = Math.min(Math.min(dst.remaining(), src.remaining()), quota);
+                int canRead = Math.min(Math.min(dst.remaining(), src.remaining()), quota - read);
                 if (canRead <= 0) {
                     break;
                 }
-                dst.limit(dst.position() + canRead);
-                dst.put(src);
+                int dstPosition = dst.position();
+                int srcPosition = src.position();
+                dst.put(dstPosition, src, srcPosition, canRead);
+                dst.position(dstPosition + canRead);
+                src.position(srcPosition + canRead);
                 read += canRead;
             }
             advanceTail(read);
