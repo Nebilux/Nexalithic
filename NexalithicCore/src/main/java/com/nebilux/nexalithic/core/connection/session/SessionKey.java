@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.session;
+package com.nebilux.nexalithic.core.connection.session;
 
 import java.nio.ByteBuffer;
 

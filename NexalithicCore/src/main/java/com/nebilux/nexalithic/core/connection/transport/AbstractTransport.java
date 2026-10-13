@@ -14,19 +14,26 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.session;
+package com.nebilux.nexalithic.core.connection.transport;
 
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import java.io.IOException;
+import java.nio.channels.SelectableChannel;
 
 /**
- * 会话通道工厂
+ * 抽象数据传输
  *
  * @author Reonvia
- * @since 0.1.0
+ * @since 0.5.0
  */
-public interface SessionChannelFactory<S extends NexalithicSession<S>> {
-    SessionChannel<SignalingPacket, S> createSignalingChannel(S session, SecretKeyContext secretKeyContext);
-    SessionChannel<BusinessPacket, S> createBusinessChannel(S session, SecretKeyContext secretKeyContext);
+public abstract class AbstractTransport<C extends SelectableChannel> implements NexalithicTransport {
+    protected final C channel;
+
+    protected AbstractTransport(C channel) {
+        this.channel = channel;
+    }
+
+    @Override
+    public void close() throws IOException {
+        channel.close();
+    }
 }

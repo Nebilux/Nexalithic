@@ -17,8 +17,8 @@
 package com.nebilux.nexalithic.core.io.loop;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
-import com.nebilux.nexalithic.core.session.SessionChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

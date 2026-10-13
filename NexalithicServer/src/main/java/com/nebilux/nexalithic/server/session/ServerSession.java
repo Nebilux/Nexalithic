@@ -16,7 +16,11 @@
 
 package com.nebilux.nexalithic.server.session;
 
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
+import com.nebilux.nexalithic.core.connection.session.SessionAttachment;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
@@ -24,7 +28,6 @@ import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
-import com.nebilux.nexalithic.core.session.*;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
@@ -36,7 +39,7 @@ import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
  * @author Reonvia
  * @since 0.1.0
  */
-public class ServerSession extends NexalithicSession<ServerSession> {
+public class ServerSession extends AbstractSession<ServerSession> {
     private final ServiceUnit serviceUnit;
     private final ChannelAccessCoordinator channelAccessCoordinator;
     private volatile SessionAttachment attachment;
@@ -89,7 +92,7 @@ public class ServerSession extends NexalithicSession<ServerSession> {
      * @author Reonvia
      * @since 0.1.0
      */
-    public static class ChannelFactory implements SessionChannelFactory<ServerSession> {
+    public static class ChannelFactory implements AbstractSession.ChannelFactory<ServerSession> {
         private final ServiceUnit serviceUnit;
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;

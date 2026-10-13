@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.core.messaging.handler;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.TargetStaticRecyclableWrapper;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 
 /**
  * Handler 调用上下文。
@@ -36,7 +36,7 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class HandlerContext<S extends NexalithicSession<?>> {
+public abstract class HandlerContext<S extends AbstractSession<?>> {
     /** 当前请求所属的会话。 */
     protected volatile S session;
 
@@ -62,7 +62,7 @@ public abstract class HandlerContext<S extends NexalithicSession<?>> {
         return session.pushBusinessPacket(response.setTaskId(request.getTaskId()));
     }
 
-    public static class Recyclable<S extends NexalithicSession<?>, T extends HandlerContext<S>, W extends Recyclable<S, T, W>> extends TargetStaticRecyclableWrapper<T, W> {
+    public static class Recyclable<S extends AbstractSession<?>, T extends HandlerContext<S>, W extends Recyclable<S, T, W>> extends TargetStaticRecyclableWrapper<T, W> {
         private volatile NexalithicHandler<T> handler;
         public Recyclable(GenericWrapperPool<T, W> owner, T target) {
             super(owner, target);

@@ -22,6 +22,8 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
@@ -29,7 +31,6 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.SessionChannel;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
@@ -165,7 +166,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             return sessionChannel;
         } catch (Exception failure) {
             logger.error("[{}] failed to acquire business channel", name, failure);
-            if (sessionChannel != null && (channelOpened || sessionChannel.getState() == com.nebilux.nexalithic.core.io.channel.NexalithicChannel.State.Opening)) {
+            if (sessionChannel != null && (channelOpened || sessionChannel.getState() == NexalithicChannel.State.Opening)) {
                 try {
                     sessionChannel.close();
                 } catch (Exception closeFailure) {

@@ -21,6 +21,7 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
@@ -30,7 +31,6 @@ import com.nebilux.nexalithic.core.io.codec.PacketFrame;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +80,7 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     }
 
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsAssembler.class);
-    private final NexalithicSession<?> owner;
+    private final AbstractSession<?> owner;
     private final Map<Integer, BusinessPacketAssemblyWrapper> assemblingMap;
     private final MpscArrayQueue<BusinessPacket> completedPackets;
     private BusinessPacket pendingPacket;
@@ -88,7 +88,7 @@ public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket
     private final WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool;
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
 
-    public BusinessPacketsAssembler(NexalithicSession<?> owner, WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel, int PacketQueue_Capacity_) {
+    public BusinessPacketsAssembler(AbstractSession<?> owner, WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel, int PacketQueue_Capacity_) {
         this.owner = owner;
         this.wrapperPool = wrapperPool;
         this.timeWheel = timeWheel;

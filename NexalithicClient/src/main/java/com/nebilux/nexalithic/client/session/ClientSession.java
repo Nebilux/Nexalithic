@@ -17,7 +17,10 @@
 package com.nebilux.nexalithic.client.session;
 
 import com.nebilux.nexalithic.client.io.session.ClientSessionLoop;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
@@ -25,10 +28,6 @@ import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
-import com.nebilux.nexalithic.core.session.SessionChannel;
-import com.nebilux.nexalithic.core.session.SessionChannelFactory;
-import com.nebilux.nexalithic.core.session.SessionKey;
 
 /**
  * 客户端会话
@@ -36,7 +35,7 @@ import com.nebilux.nexalithic.core.session.SessionKey;
  * @author Reonvia
  * @since 0.1.0
  */
-public class ClientSession extends NexalithicSession<ClientSession> {
+public class ClientSession extends AbstractSession<ClientSession> {
     private final SessionManager sessionManager;
 
     public ClientSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey,
@@ -56,7 +55,7 @@ public class ClientSession extends NexalithicSession<ClientSession> {
      * @author Reonvia
      * @since 0.1.0
      */
-    public static class ChannelFactory implements SessionChannelFactory<ClientSession> {
+    public static class ChannelFactory implements AbstractSession.ChannelFactory<ClientSession> {
         private final ClientSessionLoop loop;
         private final FragmenterFactory fragmenterFactory;
         private final AssemblerFactory assemblerFactory;

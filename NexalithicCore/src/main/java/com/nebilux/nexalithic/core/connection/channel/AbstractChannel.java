@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.channel;
+package com.nebilux.nexalithic.core.connection.channel;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -178,18 +178,12 @@ public abstract class AbstractChannel<C extends SelectableChannel> implements Ne
     }
 
     @Override
-    public void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
-        this.lastActiveTimeNanos = lastActiveTimeNanos;
-        onUpdateLastActiveTimeNanos(lastActiveTimeNanos);
-    }
-
-    @Override
-    public State getState() {
+    public final State getState() {
         return state.get();
     }
 
     @Override
-    public long getLastActiveTimeNanos() {
+    public final long getLastActiveTimeNanos() {
         return lastActiveTimeNanos;
     }
 
@@ -214,6 +208,11 @@ public abstract class AbstractChannel<C extends SelectableChannel> implements Ne
             }
             return true;
         }
+    }
+
+    protected final void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
+        this.lastActiveTimeNanos = lastActiveTimeNanos;
+        onUpdateLastActiveTimeNanos(lastActiveTimeNanos);
     }
 
     protected void checkOnLifecycle() {}

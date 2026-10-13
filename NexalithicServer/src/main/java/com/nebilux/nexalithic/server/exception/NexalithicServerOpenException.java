@@ -16,9 +16,9 @@
 
 package com.nebilux.nexalithic.server.exception;
 
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.exception.NexalithicCheckedException;
 import com.nebilux.nexalithic.core.exception.NexalithicFailure;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 
 import java.net.InetSocketAddress;
 

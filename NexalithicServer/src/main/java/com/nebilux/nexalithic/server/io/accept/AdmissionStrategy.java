@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.server.io.accept;
 
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeIngress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

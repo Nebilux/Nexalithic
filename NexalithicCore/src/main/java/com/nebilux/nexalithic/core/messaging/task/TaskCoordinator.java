@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.core.messaging.task;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -33,13 +33,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 0.2.0
  */
 public class TaskCoordinator {
-    private final NexalithicSession<?> owner;
+    private final AbstractSession<?> owner;
     private final TaskScheduler scheduler;
     private final ConcurrentMap<Long, NexalithicTask> activeTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<NexalithicTask> waitingTasks = new ConcurrentLinkedQueue<>();
     private final AtomicReference<NexalithicTask> currentSequentialTask = new AtomicReference<>();
 
-    public TaskCoordinator(NexalithicSession<?> owner, TaskScheduler scheduler) {
+    public TaskCoordinator(AbstractSession<?> owner, TaskScheduler scheduler) {
         this.owner = owner;
         this.scheduler = scheduler;
     }

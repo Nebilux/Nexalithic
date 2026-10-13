@@ -23,8 +23,9 @@ import com.nebilux.nexalithic.client.session.SessionManager;
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
@@ -33,7 +34,6 @@ import com.nebilux.nexalithic.core.model.packet.signaling.BareSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
-import com.nebilux.nexalithic.core.session.SessionChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

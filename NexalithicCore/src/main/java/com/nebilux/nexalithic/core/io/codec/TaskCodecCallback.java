@@ -16,12 +16,12 @@
 
 package com.nebilux.nexalithic.core.io.codec;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 
 /**
  * 任务编解码器回调
@@ -31,7 +31,7 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
  */
 public abstract class TaskCodecCallback implements CodecCallback {
     protected final TaskScheduler taskScheduler;
-    protected NexalithicSession<?> session;
+    protected AbstractSession<?> session;
     protected NexalithicTask task;
     protected TransferListener transferListener;
     protected TransferSnapshot transferSnapshot;
@@ -42,7 +42,7 @@ public abstract class TaskCodecCallback implements CodecCallback {
     }
 
     @Override
-    public void bind(NexalithicSession<?> session) {
+    public void bind(AbstractSession<?> session) {
         this.session = session;
     }
 

@@ -16,12 +16,12 @@
 
 package com.nebilux.nexalithic.server.io.handshake;
 
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
-import com.nebilux.nexalithic.core.session.SessionKey;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -293,65 +293,9 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
         return ownerLoop;
     }
 
-    void setPhase(Phase phase) {
-        this.phase = phase;
-    }
-
-    /**
-     * 绑定由 HandshakeLoop 注册的 SelectionKey。
-     */
-    void attachSelectionKey(SelectionKey newSelectionKey) {
-        if (state.get() != NexalithicChannel.State.Opened) {
-            throw new IllegalStateException(
-                    "Cannot attach SelectionKey while channel state is " + state.get()
-            );
-        }
-        selectionKey = newSelectionKey;
-        newSelectionKey.attach(this);
-    }
-
-    /**
-     * Selector 重建时替换 SelectionKey。
-     */
-    void replaceSelectionKey(SelectionKey replacement) {
-        selectionKey = replacement;
-        replacement.attach(this);
-    }
-
-    void setPrivateKey(PrivateKey privateKey) {
-        this.privateKey = privateKey;
-    }
-    PrivateKey getPrivateKey() {
-        return privateKey;
-    }
-    void setSessionMaterial(SessionKey sessionKey, SecretKeyContext signalingSecretContext, SecretKeyContext businessSecretContext) {
-        this.sessionKey = sessionKey;
-        this.signalingSecretContext = signalingSecretContext;
-        this.businessSecretContext = businessSecretContext;
-    }
-    HandshakeContext setTargetSession(ServerSession targetSession) {
-        this.targetSession = targetSession;
-        return this;
-    }
-
-    void setAsyncFailure(Throwable failure) {
-        asyncFailure = failure;
-    }
-
-    Throwable takeAsyncFailure() {
-        Throwable failure = asyncFailure;
-        asyncFailure = null;
-        return failure;
-    }
-
     @Override
     public NexalithicChannel.State getState() {
         return state.get();
-    }
-
-    @Override
-    public void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
-        this.lastActiveTimeNanos = lastActiveTimeNanos;
     }
 
     @Override
@@ -436,6 +380,61 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
                 ", state=" + state.get() +
                 ", remoteAddress=" + remoteAddress +
                 ']';
+    }
+
+    void setPhase(Phase phase) {
+        this.phase = phase;
+    }
+
+    /**
+     * 绑定由 HandshakeLoop 注册的 SelectionKey。
+     */
+    void attachSelectionKey(SelectionKey newSelectionKey) {
+        if (state.get() != NexalithicChannel.State.Opened) {
+            throw new IllegalStateException(
+                    "Cannot attach SelectionKey while channel state is " + state.get()
+            );
+        }
+        selectionKey = newSelectionKey;
+        newSelectionKey.attach(this);
+    }
+
+    /**
+     * Selector 重建时替换 SelectionKey。
+     */
+    void replaceSelectionKey(SelectionKey replacement) {
+        selectionKey = replacement;
+        replacement.attach(this);
+    }
+
+    void setPrivateKey(PrivateKey privateKey) {
+        this.privateKey = privateKey;
+    }
+    PrivateKey getPrivateKey() {
+        return privateKey;
+    }
+    void setSessionMaterial(SessionKey sessionKey, SecretKeyContext signalingSecretContext, SecretKeyContext businessSecretContext) {
+        this.sessionKey = sessionKey;
+        this.signalingSecretContext = signalingSecretContext;
+        this.businessSecretContext = businessSecretContext;
+    }
+    HandshakeContext setTargetSession(ServerSession targetSession) {
+        this.targetSession = targetSession;
+        return this;
+    }
+
+    void setAsyncFailure(Throwable failure) {
+        asyncFailure = failure;
+    }
+
+    Throwable takeAsyncFailure() {
+        Throwable failure = asyncFailure;
+        asyncFailure = null;
+        return failure;
+    }
+
+    void updateLastActiveTimeNanos(long lastActiveTimeNanos) {
+        this.lastActiveTimeNanos = lastActiveTimeNanos;
     }
 
     /**

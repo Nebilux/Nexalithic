@@ -16,8 +16,8 @@
 
 package com.nebilux.nexalithic.core.io.codec;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 
 /**
  * 编解码器回调
@@ -26,7 +26,7 @@ import com.nebilux.nexalithic.core.session.NexalithicSession;
  * @since 0.2.0
  */
 public interface CodecCallback {
-    void bind(NexalithicSession<?> session);
+    void bind(AbstractSession<?> session);
 
     void prepare(long taskId, BusinessPacket.Way way);
     void start(long total);

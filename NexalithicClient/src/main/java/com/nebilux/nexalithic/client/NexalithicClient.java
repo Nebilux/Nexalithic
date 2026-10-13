@@ -30,6 +30,7 @@ import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuildException;
 import com.nebilux.nexalithic.core.builder.NexalithicEndpointBuilder;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.NexalithicSessionException;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
 import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
@@ -38,7 +39,6 @@ import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSessionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

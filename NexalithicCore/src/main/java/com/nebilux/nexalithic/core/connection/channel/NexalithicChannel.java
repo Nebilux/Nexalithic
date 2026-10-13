@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.channel;
+package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.model.AbstractModel;
 import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
@@ -113,13 +113,13 @@ public interface NexalithicChannel {
         return state == State.Closing || state == State.Closed;
     }
 
-    void updateLastActiveTimeNanos(long lastActiveTimeNanos);
     /**
      * 返回最近一次有效 I/O 的时间点，基于 System.nanoTime()。
      *
      * @return 尚未发生有效 I/O 时返回 -1
      */
     long getLastActiveTimeNanos();
+
     /**
      * 关闭当前物理连接。
      *

@@ -20,6 +20,7 @@ import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.executor.BlockingTaskQueue;
 import com.nebilux.nexalithic.core.infra.executor.FixedTaskExecutor;
 import com.nebilux.nexalithic.core.infra.executor.RejectedTaskHandler;
@@ -36,7 +37,6 @@ import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
@@ -296,7 +296,7 @@ public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator
             }
         } while (mailbox.check());
     }
-    private void executeRequest(NexalithicTask task, NexalithicSession<?> session) {
+    private void executeRequest(NexalithicTask task, AbstractSession<?> session) {
         BusinessPacket request;
         try {
             request = task.request();

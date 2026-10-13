@@ -16,12 +16,12 @@
 
 package com.nebilux.nexalithic.core.messaging.task;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.messaging.handler.NexalithicHandler;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,13 +120,13 @@ public class NexalithicTask {
 
     private final TaskFuture future;
     private final TaskMailbox mailbox;
-    private final NexalithicSession<?> owner;
+    private final AbstractSession<?> owner;
     private volatile long lastActiveTimeNanos = -1;
 
     private NexalithicTask(TaskFunction.RequestAction requestAction, TaskFunction.ResponseAction responseAction, TaskFunction.CompleteAction completeAction,
                            TaskFunction.TimeoutAction timeoutAction, TaskFunction.FailedAction failedAction, TaskFunction.CancelAction cancelAction,
                            TaskFunction.FinishAction finishAction, TransferListener requestListener, TransferListener responseListener,
-                           Pattern pattern, Strategy strategy, long waitTimeNanos, NexalithicSession<?> owner) {
+                           Pattern pattern, Strategy strategy, long waitTimeNanos, AbstractSession<?> owner) {
         this.taskId = COUNTER.getAndIncrement();
         this.requestAction = requestAction;
         this.responseAction = responseAction;
@@ -228,7 +228,7 @@ public class NexalithicTask {
         return responseListener;
     }
 
-    public NexalithicSession<?> getOwner() {
+    public AbstractSession<?> getOwner() {
         return owner;
     }
     public TaskFuture getFuture() {
@@ -351,7 +351,7 @@ public class NexalithicTask {
             return this;
         }
 
-        public NexalithicTask build(NexalithicSession<?> targetSession) {
+        public NexalithicTask build(AbstractSession<?> targetSession) {
             if (requestAction == null) {
                 throw NexalithicTaskException.requiredField("requestAction");
             }

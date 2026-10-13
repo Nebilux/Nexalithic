@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.server.io.accept;
 
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 
 import java.nio.channels.SocketChannel;
 

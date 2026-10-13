@@ -17,9 +17,9 @@
 package com.nebilux.nexalithic.client.io.session;
 
 import com.nebilux.nexalithic.client.session.ClientSession;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
-import com.nebilux.nexalithic.core.session.SessionKey;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

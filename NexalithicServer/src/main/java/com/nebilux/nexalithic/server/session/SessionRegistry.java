@@ -20,13 +20,13 @@ import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.session.SessionAttachment;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.event.EventDefinition;
 import com.nebilux.nexalithic.core.event.EventTopic;
 import com.nebilux.nexalithic.core.event.NexalithicEvent;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
-import com.nebilux.nexalithic.core.session.SessionAttachment;
-import com.nebilux.nexalithic.core.session.SessionKey;
 import com.nebilux.nexalithic.server.NexalithicServer;
 
 import java.nio.ByteBuffer;

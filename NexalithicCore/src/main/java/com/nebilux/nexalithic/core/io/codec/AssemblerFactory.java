@@ -18,6 +18,7 @@ package com.nebilux.nexalithic.core.io.codec;
 
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -28,7 +29,6 @@ import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 
@@ -71,7 +71,7 @@ public class AssemblerFactory {
         return new SignalingPacketsAssembler();
     }
 
-    public PacketsAssembler<BusinessPacket> createBusiness(NexalithicSession<?> session) {
+    public PacketsAssembler<BusinessPacket> createBusiness(AbstractSession<?> session) {
         return new BusinessPacketsAssembler(session, wrapperPool, timeWheel, PacketQueue_Capacity_);
     }
 }

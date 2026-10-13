@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.session;
+package com.nebilux.nexalithic.core.connection.channel;
 
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.rate.RateLimiter;
-import com.nebilux.nexalithic.core.io.channel.LoopChannel;
 import com.nebilux.nexalithic.core.io.codec.assembler.PacketsAssembler;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.PacketsFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.LongAdder;
  * @author Reonvia
  * @since 0.1.0
  */
-public class SessionChannel<P extends AbstractPacket, S extends NexalithicSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<P, S>>, SocketChannel> {
+public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<P, S>>, SocketChannel> {
     protected final S ownerSession;
     protected final PacketsFragmenter<P> fragmenter;
     protected final PacketsAssembler<P> assembler;

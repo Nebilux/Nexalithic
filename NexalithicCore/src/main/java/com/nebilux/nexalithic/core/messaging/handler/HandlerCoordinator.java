@@ -22,6 +22,7 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.executor.BlockingTaskQueue;
 import com.nebilux.nexalithic.core.infra.executor.FixedTaskExecutor;
 import com.nebilux.nexalithic.core.infra.executor.TypedThreadFactory;
@@ -31,7 +32,6 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 import org.jctools.queues.SpmcArrayQueue;
@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 0.1.0
  */
 public abstract class HandlerCoordinator<
-        S extends NexalithicSession<?>,
+        S extends AbstractSession<?>,
         HC extends HandlerContext<S>,
         HR extends HandlerContext.Recyclable<S, HC, HR>
         > {

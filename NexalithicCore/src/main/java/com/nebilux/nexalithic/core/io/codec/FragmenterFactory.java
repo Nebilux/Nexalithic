@@ -18,6 +18,7 @@ package com.nebilux.nexalithic.core.io.codec;
 
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -26,7 +27,6 @@ import com.nebilux.nexalithic.core.io.codec.fragmenter.*;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpmcArrayQueue;
 
 /**
@@ -56,7 +56,7 @@ public class FragmenterFactory {
         return new SignalingPacketsFragmenter(SignalingPacketsFragmenter_WrapperQueue_Capacity_);
     }
 
-    public PacketsFragmenter<BusinessPacket> createBusiness(NexalithicSession<?> session) {
+    public PacketsFragmenter<BusinessPacket> createBusiness(AbstractSession<?> session) {
         return new BusinessPacketsFragmenter(session, businessPacketWrapperPool,
                 BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_);
     }

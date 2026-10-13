@@ -16,8 +16,8 @@
 
 package com.nebilux.nexalithic.core.model.packet.signaling.channel;
 
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
 
 /**
  * 指定目标 Channel 类型的接入请求。

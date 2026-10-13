@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.session;
+package com.nebilux.nexalithic.core.connection.session;
 
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
@@ -30,23 +31,22 @@ import java.nio.channels.SelectionKey;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Nexalithic 会话
+ * 抽象会话
  *
  * @author Reonvia
  * @since 0.1.0
  */
 @SuppressWarnings("unchecked")
-public abstract class NexalithicSession <S extends NexalithicSession<S>> {
-    /** Session 的逻辑生命周期。 */
-    public enum State {
-        /** Session 逻辑身份有效，可以处理数据和建立附属 Channel。 */
-        ACTIVE,
-
-        /** 已经领取停用权，正在断开底层 Channel 并执行收尾。 */
-        DEACTIVATING,
-
-        /** Session 逻辑身份已经失效，不再允许任何操作。 */
-        INACTIVE
+public abstract class AbstractSession<S extends AbstractSession<S>> implements NexalithicSession {
+    /**
+     * 会话通道工厂
+     *
+     * @author Reonvia
+     * @since 0.1.0
+     */
+    public interface ChannelFactory<S extends AbstractSession<S>> {
+        SessionChannel<SignalingPacket, S> createSignalingChannel(S session, SecretKeyContext secretKeyContext);
+        SessionChannel<BusinessPacket, S> createBusinessChannel(S session, SecretKeyContext secretKeyContext);
     }
 
     private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
@@ -57,7 +57,7 @@ public abstract class NexalithicSession <S extends NexalithicSession<S>> {
     protected final long creationTimeMillis;
     protected volatile String sessionName;
 
-    public NexalithicSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey, SessionChannelFactory<S> factory, TaskScheduler scheduler) {
+    public AbstractSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey, ChannelFactory<S> factory, TaskScheduler scheduler) {
         this.creationTimeMillis = System.currentTimeMillis();
         this.sessionKey = sessionKey;
         this.signalingChannel = factory.createSignalingChannel((S) this, signalingSecretKey);
@@ -80,8 +80,7 @@ public abstract class NexalithicSession <S extends NexalithicSession<S>> {
         if (state.get() != State.ACTIVE) {
             return false;
         }
-        NexalithicChannel.State channelState = businessChannel.getState();
-        switch (channelState) {
+        switch (businessChannel.getState()) {
             case Closing -> {
                 return false;
             }
@@ -119,6 +118,34 @@ public abstract class NexalithicSession <S extends NexalithicSession<S>> {
     public final SessionChannel<BusinessPacket, S> getBusinessChannel() {
         return businessChannel;
     }
+
+    public final void setSessionName(String sessionName) {
+        this.sessionName = sessionName;
+    }
+    public final void setRemoteBusinessChannelWriteRate(long rate) {
+        businessChannel.updateReadRate((long) (rate * 1.2));
+        pushSignalingPacket(ScalarSignal.ofLong(SignalingPacket.Signal.BusinessChannelRate, rate));
+    }
+
+    public final String getSessionName() {
+        return sessionName;
+    }
+    public final TaskCoordinator getTaskCoordinator() {
+        return taskCoordinator;
+    }
+    public final long getCreationTimeMillis() {
+        return creationTimeMillis;
+    }
+    public final long getLastActiveTimeNanos() {
+        return Math.max(signalingChannel.getLastActiveTimeNanos(), businessChannel.getLastActiveTimeNanos());
+    }
+
+    @Override
+    public final SessionKey getSessionKey() {
+        return sessionKey;
+    }
+
+    @Override
     public final SessionChannel<?, S> getChannel(NexalithicChannel.Kind kind) {
         return switch (kind) {
             case Packet_Signaling -> signalingChannel;
@@ -127,32 +154,9 @@ public abstract class NexalithicSession <S extends NexalithicSession<S>> {
         };
     }
 
-    public final void setSessionName(String sessionName) {
-        this.sessionName = sessionName;
-    }
-    public final String getSessionName() {
-        return sessionName;
-    }
-
-    public final SessionKey getSessionKey() {
-        return sessionKey;
-    }
-    public final TaskCoordinator getTaskCoordinator() {
-        return taskCoordinator;
-    }
-    public final long getCreationTimeMillis() {
-        return creationTimeMillis;
-    }
+    @Override
     public final State getState() {
         return state.get();
-    }
-    public final long getLastActiveTimeNanos() {
-        return Math.max(signalingChannel.getLastActiveTimeNanos(), businessChannel.getLastActiveTimeNanos());
-    }
-
-    public final void setRemoteBusinessChannelWriteRate(long rate) {
-        businessChannel.updateReadRate((long) (rate * 1.2));
-        pushSignalingPacket(ScalarSignal.ofLong(SignalingPacket.Signal.BusinessChannelRate, rate));
     }
 
     /**
@@ -165,6 +169,7 @@ public abstract class NexalithicSession <S extends NexalithicSession<S>> {
      * <p>Session 的关闭表示逻辑身份立即失效；底层 Channel 的物理关闭仍由所属
      * {@link ChannelLoop} 串行执行。</p>
      */
+    @Override
     public final void close() {
         if (!state.compareAndSet(State.ACTIVE, State.DEACTIVATING)) {
             return;

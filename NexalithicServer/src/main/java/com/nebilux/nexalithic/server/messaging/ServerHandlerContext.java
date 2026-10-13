@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.server.messaging;
 
+import com.nebilux.nexalithic.core.connection.session.SessionAttachment;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.SessionAttachment;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import com.nebilux.nexalithic.server.session.SessionRegistry;
 

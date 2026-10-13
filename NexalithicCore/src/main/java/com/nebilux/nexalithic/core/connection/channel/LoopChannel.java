@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.channel;
+package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import org.slf4j.Logger;

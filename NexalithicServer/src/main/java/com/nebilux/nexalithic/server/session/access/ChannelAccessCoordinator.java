@@ -17,9 +17,9 @@
 package com.nebilux.nexalithic.server.session.access;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
-import com.nebilux.nexalithic.core.io.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
-import com.nebilux.nexalithic.core.session.SessionKey;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.routing.NetworkRouter;
 import com.nebilux.nexalithic.server.session.ServerSession;

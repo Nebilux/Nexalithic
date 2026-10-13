@@ -19,10 +19,10 @@ package com.nebilux.nexalithic.core.io.codec.fragmenter;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.session.NexalithicSession;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,13 +54,13 @@ public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPack
     }
     private static final Logger logger = LoggerFactory.getLogger(BusinessPacketsFragmenter.class);
     private final WrapperPool<BusinessPacketFragmentWrapper> wrapperPool;
-    private final NexalithicSession<?> owner;
+    private final AbstractSession<?> owner;
     private final int WrapperLinked_Capacity_;
     private final MpscArrayQueue<BusinessPacketFragmentWrapper> packets;
     private final AtomicInteger currentLinkedCount = new AtomicInteger(0);
     private BusinessPacketFragmentWrapper head, last;
 
-    public BusinessPacketsFragmenter(NexalithicSession<?> owner,
+    public BusinessPacketsFragmenter(AbstractSession<?> owner,
                                      WrapperPool<BusinessPacketFragmentWrapper> wrapperPool,
                                      int WrapperQueue_Capacity_, int WrapperLinked_Capacity_) {
         this.owner = owner;
