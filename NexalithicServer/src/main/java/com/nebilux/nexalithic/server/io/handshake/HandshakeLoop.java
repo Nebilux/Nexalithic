@@ -40,6 +40,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
 import com.nebilux.nexalithic.server.NexalithicServer;
@@ -425,16 +426,16 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         messageDigest.update(writeBuffer.rewind());
         messageDigest.update(readBuffer.flip().limit(SecretKeyUtils.ECDH_LENGTH));
         byte[] secret = SecretKeyUtils.compactSecret(context.getPrivateKey(), readBuffer.rewind());
+        SecretKeyContexts secretKeyContexts = SecretKeyContexts.fromSecret(secret, SecretKeyContexts.Side.SERVER);
         byte[] localFinished = SecretKeyUtils.generateFinished(secret, messageDigest.digest());
-        SecretKeyContext signalingSecretContext = SecretKeyUtils.generateSessionSecretKey(secret, SecretKeyUtils.LABEL_SERVER_SIGNALING, SecretKeyUtils.LABEL_CLIENT_SIGNALING);
+        SecretKeyContext signalingSecretContext = secretKeyContexts.get(NexalithicChannel.Kind.Packet_Signaling);
         byte[] remoteFinished = signalingSecretContext.decrypt(readBuffer.limit(readBuffer.capacity()));
         if (!MessageDigest.isEqual(localFinished, remoteFinished)) {
             throw new SecurityException("Finished verification failed");
         }
-        SecretKeyContext businessSecretContext = SecretKeyUtils.generateSessionSecretKey(secret, SecretKeyUtils.LABEL_SERVER_BUSINESS, SecretKeyUtils.LABEL_CLIENT_BUSINESS);
         SessionKey.Immutable sessionKey = new SessionKey.Immutable(secureRandom.nextLong(), secureRandom.nextLong());
         signalingSecretContext.encrypt(sessionKey.toByteBuffer(thread.getTempBuffer()).flip(), writeBuffer.clear().put(signalingSecretContext.encrypt(localFinished)));
-        context.setSessionMaterial(sessionKey, signalingSecretContext, businessSecretContext);
+        context.setSessionMaterial(sessionKey, secretKeyContexts);
         writeBuffer.flip();
     }
     private void publishAsyncCompletion(HandshakeContext context, Throwable failure) {

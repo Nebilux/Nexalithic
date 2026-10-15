@@ -17,19 +17,30 @@
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 
 import java.io.IOException;
 
 /**
- * 包分片器
+ * 将模型转换为待发送字节的通用接口。
  *
  * @author Reonvia
- * @since 0.1.0
+ * @since 0.5.0
  */
-public interface PacketsFragmenter<P extends AbstractPacket> {
-    boolean feed(P packet);
+public interface ModelFragmenter<M extends NexalithicModel> {
+    boolean feed(M model);
     boolean drain(LoopBuffer target) throws IOException;
+
+    /** 已提交的模型及其后续数据均已处理完毕时返回 true。等待后续块的 Stream 不算完成。 */
     boolean isEmpty();
+
+    /**
+     * 当前有可立即写出的数据时返回 true。Stream 暂时没有块时应返回 false，
+     * 并在新块可用时重新启用所属通道的写兴趣。
+     */
+    default boolean hasReadyOutput() {
+        return !isEmpty();
+    }
+
     void clear();
 }

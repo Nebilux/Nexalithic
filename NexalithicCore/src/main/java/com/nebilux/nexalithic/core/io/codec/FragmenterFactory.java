@@ -27,6 +27,8 @@ import com.nebilux.nexalithic.core.io.codec.fragmenter.*;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
+import com.nebilux.nexalithic.core.model.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
 import org.jctools.queues.MpmcArrayQueue;
 
 /**
@@ -52,12 +54,20 @@ public class FragmenterFactory {
         );
     }
 
-    public PacketsFragmenter<SignalingPacket> createSignaling() {
+    public ModelFragmenter<SignalingPacket> createSignaling() {
         return new SignalingPacketsFragmenter(SignalingPacketsFragmenter_WrapperQueue_Capacity_);
     }
 
-    public PacketsFragmenter<BusinessPacket> createBusiness(AbstractSession<?> session) {
+    public ModelFragmenter<BusinessPacket> createBusiness(AbstractSession<?> session) {
         return new BusinessPacketsFragmenter(session, businessPacketWrapperPool,
                 BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_);
+    }
+
+    public ModelFragmenter<MediaStream> createMedia() {
+        return new MediaStreamFragmenter();
+    }
+
+    public ModelFragmenter<FileStream> createFile() {
+        return new FileStreamFragmenter();
     }
 }

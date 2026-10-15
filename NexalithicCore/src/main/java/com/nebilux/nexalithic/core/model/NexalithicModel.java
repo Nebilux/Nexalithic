@@ -17,17 +17,16 @@
 package com.nebilux.nexalithic.core.model;
 
 /**
- * 抽象模型
+ * nexalithic模型
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public interface AbstractModel {
-    int MAGIC_NUMBER = 0x494D5450;
-    enum ModelType {
+public interface NexalithicModel {
+    enum Model {
         Packet,
         Stream
     }
 
-    ModelType modelType();
+    Model model();
 }

@@ -14,21 +14,37 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.codec.assembler;
+package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.stream.file.FileStream;
 
 import java.io.IOException;
 
 /**
- * 分组汇编器
+ * 文件流碎片器
  *
  * @author Reonvia
- * @since 0.1.0
+ * @since 0.5.0
  */
-public interface PacketsAssembler<P extends AbstractPacket> {
-    boolean feed(LoopBuffer source) throws IOException;
-    P drain();
-    void clear();
+public class FileStreamFragmenter implements ModelFragmenter<FileStream> {
+    @Override
+    public boolean feed(FileStream model) {
+        return false;
+    }
+
+    @Override
+    public boolean drain(LoopBuffer target) throws IOException {
+        return false;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return false;
+    }
+
+    @Override
+    public void clear() {
+
+    }
 }

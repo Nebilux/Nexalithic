@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * @author Reonvia
  * @since 0.1.0
  */
-public class SignalingPacketsFragmenter implements PacketsFragmenter<SignalingPacket> {
+public class SignalingPacketsFragmenter implements ModelFragmenter<SignalingPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SignalingPacketsFragmenter.class);
     public static final class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> WrapperQueue_Capacity = defineOption(

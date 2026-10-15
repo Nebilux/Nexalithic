@@ -25,9 +25,8 @@ import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
@@ -44,10 +43,10 @@ public class ServerSession extends AbstractSession<ServerSession> {
     private final ChannelAccessCoordinator channelAccessCoordinator;
     private volatile SessionAttachment attachment;
 
-    public ServerSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey,
+    public ServerSession(SessionKey sessionKey, SecretKeyContexts secretKeyContexts,
                          ChannelFactory factory, TaskScheduler scheduler, ServiceUnit serviceUnit,
                          ChannelAccessCoordinator channelAccessCoordinator) {
-        super(sessionKey, signalingSecretKey, businessSecretKey, factory, scheduler);
+        super(sessionKey, secretKeyContexts, factory, scheduler);
         this.serviceUnit = serviceUnit;
         this.channelAccessCoordinator = channelAccessCoordinator;
     }
@@ -73,8 +72,11 @@ public class ServerSession extends AbstractSession<ServerSession> {
 
     @Override
     protected boolean requestChannelAccess(SessionChannel<?, ServerSession> channel) {
+        if (channel.getKind() != NexalithicChannel.Kind.Packet_Business) {
+            return false;
+        }
         return channelAccessCoordinator.issue(
-                this, NexalithicChannel.Kind.Packet_Business, signalingChannel.getRemoteAddress().getAddress()
+                this, channel.getKind(), getSignalingChannel().getRemoteAddress().getAddress()
         ) == ChannelAccessCoordinator.Result.ISSUED;
     }
 
@@ -104,17 +106,17 @@ public class ServerSession extends AbstractSession<ServerSession> {
         }
 
         @Override
-        public SessionChannel<SignalingPacket, ServerSession> createSignalingChannel(ServerSession session, SecretKeyContext context) {
-            return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, serviceUnit.getSignalingLoop(), session,
-                    fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
-            );
-        }
-
-        @Override
-        public SessionChannel<BusinessPacket, ServerSession> createBusinessChannel(ServerSession session, SecretKeyContext context) {
-            return new SessionChannel<>(NexalithicChannel.Kind.Packet_Business, serviceUnit.selectBusinessLoop(), session,
-                    fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session), context
-            );
+        public SessionChannel<?, ServerSession> create(NexalithicChannel.Kind kind, ServerSession session, SecretKeyContext secretKeyContext) {
+            return switch (kind) {
+                case Packet_Signaling -> new SessionChannel<>(kind, serviceUnit.getSignalingLoop(), session,
+                        fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), secretKeyContext);
+                case Packet_Business -> new SessionChannel<>(kind, serviceUnit.selectBusinessLoop(), session,
+                        fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session), secretKeyContext);
+                case Stream_Media -> new SessionChannel<>(kind, null, session,
+                        fragmenterFactory.createMedia(), assemblerFactory.createMedia(), secretKeyContext);
+                case Stream_File -> new SessionChannel<>(kind, null, session,
+                        fragmenterFactory.createFile(), assemblerFactory.createFile(), secretKeyContext);
+            };
         }
     }
 }

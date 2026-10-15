@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * @author Reonvia
  * @since 0.1.0
  */
-public class SignalingPacketsAssembler implements PacketsAssembler<SignalingPacket> {
+public class SignalingPacketsAssembler implements ModelAssembler<SignalingPacket> {
     private static final Logger logger = LoggerFactory.getLogger(SignalingPacketsAssembler.class);
     private final SpscArrayQueue<SignalingPacket> packets = new SpscArrayQueue<>(128);
     private SignalingPacket pendingPacket;

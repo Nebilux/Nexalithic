@@ -29,6 +29,8 @@ import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
+import com.nebilux.nexalithic.core.model.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 
@@ -67,11 +69,19 @@ public class AssemblerFactory {
         );
     }
 
-    public PacketsAssembler<SignalingPacket> createSignaling() {
+    public ModelAssembler<SignalingPacket> createSignaling() {
         return new SignalingPacketsAssembler();
     }
 
-    public PacketsAssembler<BusinessPacket> createBusiness(AbstractSession<?> session) {
+    public ModelAssembler<BusinessPacket> createBusiness(AbstractSession<?> session) {
         return new BusinessPacketsAssembler(session, wrapperPool, timeWheel, PacketQueue_Capacity_);
+    }
+
+    public ModelAssembler<MediaStream> createMedia() {
+        return new MediaStreamAssembler();
+    }
+
+    public ModelAssembler<FileStream> createFile() {
+        return new FileStreamAssembler();
     }
 }

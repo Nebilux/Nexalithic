@@ -16,9 +16,13 @@
 
 package com.nebilux.nexalithic.core.connection.channel;
 
-import com.nebilux.nexalithic.core.model.AbstractModel;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.model.stream.AbstractStream;
+import com.nebilux.nexalithic.core.model.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
 
 import java.io.IOException;
 
@@ -30,16 +34,19 @@ import java.io.IOException;
  */
 public interface NexalithicChannel {
     enum Kind {
-        Packet_Signaling((byte) 0x0, AbstractModel.ModelType.Packet),
-        Packet_Business((byte) 0x1, AbstractModel.ModelType.Packet),
-        Stream_Media((byte) 0x2, AbstractModel.ModelType.Stream),
-        Stream_File((byte) 0x3, AbstractModel.ModelType.Stream);
+        Packet_Signaling((byte) 0x0, NexalithicModel.Model.Packet, SignalingPacket.class),
+        Packet_Business((byte) 0x1, NexalithicModel.Model.Packet, BusinessPacket.class),
+        Stream_Media((byte) 0x2, NexalithicModel.Model.Stream, MediaStream.class),
+        Stream_File((byte) 0x3, NexalithicModel.Model.Stream, FileStream.class);
 
         private final byte code;
-        private final AbstractModel.ModelType model;
-        Kind(byte code, AbstractModel.ModelType model) {
+        private final NexalithicModel.Model model;
+        private final Class<? extends NexalithicModel> clazz;
+
+        Kind(byte code, NexalithicModel.Model model, Class<? extends NexalithicModel> clazz) {
             this.code = code;
             this.model = model;
+            this.clazz = clazz;
         }
 
         public static Kind fromCode(byte code) {
@@ -58,32 +65,35 @@ public interface NexalithicChannel {
             return code;
         }
 
-        public AbstractModel.ModelType modelType() {
+        public NexalithicModel.Model model() {
             return model;
         }
-        public AbstractPacket.PacketType packetType() {
+        public Class<? extends NexalithicModel> clazz() {
+            return clazz;
+        }
+        public AbstractPacket.Type packetType() {
             return switch (this) {
-                case Packet_Signaling -> AbstractPacket.PacketType.Signaling;
-                case Packet_Business -> AbstractPacket.PacketType.Business;
+                case Packet_Signaling -> AbstractPacket.Type.Signaling;
+                case Packet_Business -> AbstractPacket.Type.Business;
                 default -> throw new IllegalStateException(
                         "Channel kind %s does not carry packetType".formatted(this)
                 );
             };
         }
-        public AbstractStream.StreamType streamType() {
+        public AbstractStream.Type streamType() {
             return switch (this) {
-                case Stream_Media -> AbstractStream.StreamType.Media;
-                case Stream_File -> AbstractStream.StreamType.File;
+                case Stream_Media -> AbstractStream.Type.Media;
+                case Stream_File -> AbstractStream.Type.File;
                 default -> throw new IllegalStateException(
                         "Channel kind %s does not carry streamType".formatted(this)
                 );
             };
         }
         public boolean isPacket() {
-            return modelType() == AbstractModel.ModelType.Packet;
+            return model() == NexalithicModel.Model.Packet;
         }
         public boolean isStream() {
-            return modelType() == AbstractModel.ModelType.Stream;
+            return model() == NexalithicModel.Model.Stream;
         }
     }
     enum State {

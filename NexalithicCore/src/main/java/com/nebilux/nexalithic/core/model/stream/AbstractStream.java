@@ -16,29 +16,85 @@
 
 package com.nebilux.nexalithic.core.model.stream;
 
-import com.nebilux.nexalithic.core.model.AbstractModel;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
-import com.nebilux.nexalithic.core.model.stream.chunk.AbstractChunk;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
+
+import java.util.Objects;
 
 /**
- * 抽象流
+ * 由完整块组成的逻辑流的公开模型。框架内部状态保存块及收发进度。
+ *
+ * 方向以应用为参照：输入送往通道，输出来自通道，双向同时支持两者。
+ * 用户通过发送器向输入流提交块，或通过接收器从输出流取块；
+ * 不支持的用户方向返回 {@code null}。
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class AbstractStream<C extends AbstractChunk> implements AbstractModel {
-    public enum StreamType {
+public abstract class AbstractStream<C extends AbstractChunk> implements NexalithicModel {
+    public enum Type {
         /** 媒体 */ Media,
         /** 文件 */ File
     }
 
+    /** 相对于应用的流方向：输入发送至通道，输出从通道交付给应用。 */
+    public enum Direction {
+        INPUT(true, false),
+        OUTPUT(false, true),
+        DUPLEX(true, true);
+
+        private final boolean input;
+        private final boolean output;
+
+        Direction(boolean input, boolean output) {
+            this.input = input;
+            this.output = output;
+        }
+
+        public boolean hasInput() {
+            return input;
+        }
+
+        public boolean hasOutput() {
+            return output;
+        }
+    }
+
+    private final Type type;
+    private final Direction direction;
+
+    protected AbstractStream(Type type, Direction direction) {
+        this.type = Objects.requireNonNull(type, "type");
+        this.direction = Objects.requireNonNull(direction, "direction");
+    }
+
+    public final Type type() {
+        return type;
+    }
+
+    public final Direction direction() {
+        return direction;
+    }
+
     /**
-     * 获取流类型
+     * 返回供用户向输入流提交块的发送器。
      *
-     * @return {@link AbstractPacket.PacketType }
+     * @return 发送器；当前流不支持发送时返回 {@code null}
      */
-    public abstract StreamType streamType();
-    public final ModelType modelType() {
-        return ModelType.Stream;
+    public ChunkSender<C> sender() {
+        return null;
+    }
+
+    /**
+     * 返回供用户从输出流取块的接收器。
+     *
+     * @return 接收器；当前流不支持接收时返回 {@code null}
+     */
+    public ChunkReceiver<C> receiver() {
+        return null;
+    }
+
+    @Override
+    public final Model model() {
+        return Model.Stream;
     }
 }

@@ -33,6 +33,7 @@ import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessRequestSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
 import com.nebilux.nexalithic.core.security.SecurityPolicy;
 import org.slf4j.Logger;
@@ -320,8 +321,7 @@ public class SessionManager {
             }
             ClientSession current = sessionPair.get().session();
             if (current == null || current.getTaskCoordinator().hasActiveTasks()
-                    || !current.getSignalingChannel().isWriteDrained()
-                    || !current.getBusinessChannel().isWriteDrained()) {
+                    || !current.areChannelsWriteDrained()) {
                 return;
             }
             clearSessionAndAdvance();
@@ -431,7 +431,8 @@ public class SessionManager {
 
     public boolean requestChannelAccess(SessionChannel<?, ClientSession> targetChannel) {
         ClientSession ownerSession = targetChannel.getOwnerSession();
-        if (terminationRequested || !isAccepting() || getCurrentSession() != ownerSession) {
+        if (targetChannel.getKind() != NexalithicChannel.Kind.Packet_Business
+                || terminationRequested || !isAccepting() || getCurrentSession() != ownerSession) {
             return false;
         }
         return ownerSession.pushSignalingPacket(new ChannelAccessRequestSignal(targetChannel.getKind()));
@@ -622,9 +623,8 @@ public class SessionManager {
         transcriptHash.update(writeBuffer.asReadOnlyBuffer().flip());
         byte[] secret = SecretKeyUtils.compactSecret(keyPair.getPrivate(), readBuffer.slice(certificatesLength, keyAndSignatureLength));
         byte[] localFinished = SecretKeyUtils.generateFinished(secret, transcriptHash.digest());
-        SecretKeyContext signalingSecretKey = SecretKeyUtils.generateSessionSecretKey(
-                secret, SecretKeyUtils.LABEL_CLIENT_SIGNALING, SecretKeyUtils.LABEL_SERVER_SIGNALING
-        );
+        SecretKeyContexts secretKeyContexts = SecretKeyContexts.fromSecret(secret, SecretKeyContexts.Side.CLIENT);
+        SecretKeyContext signalingSecretKey = secretKeyContexts.get(NexalithicChannel.Kind.Packet_Signaling);
         writeBuffer.put(signalingSecretKey.encrypt(localFinished));
         writeFully(socketChannel, writeBuffer.flip());
         readBuffer.clear().limit(serverFinishedLength);
@@ -640,12 +640,9 @@ public class SessionManager {
                 readBuffer.slice(encryptedFinishedLength, SessionKey.LENGTH + SecretKeyContext.TAG_LENGTH),
                 sessionKeyBuffer
         );
-        SecretKeyContext businessSecretKey = SecretKeyUtils.generateSessionSecretKey(
-                secret, SecretKeyUtils.LABEL_CLIENT_BUSINESS, SecretKeyUtils.LABEL_SERVER_BUSINESS
-        );
         return new ClientChannelHandoff.Signaling(
                 attemptStamp, socketChannel, new SessionKey.Immutable(sessionKeyBuffer.flip(), 0),
-                signalingSecretKey, businessSecretKey, reconnectAttempt
+                secretKeyContexts, reconnectAttempt
         );
     }
 

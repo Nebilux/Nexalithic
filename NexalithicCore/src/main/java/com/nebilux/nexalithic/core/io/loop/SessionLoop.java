@@ -110,7 +110,7 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
                     submitDisconnectEvent(channel, Event.Disconnect.Reason.REMOTE_CLOSED);
                     return;
                 }
-                dispatchReceivedPackets(channel);
+                dispatchReceivedModels(channel);
             } else if (selectionKey.isWritable()) {
                 channel.write();
             } else {
@@ -130,5 +130,5 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
 
     /** 子类可返回是否处理限速更新；该方法在 SessionLoop 构造期间调用，不应读取子类字段。 */
     protected abstract boolean supportsRateUpdates(NexalithicBuilderContext context);
-    protected abstract void dispatchReceivedPackets(C channel);
+    protected abstract void dispatchReceivedModels(C channel);
 }

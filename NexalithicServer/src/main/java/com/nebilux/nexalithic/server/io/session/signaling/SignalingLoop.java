@@ -116,8 +116,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         channelFactory = new ServerSession.ChannelFactory(unit, codecResources);
         sessionFactory = handoff -> new ServerSession(
                 handoff.takeSessionKey(),
-                handoff.takeSignalingSecretContext(),
-                handoff.takeBusinessSecretContext(),
+                handoff.takeSecretKeyContexts(),
                 channelFactory,
                 taskScheduler,
                 unit,
@@ -185,7 +184,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    protected void dispatchReceivedPackets(SessionChannel<SignalingPacket, ServerSession> channel) {
+    protected void dispatchReceivedModels(SessionChannel<SignalingPacket, ServerSession> channel) {
         SignalingPacket packet;
         while ((packet = channel.get()) != null) {
             handleSignalPacket(channel, packet);

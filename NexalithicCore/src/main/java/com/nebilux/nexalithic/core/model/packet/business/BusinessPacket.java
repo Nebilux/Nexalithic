@@ -745,8 +745,8 @@ public class BusinessPacket extends AbstractPacket {
     }
 
     @Override
-    public final PacketType packetType() {
-        return PacketType.Business;
+    public final Type type() {
+        return Type.Business;
     }
 
     public String getDisplayMessage() {

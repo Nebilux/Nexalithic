@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.client.io.session;
 import com.nebilux.nexalithic.client.session.ClientSession;
 import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
-import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -87,15 +87,13 @@ public abstract sealed class ClientChannelHandoff implements ChannelLoop.Handoff
     /** 信令通道握手结果。 */
     public static final class Signaling extends ClientChannelHandoff {
         private final SessionKey sessionKey;
-        private final SecretKeyContext signalingSecretKey;
-        private final SecretKeyContext businessSecretKey;
+        private final SecretKeyContexts secretKeyContexts;
         private final int reconnectAttempt;
 
-        public Signaling(long stamp, SocketChannel channel, SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey, int reconnectAttempt) {
+        public Signaling(long stamp, SocketChannel channel, SessionKey sessionKey, SecretKeyContexts secretKeyContexts, int reconnectAttempt) {
             super(stamp, channel);
-            this.sessionKey = Objects.requireNonNull(sessionKey, "sessionKey");
-            this.signalingSecretKey = Objects.requireNonNull(signalingSecretKey, "signalingSecretKey");
-            this.businessSecretKey = Objects.requireNonNull(businessSecretKey, "businessSecretKey");
+            this.sessionKey = sessionKey;
+            this.secretKeyContexts = secretKeyContexts;
             this.reconnectAttempt = reconnectAttempt;
         }
 
@@ -103,12 +101,8 @@ public abstract sealed class ClientChannelHandoff implements ChannelLoop.Handoff
             return sessionKey;
         }
 
-        public SecretKeyContext signalingSecretKey() {
-            return signalingSecretKey;
-        }
-
-        public SecretKeyContext businessSecretKey() {
-            return businessSecretKey;
+        public SecretKeyContexts secretKeyContexts() {
+            return secretKeyContexts;
         }
 
         public int reconnectAttempt() {

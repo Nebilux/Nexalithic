@@ -21,7 +21,7 @@ import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
-import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,8 +130,7 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
      * 信令通道握手结果。
      */
     private SessionKey sessionKey;
-    private SecretKeyContext signalingSecretContext;
-    private SecretKeyContext businessSecretContext;
+    private SecretKeyContexts secretKeyContexts;
     /*
      * 业务通道握手结果。
      */
@@ -216,40 +215,20 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
         sessionKey = null;
         return result;
     }
-    /**
-     * 一次性移出信令通道密钥上下文。
-     */
-    public SecretKeyContext takeSignalingSecretContext() {
+    /** 一次性移出本次握手产生的所有通道密钥上下文。 */
+    public SecretKeyContexts takeSecretKeyContexts() {
         if (phase != Phase.READY) {
             throw new IllegalStateException(
                     "Handshake is not ready for transfer: " + phase
             );
         }
-        SecretKeyContext result = signalingSecretContext;
+        SecretKeyContexts result = secretKeyContexts;
         if (result == null) {
             throw new IllegalStateException(
-                    "HandshakeContext does not contain a signaling secret context"
+                    "HandshakeContext does not contain session key contexts"
             );
         }
-        signalingSecretContext = null;
-        return result;
-    }
-    /**
-     * 一次性移出业务通道密钥上下文。
-     */
-    public SecretKeyContext takeBusinessSecretContext() {
-        if (phase != Phase.READY) {
-            throw new IllegalStateException(
-                    "Handshake is not ready for transfer: " + phase
-            );
-        }
-        SecretKeyContext result = businessSecretContext;
-        if (result == null) {
-            throw new IllegalStateException(
-                    "HandshakeContext does not contain a business secret context"
-            );
-        }
-        businessSecretContext = null;
+        secretKeyContexts = null;
         return result;
     }
     /**
@@ -367,8 +346,7 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
         remoteAddress = null;
         privateKey = null;
         sessionKey = null;
-        signalingSecretContext = null;
-        businessSecretContext = null;
+        secretKeyContexts = null;
         targetSession = null;
         asyncFailure = null;
     }
@@ -414,10 +392,9 @@ public class HandshakeContext extends SelfStaticRecyclableWrapper<HandshakeConte
     PrivateKey getPrivateKey() {
         return privateKey;
     }
-    void setSessionMaterial(SessionKey sessionKey, SecretKeyContext signalingSecretContext, SecretKeyContext businessSecretContext) {
+    void setSessionMaterial(SessionKey sessionKey, SecretKeyContexts secretKeyContexts) {
         this.sessionKey = sessionKey;
-        this.signalingSecretContext = signalingSecretContext;
-        this.businessSecretContext = businessSecretContext;
+        this.secretKeyContexts = secretKeyContexts;
     }
     HandshakeContext setTargetSession(ServerSession targetSession) {
         this.targetSession = targetSession;

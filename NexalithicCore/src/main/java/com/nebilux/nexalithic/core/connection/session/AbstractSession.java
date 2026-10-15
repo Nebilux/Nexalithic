@@ -17,17 +17,23 @@
 package com.nebilux.nexalithic.core.connection.session;
 
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel.Kind;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
 import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
 import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
+import com.nebilux.nexalithic.core.model.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.core.util.TimeUtils;
 
 import java.nio.channels.SelectionKey;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -45,23 +51,28 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
      * @since 0.1.0
      */
     public interface ChannelFactory<S extends AbstractSession<S>> {
-        SessionChannel<SignalingPacket, S> createSignalingChannel(S session, SecretKeyContext secretKeyContext);
-        SessionChannel<BusinessPacket, S> createBusinessChannel(S session, SecretKeyContext secretKeyContext);
+        SessionChannel<?, S> create(NexalithicChannel.Kind kind, S session, SecretKeyContext secretKeyContext);
     }
 
     private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
-    protected final SessionKey sessionKey;
-    protected final SessionChannel<SignalingPacket, S> signalingChannel;
-    protected final SessionChannel<BusinessPacket, S> businessChannel;
-    protected final TaskCoordinator taskCoordinator;
-    protected final long creationTimeMillis;
-    protected volatile String sessionName;
+    private final SessionKey sessionKey;
+    private final SessionChannel<SignalingPacket, S> signalingChannel;
+    private final SessionChannel<BusinessPacket, S> businessChannel;
+    private final SessionChannel<MediaStream, S> mediaChannel;
+    private final SessionChannel<FileStream, S> fileChannel;
+    private final List<SessionChannel<?, S>> channels;
+    private final TaskCoordinator taskCoordinator;
+    private final long creationTimeMillis;
+    private volatile String sessionName;
 
-    public AbstractSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey, ChannelFactory<S> factory, TaskScheduler scheduler) {
+    protected AbstractSession(SessionKey sessionKey, SecretKeyContexts secretKeyContexts, ChannelFactory<S> factory, TaskScheduler scheduler) {
         this.creationTimeMillis = System.currentTimeMillis();
         this.sessionKey = sessionKey;
-        this.signalingChannel = factory.createSignalingChannel((S) this, signalingSecretKey);
-        this.businessChannel = factory.createBusinessChannel((S) this, businessSecretKey);
+        this.signalingChannel = (SessionChannel<SignalingPacket, S>) factory.create(Kind.Packet_Signaling, (S) this, secretKeyContexts.get(Kind.Packet_Signaling));
+        this.businessChannel = (SessionChannel<BusinessPacket, S>) factory.create(Kind.Packet_Business, (S) this, secretKeyContexts.get(Kind.Packet_Business));
+        this.mediaChannel = (SessionChannel<MediaStream, S>) factory.create(Kind.Stream_Media, (S) this, secretKeyContexts.get(Kind.Stream_Media));
+        this.fileChannel = (SessionChannel<FileStream, S>) factory.create(Kind.Stream_File, (S) this, secretKeyContexts.get(Kind.Stream_File));
+        this.channels = List.of(signalingChannel, businessChannel, mediaChannel, fileChannel);
         this.taskCoordinator = new TaskCoordinator(this, scheduler);
     }
 
@@ -77,27 +88,15 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
     }
 
     public final boolean pushBusinessPacket(BusinessPacket packet) {
-        if (state.get() != State.ACTIVE) {
-            return false;
-        }
-        switch (businessChannel.getState()) {
-            case Closing -> {
-                return false;
-            }
-            case Closed -> {
-                if (!tryOpenChannel(businessChannel)) {
-                    return false;
-                }
-            }
-            case Opening, Opened -> {}
-        }
-        if (!businessChannel.put(packet)) {
-            return false;
-        }
-        if (businessChannel.getState() == NexalithicChannel.State.Opened) {
-            businessChannel.updateInterest(SelectionKey.OP_WRITE, true);
-        }
-        return true;
+        return pushModel(businessChannel, packet);
+    }
+
+    public final boolean pushFileStream(FileStream stream) {
+        return pushModel(fileChannel, stream);
+    }
+
+    public final boolean pushMediaStream(MediaStream stream) {
+        return pushModel(mediaChannel, stream);
     }
 
     /**
@@ -109,7 +108,8 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
         if (state.get() != State.ACTIVE) {
             return false;
         }
-        return tryOpenChannel(getChannel(kind));
+        SessionChannel<?, S> channel = getChannel(kind);
+        return channel != null && tryOpenChannel(channel);
     }
 
     public final SessionChannel<SignalingPacket, S> getSignalingChannel() {
@@ -117,6 +117,22 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
     }
     public final SessionChannel<BusinessPacket, S> getBusinessChannel() {
         return businessChannel;
+    }
+    public final SessionChannel<FileStream, S> getFileChannel() {
+        return fileChannel;
+    }
+    public final SessionChannel<MediaStream, S> getMediaChannel() {
+        return mediaChannel;
+    }
+
+    /** 所有通道的待发送数据均已排空。 */
+    public final boolean areChannelsWriteDrained() {
+        for (SessionChannel<?, S> channel : channels) {
+            if (!channel.isWriteDrained()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public final void setSessionName(String sessionName) {
@@ -137,7 +153,11 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
         return creationTimeMillis;
     }
     public final long getLastActiveTimeNanos() {
-        return Math.max(signalingChannel.getLastActiveTimeNanos(), businessChannel.getLastActiveTimeNanos());
+        long lastActive = -1;
+        for (SessionChannel<?, S> channel : channels) {
+            lastActive = Math.max(lastActive, channel.getLastActiveTimeNanos());
+        }
+        return lastActive;
     }
 
     @Override
@@ -150,7 +170,8 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
         return switch (kind) {
             case Packet_Signaling -> signalingChannel;
             case Packet_Business -> businessChannel;
-            default -> throw new IllegalArgumentException("Unknown channel kind: " + kind);
+            case Stream_Media -> mediaChannel;
+            case Stream_File -> fileChannel;
         };
     }
 
@@ -175,17 +196,8 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
             return;
         }
         try {
-            if (signalingChannel.isOpen()) {
-                signalingChannel.getOwnerLoop().submitDisconnectEvent(
-                        signalingChannel,
-                        ChannelLoop.Event.Disconnect.Reason.LOCAL_REQUEST
-                );
-            }
-            if (businessChannel.isOpen()) {
-                businessChannel.getOwnerLoop().submitDisconnectEvent(
-                        businessChannel,
-                        ChannelLoop.Event.Disconnect.Reason.LOCAL_REQUEST
-                );
+            for (SessionChannel<?, S> channel : channels) {
+                disconnectChannel(channel);
             }
         } finally {
             state.set(State.INACTIVE);
@@ -195,6 +207,38 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
 
     protected abstract boolean requestChannelAccess(SessionChannel<?, S> channel);
     protected void onClose() {}
+
+    private <M extends NexalithicModel> boolean pushModel(SessionChannel<M, S> channel, M model) {
+        if (channel == null || state.get() != State.ACTIVE) {
+            return false;
+        }
+        switch (channel.getState()) {
+            case Closing -> {
+                return false;
+            }
+            case Closed -> {
+                if (!tryOpenChannel(channel)) {
+                    return false;
+                }
+            }
+            case Opening, Opened -> {}
+        }
+        if (!channel.put(model)) {
+            return false;
+        }
+        if (channel.getState() == NexalithicChannel.State.Opened && channel.hasReadyOutput()) {
+            channel.updateInterest(SelectionKey.OP_WRITE, true);
+        }
+        return true;
+    }
+
+    private <M extends NexalithicModel> void disconnectChannel(SessionChannel<M, S> channel) {
+        if (channel.isOpen()) {
+            channel.getOwnerLoop().submitDisconnectEvent(
+                    channel, ChannelLoop.Event.Disconnect.Reason.LOCAL_REQUEST
+            );
+        }
+    }
 
     private boolean tryOpenChannel(SessionChannel<?, S> channel) {
         if (!channel.beginOpen()) {
@@ -210,6 +254,6 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
 
     @Override
     public String toString() {
-        return "SessionName: " + sessionName + ", CreationTime: " + TimeUtils.format(creationTimeMillis) + ", SignalingChannel[" + signalingChannel + "], BusinessChannel[" + businessChannel + "]";
+        return "SessionName: " + sessionName + ", CreationTime: " + TimeUtils.format(creationTimeMillis) + ", Channels" + channels;
     }
 }

@@ -40,10 +40,6 @@ import java.util.Arrays;
 public class SecretKeyUtils {
     public static final int ECDH_LENGTH = 32;
     public static final int FINISHED_LENGTH = 32;
-    public static final byte[] LABEL_CLIENT_SIGNALING = "LABEL_CLIENT_SIGNALING".getBytes(StandardCharsets.UTF_8);
-    public static final byte[] LABEL_SERVER_SIGNALING = "LABEL_SERVER_SIGNALING".getBytes(StandardCharsets.UTF_8);
-    public static final byte[] LABEL_CLIENT_BUSINESS = "LABEL_CLIENT_BUSINESS".getBytes(StandardCharsets.UTF_8);
-    public static final byte[] LABEL_SERVER_BUSINESS = "LABEL_SERVER_BUSINESS".getBytes(StandardCharsets.UTF_8);
     private static final Logger logger = LoggerFactory.getLogger(SecretKeyUtils.class);
     private static final byte[] X509_X25519_HEADER = {
             0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00
@@ -142,10 +138,10 @@ public class SecretKeyUtils {
         byte[] writeMaterial = HKDF.expand(secret, selfLabel, 44);
         byte[] readMaterial = HKDF.expand(secret, peerLabel, 44);
         return new SecretKeyContext(
-                new SecretKeySpec(writeMaterial, 0, 32, "AES"),
-                Arrays.copyOfRange(writeMaterial, 32, 44),
                 new SecretKeySpec(readMaterial, 0, 32, "AES"),
-                Arrays.copyOfRange(readMaterial, 32, 44)
+                Arrays.copyOfRange(readMaterial, 32, 44),
+                new SecretKeySpec(writeMaterial, 0, 32, "AES"),
+                Arrays.copyOfRange(writeMaterial, 32, 44)
         );
     }
 

@@ -25,9 +25,8 @@ import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 
 /**
  * 客户端会话
@@ -38,9 +37,9 @@ import com.nebilux.nexalithic.core.security.SecretKeyContext;
 public class ClientSession extends AbstractSession<ClientSession> {
     private final SessionManager sessionManager;
 
-    public ClientSession(SessionKey sessionKey, SecretKeyContext signalingSecretKey, SecretKeyContext businessSecretKey,
+    public ClientSession(SessionKey sessionKey, SecretKeyContexts secretKeyContexts,
                          ChannelFactory factory, TaskScheduler scheduler, SessionManager sessionManager) {
-        super(sessionKey, signalingSecretKey, businessSecretKey, factory, scheduler);
+        super(sessionKey, secretKeyContexts, factory, scheduler);
         this.sessionManager = sessionManager;
     }
 
@@ -67,17 +66,17 @@ public class ClientSession extends AbstractSession<ClientSession> {
         }
 
         @Override
-        public SessionChannel<SignalingPacket, ClientSession> createSignalingChannel(ClientSession session, SecretKeyContext context) {
-            return new SessionChannel<>(NexalithicChannel.Kind.Packet_Signaling, loop, session,
-                    fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), context
-            );
-        }
-
-        @Override
-        public SessionChannel<BusinessPacket, ClientSession> createBusinessChannel(ClientSession session, SecretKeyContext context) {
-            return new SessionChannel<>(NexalithicChannel.Kind.Packet_Business, loop, session,
-                    fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session), context
-            );
+        public SessionChannel<?, ClientSession> create(NexalithicChannel.Kind kind, ClientSession session, SecretKeyContext secretKeyContext) {
+            return switch (kind) {
+                case Packet_Signaling -> new SessionChannel<>(kind, loop, session,
+                        fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), secretKeyContext);
+                case Packet_Business -> new SessionChannel<>(kind, loop, session,
+                        fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session), secretKeyContext);
+                case Stream_Media -> new SessionChannel<>(kind, loop, session,
+                        fragmenterFactory.createMedia(), assemblerFactory.createMedia(), secretKeyContext);
+                case Stream_File -> new SessionChannel<>(kind, loop, session,
+                        fragmenterFactory.createFile(), assemblerFactory.createFile(), secretKeyContext);
+            };
         }
     }
 }

@@ -118,7 +118,7 @@ public abstract class SignalingPacket extends AbstractPacket {
     }
 
     @Override
-    public PacketType packetType() {
-        return PacketType.Signaling;
+    public Type type() {
+        return Type.Signaling;
     }
 }

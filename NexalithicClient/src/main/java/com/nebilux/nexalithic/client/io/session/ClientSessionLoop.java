@@ -77,7 +77,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
         CodecResources codecResources = new CodecResources(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
         channelFactory = new ClientSession.ChannelFactory(this, codecResources);
         sessionFactory = handoff -> new ClientSession(
-                handoff.sessionKey(), handoff.signalingSecretKey(), handoff.businessSecretKey(),
+                handoff.sessionKey(), handoff.secretKeyContexts(),
                 channelFactory, taskScheduler, sessionManager
         );
         lastDynamicRateTickNanos = System.nanoTime();
@@ -179,7 +179,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     }
 
     @Override
-    protected void dispatchReceivedPackets(SessionChannel<?, ClientSession> channel) {
+    protected void dispatchReceivedModels(SessionChannel<?, ClientSession> channel) {
         ClientSession ownerSession = channel.getOwnerSession();
         if (channel.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
             while (channel.get() instanceof SignalingPacket packet) {
@@ -221,7 +221,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
         SocketChannel socketChannel = handoff.takeChannel();
         try {
             channel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
-            if (!channel.fragmenterIsEmpty()) {
+            if (channel.hasReadyOutput()) {
                 channel.updateInterest(SelectionKey.OP_WRITE, true);
             }
         } catch (Exception | Error failure) {

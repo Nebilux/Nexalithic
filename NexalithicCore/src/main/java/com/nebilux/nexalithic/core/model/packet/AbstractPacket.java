@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.model.packet;
 
-import com.nebilux.nexalithic.core.model.AbstractModel;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 
 import java.nio.charset.StandardCharsets;
 
@@ -26,9 +26,9 @@ import java.nio.charset.StandardCharsets;
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class AbstractPacket implements AbstractModel {
+public abstract class AbstractPacket implements NexalithicModel {
     public static final int MAX_PAYLOAD_COUNT = Byte.MAX_VALUE;
-    public enum PacketType {
+    public enum Type {
         /** 信令包 */ Signaling,
         /** 业务包 */ Business,
     }
@@ -36,11 +36,11 @@ public abstract class AbstractPacket implements AbstractModel {
     /**
      * 获取包类型
      *
-     * @return {@link PacketType }
+     * @return {@link Type }
      */
-    public abstract PacketType packetType();
-    public final ModelType modelType() {
-        return ModelType.Packet;
+    public abstract Type type();
+    public final Model model() {
+        return Model.Packet;
     }
 
     public static byte[] shortToBytes(short value) {

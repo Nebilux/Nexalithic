@@ -157,7 +157,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
             sessionChannel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
             channelOpened = true;
             socketChannel = null;
-            if (!sessionChannel.fragmenterIsEmpty()) {
+            if (sessionChannel.hasReadyOutput()) {
                 sessionChannel.updateInterest(SelectionKey.OP_WRITE, true);
             }
             timeWheel.schedule(sessionChannel, this);
@@ -187,7 +187,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessPacket> {
     }
 
     @Override
-    protected void dispatchReceivedPackets(SessionChannel<BusinessPacket, ServerSession> channel) {
+    protected void dispatchReceivedModels(SessionChannel<BusinessPacket, ServerSession> channel) {
         BusinessPacket packet;
         while ((packet = channel.get()) != null) {
             handlerCoordinator.accept(channel.getOwnerSession(), packet);

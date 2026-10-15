@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Reonvia
  * @since 0.1.0
  */
-public class BusinessPacketsFragmenter implements PacketsFragmenter<BusinessPacket> {
+public class BusinessPacketsFragmenter implements ModelFragmenter<BusinessPacket> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsFragmenter.class);
     public static final class Options extends OptionsDefinition {
         public final NexalithicOption<Integer> WrapperQueue_Capacity = defineOption(

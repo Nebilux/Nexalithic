@@ -21,10 +21,12 @@ import com.nebilux.nexalithic.core.connection.transport.TCP_Transport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.rate.RateLimiter;
-import com.nebilux.nexalithic.core.io.codec.assembler.PacketsAssembler;
-import com.nebilux.nexalithic.core.io.codec.fragmenter.PacketsFragmenter;
+import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
+import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.stream.AbstractStream;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecurityCodec;
 
@@ -39,15 +41,15 @@ import java.security.InvalidKeyException;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * 会话通道
+ * 会话通道。模型由对应的编解码器处理；Stream 的块线路格式由具体编解码器定义。
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<P, S>>, SocketChannel> {
+public class SessionChannel<M extends NexalithicModel, S extends AbstractSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<M, S>>, SocketChannel> {
     protected final S ownerSession;
-    protected final PacketsFragmenter<P> fragmenter;
-    protected final PacketsAssembler<P> assembler;
+    protected final ModelFragmenter<M> fragmenter;
+    protected final ModelAssembler<M> assembler;
     protected final RateLimiter rateLimiter = new RateLimiter(1024 * 1024);
     protected final DynamicRateController.RateState rateState = new DynamicRateController.RateState();
     protected final LongAdder readBytesWindow = new LongAdder();
@@ -56,8 +58,8 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
     protected LoopBuffer readPlainBuffer, writeCipheBuffer;
     protected LoopBuffer readCipheBuffer, writePlainBuffer;
 
-    public SessionChannel(Kind kind, SessionLoop<?, ? super SessionChannel<P, S>> ownerLoop, S ownerSession,
-                          PacketsFragmenter<P> fragmenter, PacketsAssembler<P> assembler, SecretKeyContext secretKeyContext) {
+    public SessionChannel(Kind kind, SessionLoop<?, ? super SessionChannel<M, S>> ownerLoop, S ownerSession,
+                          ModelFragmenter<M> fragmenter, ModelAssembler<M> assembler, SecretKeyContext secretKeyContext) {
         super(kind, ownerLoop);
         this.ownerSession = ownerSession;
         this.fragmenter = fragmenter;
@@ -93,16 +95,40 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
         writeBytesWindow.sumThenReset();
     }
 
-    public final boolean put(P packet) {
-        return fragmenter.feed(packet);
+    /**
+     * 将与当前通道类型匹配的模型交给编码器。Stream 的后续块由框架内部实现提供。
+     * 成功提交后，调用方仍需启用写兴趣；后续异步产生的块也需要再次唤醒写入。
+     */
+    public final boolean put(M model) {
+        if (!accepts(model)) {
+            throw new IllegalArgumentException("Model does not match channel kind " + getKind());
+        }
+        return fragmenter.feed(model);
     }
 
-    public final P get() {
+    /** 取出一个可交付模型；没有完整 Packet 或尚未建立的 Stream 时返回 null。 */
+    public final M get() {
         return assembler.drain();
+    }
+
+    private boolean accepts(M model) {
+        if (model == null || model.model() != getKind().model()) {
+            return false;
+        }
+        return switch (getKind()) {
+            case Packet_Signaling, Packet_Business -> model instanceof AbstractPacket packet
+                    && packet.type() == getKind().packetType();
+            case Stream_Media, Stream_File -> model instanceof AbstractStream<?> stream
+                    && stream.type() == getKind().streamType() && stream.direction().hasInput();
+        };
     }
 
     public final boolean fragmenterIsEmpty() {
         return fragmenter.isEmpty();
+    }
+
+    public final boolean hasReadyOutput() {
+        return fragmenter.hasReadyOutput();
     }
 
     /**
@@ -145,13 +171,13 @@ public class SessionChannel<P extends AbstractPacket, S extends AbstractSession<
             writeBytesWindow.add(written);
             updateLastActiveTimeNanos(System.nanoTime());
         }
-        if (writeCipheBuffer.isEmpty() && fragmenter.isEmpty()) {
+        if (readPlainBuffer.isEmpty() && writeCipheBuffer.isEmpty() && !fragmenter.hasReadyOutput()) {
             readPlainBuffer.recycle();
             readPlainBuffer = null;
             writeCipheBuffer.recycle();
             writeCipheBuffer = null;
             updateInterest(SelectionKey.OP_WRITE, false);
-            if (!fragmenter.isEmpty()) {
+            if (fragmenter.hasReadyOutput()) {
                 updateInterest(SelectionKey.OP_WRITE, true);
             }
         }

@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author Reonvia
  * @since 0.1.0
  */
-public class BusinessPacketsAssembler implements PacketsAssembler<BusinessPacket>, TimerCoordinator<BusinessPacketAssemblyWrapper> {
+public class BusinessPacketsAssembler implements ModelAssembler<BusinessPacket>, TimerCoordinator<BusinessPacketAssemblyWrapper> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessPacketsAssembler.class);
     public static final class Options extends OptionsDefinition {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
