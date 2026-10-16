@@ -24,6 +24,7 @@ import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
@@ -108,7 +109,8 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                     if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
                         long interval = now - lastDynamicRateTickNanos;
                         lastDynamicRateTickNanos = now;
-                        SessionChannel<?, ClientSession> businessChannel = session.getChannel(NexalithicChannel.Kind.Business_Packet);
+                        SessionBusinessChannel<?, ClientSession> businessChannel =
+                                session.getBusinessChannel(NexalithicChannel.Kind.Business_Packet);
                         if (businessChannel.getState() == NexalithicChannel.State.Opened) {
                             long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
                             if (targetRate > 0) {
@@ -197,9 +199,9 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
             case SignalingPacket.Signal.ChannelAccess_Response -> sessionManager.onChannelAccess(session, (ChannelAccessResponseSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                SessionChannel<?, ClientSession> businessChannel = session.getChannel(NexalithicChannel.Kind.Business_Packet);
+                SessionBusinessChannel<?, ClientSession> businessChannel =
+                        session.getBusinessChannel(NexalithicChannel.Kind.Business_Packet);
                 businessChannel.updateWriteRate(rate);
-                businessChannel.applyRate();
             }
         }
     }

@@ -28,7 +28,7 @@ import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.business.BusinessModel;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
@@ -68,7 +68,7 @@ public class ServerSession extends AbstractSession<ServerSession> {
         return (SignalingLoop) getSignalingChannel().getOwnerLoop();
     }
     public BusinessLoop getBusinessLoop() {
-        return (BusinessLoop) this.<BusinessModel>getChannel(Kind.Business_Packet).getOwnerLoop();
+        return (BusinessLoop) this.<BusinessPacket>getBusinessChannel(Kind.Business_Packet).getOwnerLoop();
     }
 
     public ServiceUnit getServiceUnit() {

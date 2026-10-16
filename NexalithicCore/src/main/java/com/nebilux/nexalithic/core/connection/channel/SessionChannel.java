@@ -19,8 +19,6 @@ package com.nebilux.nexalithic.core.connection.channel;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.connection.transport.TCP_Transport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
-import com.nebilux.nexalithic.core.infra.rate.RateLimiter;
 import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
@@ -36,7 +34,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
-import java.util.concurrent.atomic.LongAdder;
 
 /**
  * 会话通道
@@ -48,10 +45,6 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     protected final S ownerSession;
     protected final ModelFragmenter<M> fragmenter;
     protected final ModelAssembler<M> assembler;
-    protected final RateLimiter rateLimiter = new RateLimiter(1024 * 1024);
-    protected final DynamicRateController.RateState rateState = new DynamicRateController.RateState();
-    protected final LongAdder readBytesWindow = new LongAdder();
-    protected final LongAdder writeBytesWindow = new LongAdder();
     protected final SecurityCodec securityCodec;
     protected LoopBuffer readPlainBuffer, writeCipheBuffer;
     protected LoopBuffer readCipheBuffer, writePlainBuffer;
@@ -70,27 +63,6 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
             throw new IllegalArgumentException("SessionChannel requires a SocketChannel");
         }
         super.open(selectionKey, new TCP_Transport(socketChannel));
-    }
-
-    public void updateReadRate(long rate) {
-        rateLimiter.updateReadRate(rate);
-        ownerLoop.postRateUpdate(this);
-    }
-    public void updateWriteRate(long rate) {
-        rateLimiter.updateWriteRate(rate);
-        ownerLoop.postRateUpdate(this);
-    }
-    public final void applyRate() {
-        rateLimiter.applyRate();
-    }
-
-    public final long evaluateDynamicRate(long intervalNanos, long nowNanos, DynamicRateController controller) {
-        return controller.evaluateAndGetRate(readBytesWindow.sumThenReset(), intervalNanos, nowNanos, rateState);
-    }
-    public final void resetDynamicRateState() {
-        rateState.reset();
-        readBytesWindow.sumThenReset();
-        writeBytesWindow.sumThenReset();
     }
 
     /**
@@ -136,8 +108,7 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
             readPlainBuffer = ownerLoop.aquireLoopBuffer();
             writeCipheBuffer = ownerLoop.aquireLoopBuffer();
         }
-        rateLimiter.refillWriteCredit();
-        long writeCredit = rateLimiter.getWriteCredit();
+        long writeCredit = availableWriteBytes();
         if (writeCredit <= 0) {
             return 0;
         }
@@ -149,9 +120,8 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
             }
         } while (progressed);
         long written = getTransport().write(writeCipheBuffer, (int) Math.min(writeCredit, Integer.MAX_VALUE));
-        rateLimiter.consumeWrite(written);
+        onBytesWritten(written);
         if (written > 0) {
-            writeBytesWindow.add(written);
             updateLastActiveTimeNanos(System.nanoTime());
         }
         if (readPlainBuffer.isEmpty() && writeCipheBuffer.isEmpty() && !fragmenter.hasReadyOutput()) {
@@ -176,8 +146,7 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
             readCipheBuffer = ownerLoop.aquireLoopBuffer();
             writePlainBuffer = ownerLoop.aquireLoopBuffer();
         }
-        rateLimiter.refillReadCredit();
-        long readCredit = rateLimiter.getReadCredit();
+        long readCredit = availableReadBytes();
         if (readCredit <= 0) {
             return 0;
         }
@@ -198,9 +167,8 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
             writePlainBuffer.recycle();
             writePlainBuffer = null;
         }
-        rateLimiter.consumeRead(read);
+        onBytesRead(read);
         if (read > 0) {
-            readBytesWindow.add(read);
             updateLastActiveTimeNanos(System.nanoTime());
         }
         return read;
@@ -209,6 +177,19 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     public final S getOwnerSession() {
         return ownerSession;
     }
+
+    /** 默认不限制传输字节数；业务通道可覆盖并返回剩余额度。 */
+    protected long availableWriteBytes() {
+        return Integer.MAX_VALUE;
+    }
+
+    protected long availableReadBytes() {
+        return Integer.MAX_VALUE;
+    }
+
+    protected void onBytesWritten(long bytes) {}
+
+    protected void onBytesRead(long bytes) {}
 
     @Override
     protected void onClose(Binding<SocketChannel> binding) {
@@ -231,6 +212,5 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         }
         fragmenter.clear();
         assembler.clear();
-        resetDynamicRateState();
     }
 }

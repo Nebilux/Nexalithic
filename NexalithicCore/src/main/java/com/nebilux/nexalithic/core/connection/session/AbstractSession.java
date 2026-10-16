@@ -95,9 +95,9 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
 
     public final boolean pushBusiness(BusinessModel model) {
         return switch (model) {
-            case BusinessPacket ignored -> pushBusinessModel(getChannel(Kind.Business_Packet), model);
-            case MediaStream ignored -> pushBusinessModel(getChannel(Kind.Business_Stream_Media), model);
-            case FileStream ignored -> pushBusinessModel(getChannel(Kind.Business_Stream_File), model);
+            case BusinessPacket packet -> pushBusinessModel(getBusinessChannel(Kind.Business_Packet), packet);
+            case MediaStream stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream_Media), stream);
+            case FileStream stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream_File), stream);
             default -> throw new IllegalStateException("Unexpected value: " + model);
         };
     }
@@ -156,6 +156,15 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
     @Override
     public final SessionSignalingChannel<S> getSignalingChannel() {
         return signalingChannel;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public final <M extends BusinessModel> SessionBusinessChannel<M, S> getBusinessChannel(NexalithicChannel.Kind kind) {
+        if (!kind.isBusiness()) {
+            throw new IllegalArgumentException("Not a business channel kind: " + kind);
+        }
+        return (SessionBusinessChannel<M, S>) businessChannels.get(kind);
     }
 
     @Override

@@ -23,6 +23,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel.Kind;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
@@ -32,6 +33,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.model.signaling.packet.ScalarSignal;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessRequestSignal;
@@ -210,7 +212,9 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
             case SignalingPacket.Signal.ChannelAccess_Request -> handleChannelAccessRequest(channel, (ChannelAccessRequestSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                channel.getOwnerSession().getChannel(Kind.Business_Packet).updateWriteRate(rate);
+                SessionBusinessChannel<BusinessPacket, ServerSession> businessChannel =
+                        channel.getOwnerSession().getBusinessChannel(Kind.Business_Packet);
+                businessChannel.updateWriteRate(rate);
                 yield true;
             }
             default -> true;

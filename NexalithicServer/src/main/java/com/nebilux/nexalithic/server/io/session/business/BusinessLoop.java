@@ -23,6 +23,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
@@ -125,7 +126,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
                     long interval = now - lastDynamicRateTickNanos;
                     lastDynamicRateTickNanos = now;
                     for (SelectionKey key : registeredKeys()) {
-                        if (!key.isValid() || !(key.attachment() instanceof SessionChannel<?, ?> businessChannel)
+                        if (!key.isValid() || !(key.attachment() instanceof SessionBusinessChannel<?, ?> businessChannel)
                                 || businessChannel.getKind() != NexalithicChannel.Kind.Business_Packet) {
                             continue;
                         }
@@ -155,7 +156,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
         try {
             socketChannel = handoff.takeChannel();
             ServerSession session = handoff.takeTargetSession();
-            sessionChannel = session.getChannel(handoff.getKind());
+            sessionChannel = session.getBusinessChannel(handoff.getKind());
             sessionChannel.open(registerSelectableChannel(socketChannel.configureBlocking(false), SelectionKey.OP_READ));
             channelOpened = true;
             socketChannel = null;

@@ -17,8 +17,10 @@
 package com.nebilux.nexalithic.core.connection.session;
 
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.model.NexalithicModel;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 
 /**
@@ -41,6 +43,9 @@ public interface NexalithicSession {
     }
 
     SessionChannel<SignalingPacket, ?> getSignalingChannel();
+
+    /** {@code kind} 必须是业务通道类型，模型类型必须与其对应。 */
+    <M extends BusinessModel> SessionBusinessChannel<M, ?> getBusinessChannel(NexalithicChannel.Kind kind);
 
     /** 调用方指定的模型类型必须与 {@code kind} 对应。 */
     <M extends NexalithicModel> SessionChannel<M, ?> getChannel(NexalithicChannel.Kind kind);

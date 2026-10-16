@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.io.loop;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import org.slf4j.Logger;
@@ -37,8 +38,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends SessionChannel<?, ?>> extends ChannelLoop<H, C> {
     private static final Logger logger = LoggerFactory.getLogger(SessionLoop.class);
-    private final AtomicAdmissionQueue<C> rateUpdateQueue;
-    private final Set<C> queuedRateUpdates;
+    private final AtomicAdmissionQueue<SessionBusinessChannel<?, ?>> rateUpdateQueue;
+    private final Set<SessionBusinessChannel<?, ?>> queuedRateUpdates;
 
     public SessionLoop(NexalithicBuilderContext context, Options options) throws IOException {
         super(context, options);
@@ -53,7 +54,7 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
 
         registerPreSelectTask(() -> {
             for (int remaining = interestQueueDrainLimit; remaining > 0; remaining--) {
-                C channel = rateUpdateQueue.poll();
+                SessionBusinessChannel<?, ?> channel = rateUpdateQueue.poll();
                 if (channel == null) {
                     break;
                 }
@@ -65,7 +66,7 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
         registerDrainCondition(rateUpdateQueue::isEmpty);
     }
 
-    public void postRateUpdate(C channel) {
+    public void postRateUpdate(SessionBusinessChannel<?, ?> channel) {
         if (rateUpdateQueue == null) {
             throw new UnsupportedOperationException("Rate updates are not supported by " + name);
         }
