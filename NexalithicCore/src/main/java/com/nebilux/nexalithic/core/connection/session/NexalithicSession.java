@@ -45,7 +45,7 @@ public interface NexalithicSession {
     SessionChannel<SignalingPacket, ?> getSignalingChannel();
 
     /** {@code kind} 必须是业务通道类型，模型类型必须与其对应。 */
-    <M extends BusinessModel> SessionBusinessChannel<M, ?> getBusinessChannel(NexalithicChannel.Kind kind);
+    <M extends BusinessModel<?>> SessionBusinessChannel<M, ?> getBusinessChannel(NexalithicChannel.Kind kind);
 
     /** 调用方指定的模型类型必须与 {@code kind} 对应。 */
     <M extends NexalithicModel> SessionChannel<M, ?> getChannel(NexalithicChannel.Kind kind);

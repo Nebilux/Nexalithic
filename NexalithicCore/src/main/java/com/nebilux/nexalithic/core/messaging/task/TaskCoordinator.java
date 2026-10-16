@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.task;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -64,13 +64,13 @@ public class TaskCoordinator {
         return new TaskHandle(future);
     }
 
-    public void accept(BusinessPacket packet) {
-        NexalithicTask activeTask = pick(packet.getTaskId());
+    public void accept(BusinessModel<?> model) {
+        NexalithicTask activeTask = pick(model.getTaskId());
         if (activeTask == null) {
             return;
         }
         activeTask.updateLastActiveTime();
-        scheduler.scheduleNexalithicTask(activeTask, TaskEvent.RESPONSE(packet));
+        scheduler.scheduleNexalithicTask(activeTask, TaskEvent.RESPONSE(model));
     }
 
     public void activate(NexalithicTask task) {

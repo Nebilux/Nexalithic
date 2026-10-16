@@ -100,7 +100,7 @@ public class NexalithicClient extends NexalithicEndpoint {
     public TaskHandle submit(NexalithicTask.Builder taskBuilder) {
         return requireSession().getTaskCoordinator().submit(taskBuilder);
     }
-    public boolean push(BusinessModel model) {
+    public boolean push(BusinessModel<?> model) {
         return requireSession().pushBusiness(model);
     }
 

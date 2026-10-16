@@ -32,7 +32,6 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
@@ -53,7 +52,7 @@ import java.util.concurrent.TimeUnit;
  * @author Reonvia
  * @since 0.1.0
  */
-public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
+public class BusinessLoop extends ServerSessionLoop<BusinessModel<?>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessLoop.class);
     public static final class Options extends ServerSessionLoop.Options {
         public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
@@ -75,7 +74,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<? extends BusinessModel, ServerSession>>>> SharedTimeWheel =
+        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<? extends BusinessModel<?>, ServerSession>>>> SharedTimeWheel =
                 defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(BusinessLoop.class);
@@ -84,14 +83,14 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
 
     private static final Logger logger = LoggerFactory.getLogger(BusinessLoop.class);
     private final ServerHandlerCoordinator handlerCoordinator;
-    private final TimeWheel<SessionChannel<? extends BusinessModel, ServerSession>> timeWheel;
+    private final TimeWheel<SessionChannel<? extends BusinessModel<?>, ServerSession>> timeWheel;
     private long lastDynamicRateTickNanos;
 
     public BusinessLoop(NexalithicBuilderContext context) throws IOException {
         super(context, OPTIONS);
         handlerCoordinator = context.getModule(NexalithicServer.MODULES.HandlerCoordinator);
 
-        SharedLifecycle<TimeWheel<SessionChannel<? extends BusinessModel, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+        SharedLifecycle<TimeWheel<SessionChannel<? extends BusinessModel<?>, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
                 () -> new SharedLifecycle<>(new TimeWheel<>(
                         context.getOption(OPTIONS.TimeWheel.TickMillis),
                         context.getOption(OPTIONS.TimeWheel.SlotCount),
@@ -100,7 +99,7 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
                         new GenericWrapperPool<>(
                                 PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                                 PoolStrategyFactory.alwaysCreate(),
-                                TimeWheel.ScheduleWrapper<SessionChannel<? extends BusinessModel, ServerSession>>::new
+                                TimeWheel.ScheduleWrapper<SessionChannel<? extends BusinessModel<?>, ServerSession>>::new
                         ),
                         BusinessLoop.class.getSimpleName()
                 ))
@@ -149,9 +148,9 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
     }
 
     @Override
-    protected SessionChannel<? extends BusinessModel, ServerSession> onExecuteAcquireEvent(HandshakeContext handoff) {
+    protected SessionChannel<? extends BusinessModel<?>, ServerSession> onExecuteAcquireEvent(HandshakeContext handoff) {
         SocketChannel socketChannel = null;
-        SessionChannel<? extends BusinessModel, ServerSession> sessionChannel = null;
+        SessionChannel<? extends BusinessModel<?>, ServerSession> sessionChannel = null;
         boolean channelOpened = false;
         try {
             socketChannel = handoff.takeChannel();
@@ -186,16 +185,13 @@ public class BusinessLoop extends ServerSessionLoop<BusinessModel> {
     }
 
     @Override
-    protected void onExecuteDisconnectEvent(SessionChannel<? extends BusinessModel, ServerSession> channel, Event.Disconnect.Reason reason) {
+    protected void onExecuteDisconnectEvent(SessionChannel<? extends BusinessModel<?>, ServerSession> channel, Event.Disconnect.Reason reason) {
     }
 
     @Override
-    protected void dispatchReceivedModels(SessionChannel<? extends BusinessModel, ServerSession> channel) {
-        BusinessModel model;
-        while ((model = channel.get()) != null) {
-            if (model instanceof BusinessPacket packet) {
-                handlerCoordinator.accept(channel.getOwnerSession(), packet);
-            }
+    protected void dispatchReceivedModels(SessionChannel<? extends BusinessModel<?>, ServerSession> channel) {
+        while (channel.get() instanceof BusinessModel<?> model) {
+            handlerCoordinator.accept(channel.getOwnerSession(), model);
         }
     }
 }

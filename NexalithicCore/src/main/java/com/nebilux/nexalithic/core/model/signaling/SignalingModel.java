@@ -24,5 +24,9 @@ import com.nebilux.nexalithic.core.model.NexalithicModel;
  * @author Reonvia
  * @since 0.5.0
  */
-public interface SignalingModel extends NexalithicModel {
+public abstract class SignalingModel implements NexalithicModel {
+    @Override
+    public final Form form() {
+        return Form.Packet;
+    }
 }

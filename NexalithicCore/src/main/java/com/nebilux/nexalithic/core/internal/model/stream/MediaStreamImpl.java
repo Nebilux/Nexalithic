@@ -28,8 +28,8 @@ import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
  * @since 0.5.0
  */
 final class MediaStreamImpl extends MediaStream {
-    MediaStreamImpl(Direction direction) {
-        super(direction);
+    MediaStreamImpl(Direction direction, Way way, short... path) {
+        super(direction, way, path);
     }
 
     @Override

@@ -36,7 +36,7 @@ import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
@@ -297,11 +297,15 @@ public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator
         } while (mailbox.check());
     }
     private void executeRequest(NexalithicTask task, AbstractSession<?> session) {
-        BusinessPacket request;
+        BusinessModel<?> request;
         try {
             request = task.request();
             if (request == null) {
                 executeFailed(task, new IllegalStateException("Task request returned null"));
+                return;
+            }
+            if (!request.getWay().isRequest()) {
+                executeFailed(task, new IllegalArgumentException("Task request requires a request way"));
                 return;
             }
             boolean submitted = session.pushBusiness(request.setTaskId(task.awaitResponse().getTaskId()));
@@ -313,9 +317,9 @@ public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator
             throw e;
         }
     }
-    private void executeResponse(NexalithicTask task, BusinessPacket packet) {
+    private void executeResponse(NexalithicTask task, BusinessModel<?> model) {
         try {
-            task.response(packet);
+            task.response(model);
         } catch (Exception e) {
             executeFailed(task, e);
             throw e;

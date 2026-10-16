@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.LongAdder;
  * @author Reonvia
  * @since 0.5.0
  */
-public class SessionBusinessChannel<M extends BusinessModel, S extends AbstractSession<S>> extends SessionChannel<M, S> {
+public class SessionBusinessChannel<M extends BusinessModel<?>, S extends AbstractSession<S>> extends SessionChannel<M, S> {
     private final RateLimiter rateLimiter = new RateLimiter(1024 * 1024);
     private final DynamicRateController.RateState rateState = new DynamicRateController.RateState();
     private final LongAdder readBytesWindow = new LongAdder();

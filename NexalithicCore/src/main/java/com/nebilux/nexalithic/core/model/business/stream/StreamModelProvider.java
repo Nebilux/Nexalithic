@@ -17,7 +17,7 @@
 package com.nebilux.nexalithic.core.model.business.stream;
 
 import com.nebilux.nexalithic.core.internal.model.stream.StreamModelProviderImpl;
-import com.nebilux.nexalithic.core.model.AbstractStream;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
 import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
 
@@ -54,9 +54,9 @@ public abstract class StreamModelProvider {
         return Holder.INSTANCE;
     }
 
-    /** 创建指定方向的媒体流；方向以应用为参照。 */
-    public abstract MediaStream openMediaStream(AbstractStream.Direction direction);
+    /** 创建指定方向和业务方式的媒体流；方向以应用为参照。 */
+    public abstract MediaStream openMediaStream(BusinessStream.Direction direction, BusinessModel.Way way, short... path);
 
-    /** 创建指定方向的文件流；方向以应用为参照。 */
-    public abstract FileStream openFileStream(AbstractStream.Direction direction);
+    /** 创建指定方向和业务方式的文件流；方向以应用为参照。 */
+    public abstract FileStream openFileStream(BusinessStream.Direction direction, BusinessModel.Way way, short... path);
 }

@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.builtin;
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
@@ -24,7 +25,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 
 /**
- * 基于当前请求 {@link BusinessPacket} 的参数转换器公共基类。
+ * 从当前业务请求包提取参数的转换器公共基类。
  *
  * @param <HC> Handler 上下文类型
  *
@@ -41,14 +42,14 @@ abstract class AbstractBusinessPacketArgumentConverter<HC extends HandlerContext
      * @return 当前请求包
      */
     protected final BusinessPacket request(HC context, Method method) {
-        BusinessPacket request = context.getRequest();
-        if (request == null) {
+        BusinessModel<?> request = context.getRequest();
+        if (!(request instanceof BusinessPacket packet)) {
             throw new IllegalStateException(
                     "No BusinessPacket request is bound to handler context for method "
                             + method.toGenericString()
             );
         }
-        return request;
+        return packet;
     }
 
     /**

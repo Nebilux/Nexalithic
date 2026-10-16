@@ -161,15 +161,17 @@ public class ControllerHandlerAssemblerHelper<HC extends HandlerContext<?>> {
         return DefaultHandlerMethodArgumentConverterSelector.<HC>builder().converters(List.of(
                 new HandlerContextArgumentConverter<>(handlerContextType),
                 new BusinessPacketArgumentConverter<>(),
-                new BusinessPacketPathArgumentConverter<>(),
-                new BusinessPacketWayArgumentConverter<>(),
-                new PayloadArgumentConverter<>()
+                new BusinessModelArgumentConverter<>(),
+                new BusinessModelPathArgumentConverter<>(),
+                new BusinessModelWayArgumentConverter<>(),
+                new BusinessPacketPayloadArgumentConverter<>()
         ));
     }
 
     private DefaultHandlerMethodResultConverterSelector.Builder<HC> defaultHandlerMethodResultConverterSelectorBuilder() {
         return DefaultHandlerMethodResultConverterSelector.<HC>builder().converters(List.of(
                 new BusinessPacketResultConverter<>(),
+                new BusinessModelResultConverter<>(),
                 new PayloadResultConverter<>(),
                 new TextResultConverter<>(),
                 new FileResultConverter<>()

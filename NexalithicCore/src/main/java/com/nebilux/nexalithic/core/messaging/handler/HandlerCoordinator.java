@@ -31,6 +31,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
@@ -129,23 +130,23 @@ public abstract class HandlerCoordinator<
     }
     protected abstract HR createRecyclableWrapper(GenericWrapperPool<HC, HR> owner);
 
-    public final void accept(S session, BusinessPacket packet) {
-        if (packet.getWay().isResponse()) {
-            session.getTaskCoordinator().accept(packet);
+    public final void accept(S session, BusinessModel<?> model) {
+        if (model.getWay().isResponse()) {
+            session.getTaskCoordinator().accept(model);
         } else {
-            NexalithicHandler<HC> handler = handlerRegistry.match(packet.getPath());
+            NexalithicHandler<HC> handler = handlerRegistry.match(model.getPath());
             if (handler == null) {
-                logger.warn("No handler registered for path {}", packet.getPath());
-                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_NotHandler).setTaskId(packet.getTaskId()));
+                logger.warn("No handler registered for path {}", model.getPath());
+                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_NotHandler).setTaskId(model.getTaskId()));
                 return;
             }
             HR recyclable = wrapperPool.acquire();
             if (recyclable == null) {
-                logger.warn("No recyclable handler registered for path {}", packet.getPath());
-                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy).setTaskId(packet.getTaskId()));
+                logger.warn("No recyclable handler registered for path {}", model.getPath());
+                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy).setTaskId(model.getTaskId()));
                 return;
             }
-            recyclable.initTarget(packet, session, handler);
+            recyclable.initTarget(model, session, handler);
             if (!executor.submit(recyclable)) {
                 recyclable.recycle();
             }

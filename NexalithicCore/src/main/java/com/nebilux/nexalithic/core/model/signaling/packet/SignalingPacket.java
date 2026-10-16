@@ -17,7 +17,6 @@
 package com.nebilux.nexalithic.core.model.signaling.packet;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.AbstractPacket;
 import com.nebilux.nexalithic.core.model.signaling.SignalingModel;
 import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessRequestSignal;
 import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessResponseSignal;
@@ -30,7 +29,7 @@ import java.lang.reflect.Field;
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class SignalingPacket extends AbstractPacket implements SignalingModel {
+public abstract class SignalingPacket extends SignalingModel {
     public static class Signal {
         public static final byte HeartBeat = 0x0;
         public static final byte BusinessChannelRate = -0x3;

@@ -32,7 +32,7 @@ import java.lang.reflect.Parameter;
  * @author Reonvia
  * @since 0.2.0
  */
-public class PayloadArgumentConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketArgumentConverter<HC> implements HandlerMethodArgumentConverter<HC> {
+public class BusinessPacketPayloadArgumentConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketArgumentConverter<HC> implements HandlerMethodArgumentConverter<HC> {
 
     @Override
     public boolean supports(Method method, Parameter parameter, int index) {

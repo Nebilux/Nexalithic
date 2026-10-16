@@ -28,8 +28,8 @@ import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
  * @since 0.5.0
  */
 final class FileStreamImpl extends FileStream {
-    FileStreamImpl(Direction direction) {
-        super(direction);
+    FileStreamImpl(Direction direction, Way way, short... path) {
+        super(direction, way, path);
     }
 
     @Override

@@ -16,7 +16,8 @@
 
 package com.nebilux.nexalithic.core.internal.model.stream;
 
-import com.nebilux.nexalithic.core.model.AbstractStream;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.business.stream.StreamModelProvider;
 import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
 import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
@@ -33,12 +34,12 @@ public class StreamModelProviderImpl extends StreamModelProvider {
     protected StreamModelProviderImpl() {}
 
     @Override
-    public MediaStream openMediaStream(AbstractStream.Direction direction) {
-        return new MediaStreamImpl(direction);
+    public MediaStream openMediaStream(BusinessStream.Direction direction, BusinessModel.Way way, short... path) {
+        return new MediaStreamImpl(direction, way, path);
     }
 
     @Override
-    public FileStream openFileStream(AbstractStream.Direction direction) {
-        return new FileStreamImpl(direction);
+    public FileStream openFileStream(BusinessStream.Direction direction, BusinessModel.Way way, short... path) {
+        return new FileStreamImpl(direction, way, path);
     }
 }

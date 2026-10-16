@@ -29,14 +29,14 @@ import com.nebilux.nexalithic.core.model.business.stream.StreamModelProvider;
  * @author Reonvia
  * @since 0.5.0
  */
-public abstract class MediaStream extends BusinessStream<MediaChunk> {
-    protected MediaStream(Direction direction) {
-        super(Type.Media, direction);
+public abstract class MediaStream extends BusinessStream<MediaChunk, MediaStream> {
+    protected MediaStream(Direction direction, Way way, short... path) {
+        super(Type.Media, direction, way, path);
     }
 
-    /** 打开指定方向的媒体流，默认队列容量为 64 块。 */
-    public static MediaStream open(Direction direction) {
-        return StreamModelProvider.provider().openMediaStream(direction);
+    /** 打开指定方向和业务方式的媒体流，默认队列容量为 64 块。 */
+    public static MediaStream open(Direction direction, Way way, short... path) {
+        return StreamModelProvider.provider().openMediaStream(direction, way, path);
     }
 
     /** 在首次取得 sender/receiver 或绑定编解码器之前配置每个方向的队列容量。 */

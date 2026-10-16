@@ -18,30 +18,29 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.b
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.HandlerMethodArgumentConverter;
-import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestWay;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestPath;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 
 /**
- * 将当前请求包的 {@link BusinessPacket.Way} 解析为 Handler 方法参数。
+ * 将当前业务请求路径解析为防御性复制后的 {@code short[]} 参数。
  *
  * @param <HC> Handler 上下文类型
  *
  * @author Reonvia
  * @since 0.2.0
  */
-public class BusinessPacketWayArgumentConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketArgumentConverter<HC> implements HandlerMethodArgumentConverter<HC> {
+public class BusinessModelPathArgumentConverter<HC extends HandlerContext<?>> implements HandlerMethodArgumentConverter<HC> {
 
     @Override
     public boolean supports(Method method, Parameter parameter, int index) {
-        return parameter.isAnnotationPresent(RequestWay.class) && parameter.getType() == BusinessPacket.Way.class;
+        return parameter.isAnnotationPresent(RequestPath.class) && parameter.getType() == short[].class;
     }
 
     @Override
     public Object convert(HC context, Method method, Parameter parameter, int index) {
-        return request(context, method).getWay();
+        return context.getRequest().getPath();
     }
 
     @Override

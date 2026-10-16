@@ -17,12 +17,12 @@
 package com.nebilux.nexalithic.core.messaging.task;
 
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 
 /**
  * 业务任务函数接口，定义了一个异步请求-响应周期的完整生命周期。
  * <p>
- * 该接口作为 Nexalithic 框架中“请求意图”的抽象，封装了从数据包构造到结果异步回执的所有行为。
+ * 该接口作为 Nexalithic 框架中“请求意图”的抽象，封装了从业务模型构造到结果异步回执的所有行为。
  * </p>
  * <b>生命周期流向：</b>
  * <pre>
@@ -41,15 +41,15 @@ import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 public interface TaskFunction {
     @FunctionalInterface
     interface RequestAction extends TaskFunction {
-        BusinessPacket execute();
+        BusinessModel<?> execute();
     }
     @FunctionalInterface
     interface ResponseAction extends TaskFunction {
-        void execute(BusinessPacket packet, TaskFuture future);
+        void execute(BusinessModel<?> model, TaskFuture future);
     }
     @FunctionalInterface
     interface SimpleResponseAction extends TaskFunction {
-        void execute(BusinessPacket packet);
+        void execute(BusinessModel<?> model);
     }
     @FunctionalInterface
     interface CompleteAction extends TaskFunction {

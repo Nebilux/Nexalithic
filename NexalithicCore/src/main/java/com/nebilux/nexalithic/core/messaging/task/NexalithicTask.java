@@ -21,7 +21,7 @@ import com.nebilux.nexalithic.core.messaging.handler.NexalithicHandler;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>该类代表一次主动发起的通信请求交互，通常遵循 “请求-响应” 模式。</p>
  * <p><b>核心特性：</b></p>
  * <ul>
- * <li><b>关联性：</b> 通过 {@code taskId} 追踪并匹配对端返回的回执包。</li>
+ * <li><b>关联性：</b> 通过 {@code taskId} 追踪并匹配对端返回的业务响应模型。</li>
  * <li><b>状态化：</b> 支持超时控制、重试机制以及异步结果生成（Future/Promise）。</li>
  * <li><b>双工支持：</b> 客户端和服务端均可发起任务以驱动对端执行特定逻辑。</li>
  * </ul>
@@ -47,7 +47,7 @@ public class NexalithicTask {
         /** 只有请求，无回执。发送完即销毁。 */
         ONE_WAY,
 
-        /** 标准请求-响应。收到一个回执或超时后销毁。 */
+        /** 标准请求-响应。收到一个响应模型或超时后结束任务；流块继续由流接收器交付。 */
         REQUEST_RESPONSE,
 
         /** 流模式。持续接收回执，直到手动取消。 */
@@ -149,7 +149,7 @@ public class NexalithicTask {
         return new Builder();
     }
 
-    public BusinessPacket request() {
+    public BusinessModel<?> request() {
         if (state.get() == State.NEW || state.get() == State.ENQUEUED) {
             state.set(State.REQUESTING);
         } else {
@@ -157,15 +157,15 @@ public class NexalithicTask {
         }
         return requestAction.execute();
     }
-    public void response(BusinessPacket packet) {
+    public void response(BusinessModel<?> model) {
         if (pattern == Pattern.REQUEST_RESPONSE) {
             if (state.compareAndSet(State.WAITING, State.RESPONDING)) {
-                responseAction.execute(packet, future);
+                responseAction.execute(model, future);
                 complete();
             }
         } else {
             if (state.get() == State.STREAMING || state.compareAndSet(State.WAITING, State.STREAMING)) {
-                responseAction.execute(packet, future);
+                responseAction.execute(model, future);
             }
         }
     }
@@ -276,7 +276,7 @@ public class NexalithicTask {
 
     public static class Builder {
         private TaskFunction.RequestAction requestAction;
-        private TaskFunction.ResponseAction responseAction = (packet, future) -> {};
+        private TaskFunction.ResponseAction responseAction = (model, future) -> {};
         private TaskFunction.CompleteAction completeAction = () -> {};
         private TaskFunction.TimeoutAction timeoutAction = () -> {};
         private TaskFunction.FailedAction failedAction = exception -> {
@@ -296,8 +296,8 @@ public class NexalithicTask {
             this.requestAction = requestAction;
             return this;
         }
-        public Builder onRequest(BusinessPacket packet) {
-            this.requestAction = () -> packet;
+        public Builder onRequest(BusinessModel<?> model) {
+            this.requestAction = () -> model;
             return this;
         }
         public Builder onResponse(TaskFunction.ResponseAction responseAction) {
@@ -305,7 +305,7 @@ public class NexalithicTask {
             return this;
         }
         public Builder onResponse(TaskFunction.SimpleResponseAction responseAction) {
-            this.responseAction = (packet, future) -> responseAction.execute(packet);
+            this.responseAction = (model, future) -> responseAction.execute(model);
             return this;
         }
         public Builder onComplete(TaskFunction.CompleteAction completeAction) {

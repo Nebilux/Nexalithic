@@ -93,7 +93,7 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
         return true;
     }
 
-    public final boolean pushBusiness(BusinessModel model) {
+    public final boolean pushBusiness(BusinessModel<?> model) {
         return switch (model) {
             case BusinessPacket packet -> pushBusinessModel(getBusinessChannel(Kind.Business_Packet), packet);
             case MediaStream stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream_Media), stream);
@@ -160,7 +160,7 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
 
     @Override
     @SuppressWarnings("unchecked")
-    public final <M extends BusinessModel> SessionBusinessChannel<M, S> getBusinessChannel(NexalithicChannel.Kind kind) {
+    public final <M extends BusinessModel<?>> SessionBusinessChannel<M, S> getBusinessChannel(NexalithicChannel.Kind kind) {
         if (!kind.isBusiness()) {
             throw new IllegalArgumentException("Not a business channel kind: " + kind);
         }
@@ -211,7 +211,7 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
     protected abstract boolean requestChannelAccess(SessionChannel<?, S> channel);
     protected void onClose() {}
 
-    private <M extends BusinessModel> boolean pushBusinessModel(SessionChannel<M, S> channel, M model) {
+    private <M extends BusinessModel<?>> boolean pushBusinessModel(SessionChannel<M, S> channel, M model) {
         if (channel == null || state.get() != State.ACTIVE) {
             return false;
         }

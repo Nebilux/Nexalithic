@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.messaging.task.event;
 
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 
 /**
  * 任务事件
@@ -51,8 +51,8 @@ public class TaskEvent {
     public static TaskEvent REQUEST() {
         return REQUEST;
     }
-    public static TaskEvent RESPONSE(BusinessPacket packet) {
-        return new TaskEvent(Type.RESPONSE, packet);
+    public static TaskEvent RESPONSE(BusinessModel<?> model) {
+        return new TaskEvent(Type.RESPONSE, model);
     }
     public static TaskEvent COMPLETE() {
         return COMPLETE;

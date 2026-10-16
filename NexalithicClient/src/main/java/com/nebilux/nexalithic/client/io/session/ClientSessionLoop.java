@@ -30,7 +30,7 @@ import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.signaling.packet.BareSignal;
 import com.nebilux.nexalithic.core.model.signaling.packet.ScalarSignal;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
@@ -188,8 +188,8 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 handleSignalPacket(ownerSession, packet);
             }
         } else {
-            while (channel.get() instanceof BusinessPacket packet) {
-                handlerCoordinator.accept(ownerSession, packet);
+            while (channel.get() instanceof BusinessModel<?> model) {
+                handlerCoordinator.accept(ownerSession, model);
             }
         }
     }
