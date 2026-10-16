@@ -33,7 +33,7 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.server.exception.NexalithicServerOpenException;
 import com.nebilux.nexalithic.server.io.accept.AcceptorLoop;
 import com.nebilux.nexalithic.server.io.accept.AdmissionStrategy;
@@ -155,7 +155,7 @@ public class NexalithicServer extends NexalithicEndpoint {
         if (session == null) {
             return false;
         }
-        return session.pushBusinessPacket(packet);
+        return session.pushBusiness(packet);
     }
 
     /**
@@ -165,7 +165,7 @@ public class NexalithicServer extends NexalithicEndpoint {
      */
     public void pushToAll(BusinessPacket packet) {
         packet.seal();
-        sessionRegistry.forEachNamedSession(session -> session.pushBusinessPacket(packet.duplicate()));
+        sessionRegistry.forEachNamedSession(session -> session.pushBusiness(packet.duplicate()));
     }
 
     /**

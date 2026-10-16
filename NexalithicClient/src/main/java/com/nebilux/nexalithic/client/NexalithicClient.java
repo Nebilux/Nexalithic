@@ -38,7 +38,7 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,12 +100,20 @@ public class NexalithicClient extends NexalithicEndpoint {
     public TaskHandle submit(NexalithicTask.Builder taskBuilder) {
         return requireSession().getTaskCoordinator().submit(taskBuilder);
     }
-    public boolean push(BusinessPacket packet) {
-        return requireSession().pushBusinessPacket(packet);
+    public boolean push(BusinessModel model) {
+        return requireSession().pushBusiness(model);
     }
 
     public SessionManager.State getSessionState() {
         return sessionManager.getState();
+    }
+
+    private ClientSession requireSession() {
+        ClientSession session = getSession();
+        if (session == null) {
+            throw NexalithicSessionException.noActiveClientSession();
+        }
+        return session;
     }
 
     private ClientSession getSession() {
@@ -129,14 +137,6 @@ public class NexalithicClient extends NexalithicEndpoint {
                 }
                 session = sessionManager.getCurrentSession();
             }
-        }
-        return session;
-    }
-
-    private ClientSession requireSession() {
-        ClientSession session = getSession();
-        if (session == null) {
-            throw NexalithicSessionException.noActiveClientSession();
         }
         return session;
     }

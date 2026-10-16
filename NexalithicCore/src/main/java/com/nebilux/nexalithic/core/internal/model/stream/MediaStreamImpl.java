@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.core.internal.model.stream;
 
-import com.nebilux.nexalithic.core.model.stream.ChunkReceiver;
-import com.nebilux.nexalithic.core.model.stream.ChunkSender;
-import com.nebilux.nexalithic.core.model.stream.media.MediaChunk;
-import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.ChunkReceiver;
+import com.nebilux.nexalithic.core.model.business.stream.ChunkSender;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaChunk;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
 
 /**
  * 内置媒体流实现；块队列和编解码器入口不属于公开的 MediaStream API。

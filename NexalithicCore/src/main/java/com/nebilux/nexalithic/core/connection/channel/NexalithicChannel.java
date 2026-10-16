@@ -17,12 +17,10 @@
 package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.model.NexalithicModel;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.model.stream.AbstractStream;
-import com.nebilux.nexalithic.core.model.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 
 import java.io.IOException;
 
@@ -34,27 +32,27 @@ import java.io.IOException;
  */
 public interface NexalithicChannel {
     enum Kind {
-        Packet_Signaling((byte) 0x0, NexalithicModel.Model.Packet, SignalingPacket.class),
-        Packet_Business((byte) 0x1, NexalithicModel.Model.Packet, BusinessPacket.class),
-        Stream_Media((byte) 0x2, NexalithicModel.Model.Stream, MediaStream.class),
-        Stream_File((byte) 0x3, NexalithicModel.Model.Stream, FileStream.class);
+        Signaling_Packet((byte) 0x0, NexalithicModel.Form.Packet, SignalingPacket.class),
+        Business_Packet((byte) 0x1, NexalithicModel.Form.Packet, BusinessPacket.class),
+        Business_Stream_Media((byte) 0x2, NexalithicModel.Form.Stream, MediaStream.class),
+        Business_Stream_File((byte) 0x3, NexalithicModel.Form.Stream, FileStream.class);
 
         private final byte code;
-        private final NexalithicModel.Model model;
+        private final NexalithicModel.Form form;
         private final Class<? extends NexalithicModel> clazz;
 
-        Kind(byte code, NexalithicModel.Model model, Class<? extends NexalithicModel> clazz) {
+        Kind(byte code, NexalithicModel.Form form, Class<? extends NexalithicModel> clazz) {
             this.code = code;
-            this.model = model;
+            this.form = form;
             this.clazz = clazz;
         }
 
         public static Kind fromCode(byte code) {
             return switch (code) {
-                case 0x0 -> Packet_Signaling;
-                case 0x1 -> Packet_Business;
-                case 0x2 -> Stream_Media;
-                case 0x3 -> Stream_File;
+                case 0x0 -> Signaling_Packet;
+                case 0x1 -> Business_Packet;
+                case 0x2 -> Business_Stream_Media;
+                case 0x3 -> Business_Stream_File;
                 default -> throw new IllegalArgumentException(
                         "Unknown channel kind protocol id: " + Byte.toUnsignedInt(code)
                 );
@@ -65,35 +63,24 @@ public interface NexalithicChannel {
             return code;
         }
 
-        public NexalithicModel.Model model() {
-            return model;
+        public NexalithicModel.Form form() {
+            return form;
         }
         public Class<? extends NexalithicModel> clazz() {
             return clazz;
         }
-        public AbstractPacket.Type packetType() {
-            return switch (this) {
-                case Packet_Signaling -> AbstractPacket.Type.Signaling;
-                case Packet_Business -> AbstractPacket.Type.Business;
-                default -> throw new IllegalStateException(
-                        "Channel kind %s does not carry packetType".formatted(this)
-                );
-            };
+
+        public boolean isSignaling() {
+            return this == Signaling_Packet;
         }
-        public AbstractStream.Type streamType() {
-            return switch (this) {
-                case Stream_Media -> AbstractStream.Type.Media;
-                case Stream_File -> AbstractStream.Type.File;
-                default -> throw new IllegalStateException(
-                        "Channel kind %s does not carry streamType".formatted(this)
-                );
-            };
+        public boolean isBusiness() {
+            return !isSignaling();
         }
         public boolean isPacket() {
-            return model() == NexalithicModel.Model.Packet;
+            return form() == NexalithicModel.Form.Packet;
         }
         public boolean isStream() {
-            return model() == NexalithicModel.Model.Stream;
+            return form() == NexalithicModel.Form.Stream;
         }
     }
     enum State {

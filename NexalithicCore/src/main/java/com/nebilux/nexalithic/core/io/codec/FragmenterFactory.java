@@ -25,10 +25,10 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.*;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.model.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.MpmcArrayQueue;
 
 /**

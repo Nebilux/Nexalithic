@@ -31,7 +31,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 import org.jctools.queues.SpmcArrayQueue;
@@ -136,13 +136,13 @@ public abstract class HandlerCoordinator<
             NexalithicHandler<HC> handler = handlerRegistry.match(packet.getPath());
             if (handler == null) {
                 logger.warn("No handler registered for path {}", packet.getPath());
-                session.pushBusinessPacket(BusinessPacket.create(BusinessPacket.Way.RESPONSE_NotHandler).setTaskId(packet.getTaskId()));
+                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_NotHandler).setTaskId(packet.getTaskId()));
                 return;
             }
             HR recyclable = wrapperPool.acquire();
             if (recyclable == null) {
                 logger.warn("No recyclable handler registered for path {}", packet.getPath());
-                session.pushBusinessPacket(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy).setTaskId(packet.getTaskId()));
+                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy).setTaskId(packet.getTaskId()));
                 return;
             }
             recyclable.initTarget(packet, session, handler);

@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.handler;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.TargetStaticRecyclableWrapper;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * Handler 调用上下文。
@@ -59,7 +59,7 @@ public abstract class HandlerContext<S extends AbstractSession<?>> {
      * @return 响应成功进入发送流程时返回 {@code true}
      */
     public boolean pushResponse(BusinessPacket response) {
-        return session.pushBusinessPacket(response.setTaskId(request.getTaskId()));
+        return session.pushBusiness(response.setTaskId(request.getTaskId()));
     }
 
     public static class Recyclable<S extends AbstractSession<?>, T extends HandlerContext<S>, W extends Recyclable<S, T, W>> extends TargetStaticRecyclableWrapper<T, W> {

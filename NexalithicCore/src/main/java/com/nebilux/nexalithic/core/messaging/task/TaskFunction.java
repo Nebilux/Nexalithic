@@ -17,7 +17,7 @@
 package com.nebilux.nexalithic.core.messaging.task;
 
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * 业务任务函数接口，定义了一个异步请求-响应周期的完整生命周期。

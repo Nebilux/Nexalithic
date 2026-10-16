@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.task;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;

@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.server.messaging;
 import com.nebilux.nexalithic.core.connection.session.SessionAttachment;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.server.session.ServerSession;
 import com.nebilux.nexalithic.server.session.SessionRegistry;
 
@@ -43,7 +43,7 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
         if (session == null) {
             return false;
         }
-        return session.pushBusinessPacket(packet);
+        return session.pushBusiness(packet);
     }
 
     public void forceSetSessionName(String sessionName) {
@@ -75,7 +75,7 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
         String currentSessionName = session.getSessionName();
         sessionRegistry.forEachNamedSession(s -> {
             if (!s.getSessionName().equals(currentSessionName)) {
-                s.pushBusinessPacket(packet.duplicate());
+                s.pushBusiness(packet.duplicate());
             }
         });
     }

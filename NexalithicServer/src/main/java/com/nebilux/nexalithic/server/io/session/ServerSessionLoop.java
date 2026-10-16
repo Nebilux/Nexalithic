@@ -23,7 +23,7 @@ import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
+import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.session.ServerSession;
 
@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  * @author Reonvia
  * @since 0.1.0
  */
-public abstract class ServerSessionLoop<P extends AbstractPacket> extends SessionLoop<HandshakeContext, SessionChannel<P, ServerSession>> implements TimerCoordinator<SessionChannel<P, ServerSession>> {
+public abstract class ServerSessionLoop<M extends NexalithicModel> extends SessionLoop<HandshakeContext, SessionChannel<? extends M, ServerSession>> implements TimerCoordinator<SessionChannel<? extends M, ServerSession>> {
     public static abstract class Options extends SessionLoop.Options {
         public final NexalithicOption<Integer> DispatchQueue_Capacity = defineOption(
                 1024, OptionValidator.positive()
@@ -60,18 +60,18 @@ public abstract class ServerSessionLoop<P extends AbstractPacket> extends Sessio
     }
 
     @Override
-    public long getExpiryTimeNanos(TimerContext<SessionChannel<P, ServerSession>> context) {
+    public long getExpiryTimeNanos(TimerContext<SessionChannel<? extends M, ServerSession>> context) {
         return getChannelExpiryTimeNanos(context.target());
     }
 
     @Override
-    public boolean isCancelled(TimerContext<SessionChannel<P, ServerSession>> context) {
+    public boolean isCancelled(TimerContext<SessionChannel<? extends M, ServerSession>> context) {
         return context.target().getLastActiveTimeNanos() == -1;
     }
 
     @Override
-    public boolean onExpiryTrigger(TimerContext<SessionChannel<P, ServerSession>> context) {
-        SessionChannel<P, ServerSession> target = context.target();
+    public boolean onExpiryTrigger(TimerContext<SessionChannel<? extends M, ServerSession>> context) {
+        SessionChannel<? extends M, ServerSession> target = context.target();
         if (System.nanoTime() < getChannelExpiryTimeNanos(target)) {
             return false;
         }
@@ -79,7 +79,7 @@ public abstract class ServerSessionLoop<P extends AbstractPacket> extends Sessio
         return true;
     }
 
-    protected long getChannelExpiryTimeNanos(SessionChannel<P, ServerSession> channel) {
+    protected long getChannelExpiryTimeNanos(SessionChannel<? extends M, ServerSession> channel) {
         return channel.getLastActiveTimeNanos() + CONSTANT.MaxIdleTimeNanos();
     }
 }

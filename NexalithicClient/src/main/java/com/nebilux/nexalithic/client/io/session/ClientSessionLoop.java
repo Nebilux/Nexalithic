@@ -29,11 +29,11 @@ import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.BareSignal;
-import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.signaling.packet.BareSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.ScalarSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
+import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessResponseSignal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,12 +103,12 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 if (session != null) {
                     long now = System.nanoTime();
                     if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
-                        session.pushSignalingPacket(BareSignal.HeartBeat);
+                        session.pushSignaling(BareSignal.HeartBeat);
                     }
                     if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
                         long interval = now - lastDynamicRateTickNanos;
                         lastDynamicRateTickNanos = now;
-                        SessionChannel<?, ClientSession> businessChannel = session.getBusinessChannel();
+                        SessionChannel<?, ClientSession> businessChannel = session.getChannel(NexalithicChannel.Kind.Business_Packet);
                         if (businessChannel.getState() == NexalithicChannel.State.Opened) {
                             long targetRate = businessChannel.evaluateDynamicRate(interval, now, dynamicRateController);
                             if (targetRate > 0) {
@@ -130,7 +130,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 if (session != null) {
                     long now = System.nanoTime();
                     if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
-                        session.pushSignalingPacket(BareSignal.HeartBeat);
+                        session.pushSignaling(BareSignal.HeartBeat);
                     }
                 }
             });
@@ -181,7 +181,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     @Override
     protected void dispatchReceivedModels(SessionChannel<?, ClientSession> channel) {
         ClientSession ownerSession = channel.getOwnerSession();
-        if (channel.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
+        if (channel.getKind() == NexalithicChannel.Kind.Signaling_Packet) {
             while (channel.get() instanceof SignalingPacket packet) {
                 handleSignalPacket(ownerSession, packet);
             }
@@ -197,7 +197,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
             case SignalingPacket.Signal.ChannelAccess_Response -> sessionManager.onChannelAccess(session, (ChannelAccessResponseSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                SessionChannel<?, ClientSession> businessChannel = session.getBusinessChannel();
+                SessionChannel<?, ClientSession> businessChannel = session.getChannel(NexalithicChannel.Kind.Business_Packet);
                 businessChannel.updateWriteRate(rate);
                 businessChannel.applyRate();
             }
@@ -212,7 +212,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
 
     private SessionChannel<?, ClientSession> acquireBusinessChannel(ClientChannelHandoff.Business handoff) throws Exception {
         ClientSession target = handoff.targetSession();
-        SessionChannel<?, ClientSession> channel = target.getBusinessChannel();
+        SessionChannel<?, ClientSession> channel = target.getChannel(NexalithicChannel.Kind.Business_Packet);
         openTransferredChannel(handoff, channel);
         return channel;
     }

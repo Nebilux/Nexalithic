@@ -328,7 +328,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                     return;
                 }
                 readBuffer.clear();
-                if (context.getKind() == NexalithicChannel.Kind.Packet_Signaling) {
+                if (context.getKind() == NexalithicChannel.Kind.Signaling_Packet) {
                     context.setPhase(HandshakeContext.Phase.PREPARE_SERVER_HELLO);
                     submitToExecutor(key, context);
                 } else {
@@ -428,7 +428,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
         byte[] secret = SecretKeyUtils.compactSecret(context.getPrivateKey(), readBuffer.rewind());
         SecretKeyContexts secretKeyContexts = SecretKeyContexts.fromSecret(secret, SecretKeyContexts.Side.SERVER);
         byte[] localFinished = SecretKeyUtils.generateFinished(secret, messageDigest.digest());
-        SecretKeyContext signalingSecretContext = secretKeyContexts.get(NexalithicChannel.Kind.Packet_Signaling);
+        SecretKeyContext signalingSecretContext = secretKeyContexts.get(NexalithicChannel.Kind.Signaling_Packet);
         byte[] remoteFinished = signalingSecretContext.decrypt(readBuffer.limit(readBuffer.capacity()));
         if (!MessageDigest.isEqual(localFinished, remoteFinished)) {
             throw new SecurityException("Finished verification failed");

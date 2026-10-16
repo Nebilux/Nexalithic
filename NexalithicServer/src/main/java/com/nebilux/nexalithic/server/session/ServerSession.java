@@ -17,7 +17,10 @@
 package com.nebilux.nexalithic.server.session;
 
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel.Kind;
+import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
+import com.nebilux.nexalithic.core.connection.channel.SessionSignalingChannel;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.connection.session.SessionAttachment;
 import com.nebilux.nexalithic.core.connection.session.SessionKey;
@@ -25,12 +28,14 @@ import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.security.SecretKeyContext;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
 import com.nebilux.nexalithic.server.io.session.signaling.SignalingLoop;
 import com.nebilux.nexalithic.server.session.access.ChannelAccessCoordinator;
+
+import java.util.EnumMap;
 
 /**
  * 服务器会话
@@ -63,7 +68,7 @@ public class ServerSession extends AbstractSession<ServerSession> {
         return (SignalingLoop) getSignalingChannel().getOwnerLoop();
     }
     public BusinessLoop getBusinessLoop() {
-        return (BusinessLoop) getBusinessChannel().getOwnerLoop();
+        return (BusinessLoop) this.<BusinessModel>getChannel(Kind.Business_Packet).getOwnerLoop();
     }
 
     public ServiceUnit getServiceUnit() {
@@ -72,7 +77,7 @@ public class ServerSession extends AbstractSession<ServerSession> {
 
     @Override
     protected boolean requestChannelAccess(SessionChannel<?, ServerSession> channel) {
-        if (channel.getKind() != NexalithicChannel.Kind.Packet_Business) {
+        if (channel.getKind() != NexalithicChannel.Kind.Business_Packet) {
             return false;
         }
         return channelAccessCoordinator.issue(
@@ -106,17 +111,21 @@ public class ServerSession extends AbstractSession<ServerSession> {
         }
 
         @Override
-        public SessionChannel<?, ServerSession> create(NexalithicChannel.Kind kind, ServerSession session, SecretKeyContext secretKeyContext) {
-            return switch (kind) {
-                case Packet_Signaling -> new SessionChannel<>(kind, serviceUnit.getSignalingLoop(), session,
-                        fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(), secretKeyContext);
-                case Packet_Business -> new SessionChannel<>(kind, serviceUnit.selectBusinessLoop(), session,
-                        fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session), secretKeyContext);
-                case Stream_Media -> new SessionChannel<>(kind, null, session,
-                        fragmenterFactory.createMedia(), assemblerFactory.createMedia(), secretKeyContext);
-                case Stream_File -> new SessionChannel<>(kind, null, session,
-                        fragmenterFactory.createFile(), assemblerFactory.createFile(), secretKeyContext);
-            };
+        public ChannelGroup<ServerSession> create(ServerSession session, SecretKeyContexts secretKeyContexts) {
+            SessionSignalingChannel<ServerSession> signaling = new SessionSignalingChannel<>(
+                    serviceUnit.getSignalingLoop(), session, fragmenterFactory.createSignaling(),
+                    assemblerFactory.createSignaling(), secretKeyContexts.get(Kind.Signaling_Packet));
+            EnumMap<Kind, SessionBusinessChannel<?, ServerSession>> business = new EnumMap<>(Kind.class);
+            business.put(Kind.Business_Packet, new SessionBusinessChannel<>(Kind.Business_Packet,
+                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createBusiness(session),
+                    assemblerFactory.createBusiness(session), secretKeyContexts.get(Kind.Business_Packet)));
+            business.put(Kind.Business_Stream_Media, new SessionBusinessChannel<>(Kind.Business_Stream_Media,
+                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createMedia(), assemblerFactory.createMedia(),
+                    secretKeyContexts.get(Kind.Business_Stream_Media)));
+            business.put(Kind.Business_Stream_File, new SessionBusinessChannel<>(Kind.Business_Stream_File,
+                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createFile(), assemblerFactory.createFile(),
+                    secretKeyContexts.get(Kind.Business_Stream_File)));
+            return new ChannelGroup<>(signaling, business);
         }
     }
 }

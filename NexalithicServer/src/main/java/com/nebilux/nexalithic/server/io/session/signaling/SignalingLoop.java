@@ -22,6 +22,7 @@ import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel.Kind;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
@@ -31,9 +32,9 @@ import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.packet.signaling.ScalarSignal;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
-import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessRequestSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.ScalarSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
+import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessRequestSignal;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.io.handshake.HandshakeContext;
 import com.nebilux.nexalithic.server.io.session.ServerSessionLoop;
@@ -77,7 +78,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
     private static final Modules MODULES = new Modules();
     private static final class Modules extends ModulesDefinition {
-        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>>> SharedTimeWheel =
+        private final NexalithicModule<SharedLifecycle<TimeWheel<SessionChannel<? extends SignalingPacket, ServerSession>>>> SharedTimeWheel =
                 defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
         private Modules() {
             super(SignalingLoop.class);
@@ -87,7 +88,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     private static final Logger logger = LoggerFactory.getLogger(SignalingLoop.class);
     private final SessionRegistry sessionRegistry;
     private final ChannelAccessCoordinator channelAccessCoordinator;
-    private final TimeWheel<SessionChannel<SignalingPacket, ServerSession>> timeWheel;
+    private final TimeWheel<SessionChannel<? extends SignalingPacket, ServerSession>> timeWheel;
     private final ServerSession.ChannelFactory channelFactory;
     private final Function<HandshakeContext, ServerSession> sessionFactory;
 
@@ -96,7 +97,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         sessionRegistry = context.getModule(NexalithicServer.MODULES.SessionRegistry);
         channelAccessCoordinator = context.getModule(NexalithicServer.MODULES.ChannelAccessCoordinator);
 
-        SharedLifecycle<TimeWheel<SessionChannel<SignalingPacket, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
+        SharedLifecycle<TimeWheel<SessionChannel<? extends SignalingPacket, ServerSession>>> sharedTimeWheel = context.getModule(MODULES.SharedTimeWheel,
                 () -> new SharedLifecycle<>(new TimeWheel<>(
                         context.getOption(OPTIONS.TimeWheel.TickMillis),
                         context.getOption(OPTIONS.TimeWheel.SlotCount),
@@ -105,7 +106,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
                         new GenericWrapperPool<>(
                                 PoolStorageFactory.bounded(MpmcArrayQueue::new, context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                                 PoolStrategyFactory.alwaysCreate(),
-                                TimeWheel.ScheduleWrapper<SessionChannel<SignalingPacket, ServerSession>>::new
+                                TimeWheel.ScheduleWrapper<SessionChannel<? extends SignalingPacket, ServerSession>>::new
                         ),
                         SignalingLoop.class.getSimpleName()
                 ))
@@ -169,7 +170,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    protected void onChannelAcquired(HandshakeContext handoff, SessionChannel<SignalingPacket, ServerSession> channel) {
+    protected void onChannelAcquired(HandshakeContext handoff, SessionChannel<? extends SignalingPacket, ServerSession> channel) {
         if (!sessionRegistry.putSession(channel.getOwnerSession())) {
             throw new IllegalStateException("Session key already registered");
         }
@@ -177,14 +178,14 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    protected void onExecuteDisconnectEvent(SessionChannel<SignalingPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
+    protected void onExecuteDisconnectEvent(SessionChannel<? extends SignalingPacket, ServerSession> channel, Event.Disconnect.Reason reason) {
         ServerSession session = channel.getOwnerSession();
         sessionRegistry.removeSession(session);
         session.close();
     }
 
     @Override
-    protected void dispatchReceivedModels(SessionChannel<SignalingPacket, ServerSession> channel) {
+    protected void dispatchReceivedModels(SessionChannel<? extends SignalingPacket, ServerSession> channel) {
         SignalingPacket packet;
         while ((packet = channel.get()) != null) {
             handleSignalPacket(channel, packet);
@@ -192,8 +193,8 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
     }
 
     @Override
-    public boolean onExpiryTrigger(TimerContext<SessionChannel<SignalingPacket, ServerSession>> context) {
-        SessionChannel<SignalingPacket, ServerSession> target = context.target();
+    public boolean onExpiryTrigger(TimerContext<SessionChannel<? extends SignalingPacket, ServerSession>> context) {
+        SessionChannel<? extends SignalingPacket, ServerSession> target = context.target();
         if (System.nanoTime() < getChannelExpiryTimeNanos(target)) {
             return false;
         }
@@ -204,12 +205,12 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         return true;
     }
 
-    private void handleSignalPacket(SessionChannel<SignalingPacket, ServerSession> channel, SignalingPacket packet) {
+    private void handleSignalPacket(SessionChannel<? extends SignalingPacket, ServerSession> channel, SignalingPacket packet) {
         if (!switch (packet.getSignal()) {
             case SignalingPacket.Signal.ChannelAccess_Request -> handleChannelAccessRequest(channel, (ChannelAccessRequestSignal) packet);
             case SignalingPacket.Signal.BusinessChannelRate -> {
                 long rate = ((ScalarSignal) packet).asLong();
-                channel.getOwnerSession().getBusinessChannel().updateWriteRate(rate);
+                channel.getOwnerSession().getChannel(Kind.Business_Packet).updateWriteRate(rate);
                 yield true;
             }
             default -> true;
@@ -219,7 +220,7 @@ public class SignalingLoop extends ServerSessionLoop<SignalingPacket> {
         }
     }
 
-    private boolean handleChannelAccessRequest(SessionChannel<SignalingPacket, ServerSession> channel, ChannelAccessRequestSignal request) {
+    private boolean handleChannelAccessRequest(SessionChannel<? extends SignalingPacket, ServerSession> channel, ChannelAccessRequestSignal request) {
         ChannelAccessCoordinator.Result result = channelAccessCoordinator.issue(channel.getOwnerSession(), request.getKind(), channel.getRemoteAddress().getAddress());
         return switch (result) {
             case ISSUED -> true;

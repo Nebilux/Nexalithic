@@ -21,7 +21,7 @@ import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * 任务编解码器回调

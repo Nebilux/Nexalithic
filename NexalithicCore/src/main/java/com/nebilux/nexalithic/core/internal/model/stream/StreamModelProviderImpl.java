@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.core.internal.model.stream;
 
-import com.nebilux.nexalithic.core.model.stream.AbstractStream;
-import com.nebilux.nexalithic.core.model.stream.StreamModelProvider;
-import com.nebilux.nexalithic.core.model.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.AbstractStream;
+import com.nebilux.nexalithic.core.model.business.stream.StreamModelProvider;
+import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
 
 /**
  * 流模型提供者impl

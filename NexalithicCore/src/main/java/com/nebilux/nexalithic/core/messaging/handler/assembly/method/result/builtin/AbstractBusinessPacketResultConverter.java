@@ -17,7 +17,7 @@
 package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.builtin;
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * 基于 {@link BusinessPacket} 响应包的结果转换器公共基类。

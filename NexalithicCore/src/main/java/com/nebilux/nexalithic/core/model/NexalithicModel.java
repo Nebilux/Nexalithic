@@ -23,10 +23,10 @@ package com.nebilux.nexalithic.core.model;
  * @since 0.1.0
  */
 public interface NexalithicModel {
-    enum Model {
+    enum Form {
         Packet,
         Stream
     }
 
-    Model model();
+    Form form();
 }

@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.b
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.HandlerMethodArgumentConverter;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestWay;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;

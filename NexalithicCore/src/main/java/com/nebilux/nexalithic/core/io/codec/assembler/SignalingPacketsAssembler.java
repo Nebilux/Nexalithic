@@ -17,7 +17,7 @@
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.SpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

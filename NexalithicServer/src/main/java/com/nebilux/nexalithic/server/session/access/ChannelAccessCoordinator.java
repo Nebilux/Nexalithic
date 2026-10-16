@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.server.session.access;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.connection.session.SessionKey;
-import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessResponseSignal;
 import com.nebilux.nexalithic.server.NexalithicServer;
 import com.nebilux.nexalithic.server.routing.NetworkRouter;
 import com.nebilux.nexalithic.server.session.ServerSession;
@@ -80,7 +80,7 @@ public class ChannelAccessCoordinator {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(remoteAddress, "remoteAddress");
-        if (kind != NexalithicChannel.Kind.Packet_Business) {
+        if (kind != NexalithicChannel.Kind.Business_Packet) {
             return Result.UNSUPPORTED_KIND;
         }
         NetworkRouter.RouteTarget target = networkRouter.chooseTarget(kind, remoteAddress);
@@ -93,7 +93,7 @@ public class ChannelAccessCoordinator {
         } while (!sessionRegistry.relateChannelToken(token, session, kind));
         boolean issued = false;
         try {
-            issued = session.pushSignalingPacket(new ChannelAccessResponseSignal(kind, target.explicitAddress(), target.port(), token));
+            issued = session.pushSignaling(new ChannelAccessResponseSignal(kind, target.explicitAddress(), target.port(), token));
             return issued ? Result.ISSUED : Result.SIGNALING_QUEUE_FULL;
         } finally {
             if (!issued) {

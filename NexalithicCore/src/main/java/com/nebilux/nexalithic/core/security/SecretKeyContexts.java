@@ -75,16 +75,16 @@ public class SecretKeyContexts {
 
     private static byte[] label(NexalithicChannel.Kind kind, Side side) {
         return switch (kind) {
-            case Packet_Signaling -> side == Side.CLIENT
+            case Signaling_Packet -> side == Side.CLIENT
                     ? LABEL_CLIENT_SIGNALING
                     : LABEL_SERVER_SIGNALING;
-            case Packet_Business -> side == Side.CLIENT
+            case Business_Packet -> side == Side.CLIENT
                     ? LABEL_CLIENT_BUSINESS
                     : LABEL_SERVER_BUSINESS;
-            case Stream_Media -> side == Side.CLIENT
+            case Business_Stream_Media -> side == Side.CLIENT
                     ? LABEL_CLIENT_MEDIA
                     : LABEL_SERVER_MEDIA;
-            case Stream_File -> side == Side.CLIENT
+            case Business_Stream_File -> side == Side.CLIENT
                     ? LABEL_CLIENT_FILE
                     : LABEL_SERVER_FILE;
         };

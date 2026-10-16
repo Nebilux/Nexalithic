@@ -22,7 +22,7 @@ import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

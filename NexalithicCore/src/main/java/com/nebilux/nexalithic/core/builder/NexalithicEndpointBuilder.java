@@ -27,8 +27,8 @@ import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistryConf
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryConfigurer;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryHelper;
-import com.nebilux.nexalithic.core.model.packet.business.payload.FilePayload;
-import com.nebilux.nexalithic.core.model.packet.business.payload.TextPayload;
+import com.nebilux.nexalithic.core.model.business.packet.payload.FilePayload;
+import com.nebilux.nexalithic.core.model.business.packet.payload.TextPayload;
 
 import java.util.List;
 

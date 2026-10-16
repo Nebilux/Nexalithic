@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.io.codec.assembler;
 import com.nebilux.nexalithic.core.io.codec.TaskCodecCallback;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * 装配回调

@@ -21,7 +21,7 @@ import com.nebilux.nexalithic.core.messaging.handler.NexalithicHandler;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.future.TaskFuture;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

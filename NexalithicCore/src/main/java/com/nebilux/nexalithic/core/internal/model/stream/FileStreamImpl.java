@@ -16,10 +16,10 @@
 
 package com.nebilux.nexalithic.core.internal.model.stream;
 
-import com.nebilux.nexalithic.core.model.stream.ChunkReceiver;
-import com.nebilux.nexalithic.core.model.stream.ChunkSender;
-import com.nebilux.nexalithic.core.model.stream.file.FileChunk;
-import com.nebilux.nexalithic.core.model.stream.file.FileStream;
+import com.nebilux.nexalithic.core.model.business.stream.ChunkReceiver;
+import com.nebilux.nexalithic.core.model.business.stream.ChunkSender;
+import com.nebilux.nexalithic.core.model.business.stream.file.FileChunk;
+import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
 
 /**
  * 内置文件流实现；块队列和编解码器入口不属于公开的 FileStream API。

@@ -17,9 +17,9 @@
 package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.builtin;
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
-import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestPayload;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.HandlerMethodArgumentConverter;
-import com.nebilux.nexalithic.core.model.packet.business.payload.AbstractPayload;
+import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestPayload;
+import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;

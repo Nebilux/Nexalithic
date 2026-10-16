@@ -17,7 +17,7 @@
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
 
 import java.io.IOException;
 

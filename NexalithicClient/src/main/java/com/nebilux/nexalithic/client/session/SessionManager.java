@@ -30,8 +30,8 @@ import com.nebilux.nexalithic.core.event.EventTopic;
 import com.nebilux.nexalithic.core.event.NexalithicEvent;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
-import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessRequestSignal;
-import com.nebilux.nexalithic.core.model.packet.signaling.channel.ChannelAccessResponseSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessRequestSignal;
+import com.nebilux.nexalithic.core.model.signaling.packet.channel.ChannelAccessResponseSignal;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.core.security.SecretKeyUtils;
@@ -431,16 +431,16 @@ public class SessionManager {
 
     public boolean requestChannelAccess(SessionChannel<?, ClientSession> targetChannel) {
         ClientSession ownerSession = targetChannel.getOwnerSession();
-        if (targetChannel.getKind() != NexalithicChannel.Kind.Packet_Business
+        if (targetChannel.getKind() != NexalithicChannel.Kind.Business_Packet
                 || terminationRequested || !isAccepting() || getCurrentSession() != ownerSession) {
             return false;
         }
-        return ownerSession.pushSignalingPacket(new ChannelAccessRequestSignal(targetChannel.getKind()));
+        return ownerSession.pushSignaling(new ChannelAccessRequestSignal(targetChannel.getKind()));
     }
 
     /** 接收当前 Session 返回的完整通道接入信息。 */
     public void onChannelAccess(ClientSession session, ChannelAccessResponseSignal access) {
-        if (access.getKind() != NexalithicChannel.Kind.Packet_Business) {
+        if (access.getKind() != NexalithicChannel.Kind.Business_Packet) {
             throw new IllegalArgumentException(
                     "Unsupported channel access response kind: " + access.getKind()
             );
@@ -518,7 +518,7 @@ public class SessionManager {
             }
             case ClientChannelHandoff.Business business -> {
                 ClientSession targetSession = business.targetSession();
-                SessionChannel<?, ClientSession> targetChannel = targetSession.getChannel(NexalithicChannel.Kind.Packet_Business);
+                SessionChannel<?, ClientSession> targetChannel = targetSession.getChannel(NexalithicChannel.Kind.Business_Packet);
                 abortChannelOpening(targetChannel);
                 if (!accepts(targetSession, business.stamp())) {
                     return;
@@ -537,7 +537,7 @@ public class SessionManager {
     public void onChannelDisconnected(SessionChannel<?, ClientSession> channel, ChannelLoop.Event.Disconnect.Reason reason) {
         ClientSession ownerSession = channel.getOwnerSession();
         switch (channel.getKind()) {
-            case Packet_Signaling -> {
+            case Signaling_Packet -> {
                 ownerSession.close();
                 synchronized (connectionLock) {
                     SessionPair cleared = removeSessionAndAdvance(ownerSession);
@@ -567,7 +567,7 @@ public class SessionManager {
                     scheduleSignalingAttempt(remote, reconnectStamp, 1, 0, null);
                 }
             }
-            case Packet_Business -> {
+            case Business_Packet -> {
                 releaseChannelOpenTarget(channel);
                 if (!isAccepting() || getCurrentSession() != ownerSession || !shouldReconnect(reason)) {
                     return;
@@ -624,7 +624,7 @@ public class SessionManager {
         byte[] secret = SecretKeyUtils.compactSecret(keyPair.getPrivate(), readBuffer.slice(certificatesLength, keyAndSignatureLength));
         byte[] localFinished = SecretKeyUtils.generateFinished(secret, transcriptHash.digest());
         SecretKeyContexts secretKeyContexts = SecretKeyContexts.fromSecret(secret, SecretKeyContexts.Side.CLIENT);
-        SecretKeyContext signalingSecretKey = secretKeyContexts.get(NexalithicChannel.Kind.Packet_Signaling);
+        SecretKeyContext signalingSecretKey = secretKeyContexts.get(NexalithicChannel.Kind.Signaling_Packet);
         writeBuffer.put(signalingSecretKey.encrypt(localFinished));
         writeFully(socketChannel, writeBuffer.flip());
         readBuffer.clear().limit(serverFinishedLength);
@@ -738,7 +738,7 @@ public class SessionManager {
     }
     private void executeBusinessNegotiation(ClientSession targetSession) {
         if (isAccepting() && getCurrentSession() == targetSession) {
-            targetSession.tryOpenChannel(NexalithicChannel.Kind.Packet_Business);
+            targetSession.tryOpenChannel(NexalithicChannel.Kind.Business_Packet);
         }
     }
 

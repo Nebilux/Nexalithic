@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.messaging.payload;
 
-import com.nebilux.nexalithic.core.model.packet.business.payload.AbstractPayload;
+import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.util.Arrays;
 import java.util.Collection;

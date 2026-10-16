@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.messaging.task.event;
 
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 /**
  * 任务事件

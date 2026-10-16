@@ -30,7 +30,7 @@ import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.codec.PacketFrame;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

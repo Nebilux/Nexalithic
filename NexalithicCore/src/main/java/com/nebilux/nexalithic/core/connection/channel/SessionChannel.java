@@ -25,8 +25,6 @@ import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.model.NexalithicModel;
-import com.nebilux.nexalithic.core.model.packet.AbstractPacket;
-import com.nebilux.nexalithic.core.model.stream.AbstractStream;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 import com.nebilux.nexalithic.core.security.SecurityCodec;
 
@@ -41,12 +39,12 @@ import java.security.InvalidKeyException;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * 会话通道。模型由对应的编解码器处理；Stream 的块线路格式由具体编解码器定义。
+ * 会话通道
  *
  * @author Reonvia
  * @since 0.1.0
  */
-public class SessionChannel<M extends NexalithicModel, S extends AbstractSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<M, S>>, SocketChannel> {
+public abstract class SessionChannel<M extends NexalithicModel, S extends AbstractSession<S>> extends LoopChannel<SessionLoop<?, ? super SessionChannel<M, S>>, SocketChannel> {
     protected final S ownerSession;
     protected final ModelFragmenter<M> fragmenter;
     protected final ModelAssembler<M> assembler;
@@ -100,27 +98,12 @@ public class SessionChannel<M extends NexalithicModel, S extends AbstractSession
      * 成功提交后，调用方仍需启用写兴趣；后续异步产生的块也需要再次唤醒写入。
      */
     public final boolean put(M model) {
-        if (!accepts(model)) {
-            throw new IllegalArgumentException("Model does not match channel kind " + getKind());
-        }
         return fragmenter.feed(model);
     }
 
     /** 取出一个可交付模型；没有完整 Packet 或尚未建立的 Stream 时返回 null。 */
     public final M get() {
         return assembler.drain();
-    }
-
-    private boolean accepts(M model) {
-        if (model == null || model.model() != getKind().model()) {
-            return false;
-        }
-        return switch (getKind()) {
-            case Packet_Signaling, Packet_Business -> model instanceof AbstractPacket packet
-                    && packet.type() == getKind().packetType();
-            case Stream_Media, Stream_File -> model instanceof AbstractStream<?> stream
-                    && stream.type() == getKind().streamType() && stream.direction().hasInput();
-        };
     }
 
     public final boolean fragmenterIsEmpty() {

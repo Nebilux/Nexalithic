@@ -36,7 +36,7 @@ import com.nebilux.nexalithic.core.messaging.task.event.TaskEvent;
 import com.nebilux.nexalithic.core.messaging.task.event.TaskMailbox;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferListener;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
@@ -304,7 +304,7 @@ public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator
                 executeFailed(task, new IllegalStateException("Task request returned null"));
                 return;
             }
-            boolean submitted = session.pushBusinessPacket(request.setTaskId(task.awaitResponse().getTaskId()));
+            boolean submitted = session.pushBusiness(request.setTaskId(task.awaitResponse().getTaskId()));
             if (!submitted) {
                 executeFailed(task, new IllegalStateException("Task request submission failed"));
             }

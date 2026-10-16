@@ -21,8 +21,8 @@ import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.TargetDynamicRecyclableWrapper;
 import com.nebilux.nexalithic.core.io.codec.CodecCallback;
 import com.nebilux.nexalithic.core.io.codec.PacketFrame;
-import com.nebilux.nexalithic.core.model.packet.business.BusinessPacket;
-import com.nebilux.nexalithic.core.model.packet.business.payload.AbstractPayload;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.io.IOException;
 import java.util.List;

@@ -20,7 +20,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.packet.signaling.SignalingPacket;
+import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
