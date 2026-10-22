@@ -103,7 +103,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 ClientSession session = sessionManager.getCurrentSession();
                 if (session != null) {
                     long now = System.nanoTime();
-                    if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
+                    if (now - session.getSignalingChannel().getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
                         session.pushSignaling(BareSignal.HeartBeat);
                     }
                     if (now - lastDynamicRateTickNanos >= dynamicRateTickNanos) {
@@ -131,7 +131,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
                 ClientSession session = sessionManager.getCurrentSession();
                 if (session != null) {
                     long now = System.nanoTime();
-                    if (now - session.getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
+                    if (now - session.getSignalingChannel().getLastActiveTimeNanos() >= heartBeatIntervalNanos) {
                         session.pushSignaling(BareSignal.HeartBeat);
                     }
                 }
