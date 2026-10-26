@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.model.business.stream.file;
+package com.nebilux.nexalithic.core.model.business.stream.builtin;
 
-import com.nebilux.nexalithic.core.model.business.stream.AbstractChunk;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
@@ -27,7 +28,7 @@ import java.util.Objects;
  * @author Reonvia
  * @since 0.5.0
  */
-public final class FileChunk extends AbstractChunk {
+public final class FileChunk extends BusinessStream.Chunk {
     private final long offset;
     private final byte[] data;
 
@@ -47,11 +48,35 @@ public final class FileChunk extends AbstractChunk {
         return offset;
     }
 
+    @Override
     public int size() {
         return data.length;
     }
 
     public ByteBuffer data() {
         return ByteBuffer.wrap(data).asReadOnlyBuffer();
+    }
+
+    public static final class Codec implements ChunkCodec<FileChunk> {
+
+        @Override
+        public int id() {
+            return 2;
+        }
+
+        @Override
+        public Class<FileChunk> clazz() {
+            return FileChunk.class;
+        }
+
+        @Override
+        public Encoder<FileChunk> encoder() {
+            return null;
+        }
+
+        @Override
+        public Decoder<FileChunk> decoder() {
+            return null;
+        }
     }
 }

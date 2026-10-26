@@ -28,8 +28,8 @@ import com.nebilux.nexalithic.core.io.codec.assembler.*;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.MpmcArrayQueue;
 import org.jctools.queues.MpscArrayQueue;
@@ -45,12 +45,16 @@ import java.util.function.IntFunction;
  * @since 0.1.0
  */
 public class AssemblerFactory {
+    private final ChunkCodecRegistry chunkCodecRegistry;
+
     private final WrapperPool<BusinessPacketAssemblyWrapper> wrapperPool;
     private final TimeWheel<BusinessPacketAssemblyWrapper> timeWheel;
     private final int PacketQueue_Capacity_;
 
     public AssemblerFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules,
                             NexalithicEndpoint.Type type, TimeWheel<BusinessPacketAssemblyWrapper> timeWheel) {
+        chunkCodecRegistry = context.getModule(CodecResources.MODULES.ChunkCodecRegistry);
+
         this.timeWheel = timeWheel;
         PacketQueue_Capacity_ = context.getOption(BusinessPacketsAssembler.OPTIONS.PacketQueue_Capacity);
         BusinessPacketAssemblyWrapper.Constant businessPacketAssemblyConstant = new BusinessPacketAssemblyWrapper.Constant(
@@ -69,19 +73,15 @@ public class AssemblerFactory {
         );
     }
 
-    public ModelAssembler<SignalingPacket> createSignaling() {
+    public ModelAssembler<SignalingPacket> createSignalingPacket() {
         return new SignalingPacketsAssembler();
     }
 
-    public ModelAssembler<BusinessPacket> createBusiness(AbstractSession<?> session) {
+    public ModelAssembler<BusinessPacket> createBusinessPacket(AbstractSession<?> session) {
         return new BusinessPacketsAssembler(session, wrapperPool, timeWheel, PacketQueue_Capacity_);
     }
 
-    public ModelAssembler<MediaStream> createMedia() {
-        return new MediaStreamAssembler();
-    }
-
-    public ModelAssembler<FileStream> createFile() {
-        return new FileStreamAssembler();
+    public ModelAssembler<BusinessStream<?>> createBusinessStream() {
+        return new BusinessStreamAssembler(chunkCodecRegistry);
     }
 }

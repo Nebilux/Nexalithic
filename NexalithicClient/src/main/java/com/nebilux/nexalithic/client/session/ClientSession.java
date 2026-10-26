@@ -63,26 +63,23 @@ public class ClientSession extends AbstractSession<ClientSession> {
         private final AssemblerFactory assemblerFactory;
 
         public ChannelFactory(ClientSessionLoop loop, CodecResources resources) {
-            this.fragmenterFactory = resources.fragmenters();
-            this.assemblerFactory = resources.assemblers();
+            this.fragmenterFactory = resources.fragmenterFactory();
+            this.assemblerFactory = resources.assemblerFactory();
             this.loop = loop;
         }
 
         @Override
         public ChannelGroup<ClientSession> create(ClientSession session, SecretKeyContexts secretKeyContexts) {
             SessionSignalingChannel<ClientSession> signaling = new SessionSignalingChannel<>(loop, session,
-                    fragmenterFactory.createSignaling(), assemblerFactory.createSignaling(),
+                    fragmenterFactory.createSignalingPacket(), assemblerFactory.createSignalingPacket(),
                     secretKeyContexts.get(Kind.Signaling_Packet));
             EnumMap<Kind, SessionBusinessChannel<?, ClientSession>> business = new EnumMap<>(Kind.class);
             business.put(Kind.Business_Packet, new SessionBusinessChannel<>(Kind.Business_Packet, loop, session,
-                    fragmenterFactory.createBusiness(session), assemblerFactory.createBusiness(session),
+                    fragmenterFactory.createBusinessPacket(session), assemblerFactory.createBusinessPacket(session),
                     secretKeyContexts.get(Kind.Business_Packet)));
-            business.put(Kind.Business_Stream_Media, new SessionBusinessChannel<>(Kind.Business_Stream_Media, loop, session,
-                    fragmenterFactory.createMedia(), assemblerFactory.createMedia(),
-                    secretKeyContexts.get(Kind.Business_Stream_Media)));
-            business.put(Kind.Business_Stream_File, new SessionBusinessChannel<>(Kind.Business_Stream_File, loop, session,
-                    fragmenterFactory.createFile(), assemblerFactory.createFile(),
-                    secretKeyContexts.get(Kind.Business_Stream_File)));
+            business.put(Kind.Business_Stream, new SessionBusinessChannel<>(Kind.Business_Stream, loop, session,
+                    fragmenterFactory.createBusinessStream(), assemblerFactory.createBusinessStream(),
+                    secretKeyContexts.get(Kind.Business_Stream)));
             return new ChannelGroup<>(signaling, business);
         }
     }

@@ -431,8 +431,7 @@ public class SessionManager {
 
     public boolean requestChannelAccess(SessionChannel<?, ClientSession> targetChannel) {
         ClientSession ownerSession = targetChannel.getOwnerSession();
-        if (targetChannel.getKind() != NexalithicChannel.Kind.Business_Packet
-                || terminationRequested || !isAccepting() || getCurrentSession() != ownerSession) {
+        if (terminationRequested || !isAccepting() || getCurrentSession() != ownerSession) {
             return false;
         }
         return ownerSession.pushSignaling(new ChannelAccessRequestSignal(targetChannel.getKind()));
@@ -440,11 +439,6 @@ public class SessionManager {
 
     /** 接收当前 Session 返回的完整通道接入信息。 */
     public void onChannelAccess(ClientSession session, ChannelAccessResponseSignal access) {
-        if (access.getKind() != NexalithicChannel.Kind.Business_Packet) {
-            throw new IllegalArgumentException(
-                    "Unsupported channel access response kind: " + access.getKind()
-            );
-        }
         SessionChannel<?, ClientSession> targetChannel = session.getChannel(access.getKind());
         AtomicReference<SessionChannel<?, ClientSession>> openTarget = channelOpenTarget(access.getKind());
         SessionPair current = sessionPair.get();
@@ -452,11 +446,14 @@ public class SessionManager {
             targetChannel.abortOpen();
             return;
         }
+        if (targetChannel.getState() != NexalithicChannel.State.Opening) {
+            return;
+        }
         if (!openTarget.compareAndSet(null, targetChannel)) {
             return;
         }
         long attemptStamp = current.stamp();
-            if (terminationRequested || !accepts(session, attemptStamp)) {
+        if (terminationRequested || !accepts(session, attemptStamp)) {
             abortChannelOpening(targetChannel);
             return;
         }
@@ -518,7 +515,7 @@ public class SessionManager {
             }
             case ClientChannelHandoff.Business business -> {
                 ClientSession targetSession = business.targetSession();
-                SessionChannel<?, ClientSession> targetChannel = targetSession.getChannel(NexalithicChannel.Kind.Business_Packet);
+                SessionChannel<?, ClientSession> targetChannel = business.targetChannel();
                 abortChannelOpening(targetChannel);
                 if (!accepts(targetSession, business.stamp())) {
                     return;
@@ -528,7 +525,7 @@ public class SessionManager {
                     return;
                 }
                 logger.warn("Business channel acquisition failed", failure);
-                scheduleBusinessNegotiation(targetSession);
+                scheduleBusinessNegotiation(targetSession, targetChannel.getKind());
             }
             default -> throw new RejectedExecutionException("Unknown handoff: " + handoff);
         }
@@ -567,12 +564,12 @@ public class SessionManager {
                     scheduleSignalingAttempt(remote, reconnectStamp, 1, 0, null);
                 }
             }
-            case Business_Packet -> {
+            case Business_Packet, Business_Stream -> {
                 releaseChannelOpenTarget(channel);
                 if (!isAccepting() || getCurrentSession() != ownerSession || !shouldReconnect(reason)) {
                     return;
                 }
-                scheduleBusinessNegotiation(ownerSession);
+                scheduleBusinessNegotiation(ownerSession, channel.getKind());
             }
             default -> throw new RejectedExecutionException("Unknown channel kind: " + channel.getKind());
         }
@@ -660,7 +657,7 @@ public class SessionManager {
             ByteBuffer tokenBuffer = ByteBuffer.allocate(SessionKey.LENGTH);
             token.toByteBuffer(tokenBuffer);
             writeFully(socketChannel, tokenBuffer.flip());
-            handoff = new ClientChannelHandoff.Business(attemptStamp, socketChannel, targetSession);
+            handoff = new ClientChannelHandoff.Business(attemptStamp, socketChannel, targetChannel);
             socketChannel = null;
             if (!accepts(targetSession, attemptStamp) || !sessionLoop().submitAcquireEvent(handoff)) {
                 handoff.discard();
@@ -672,7 +669,7 @@ public class SessionManager {
             abortChannelOpening(targetChannel);
             if (accepts(targetSession, attemptStamp)) {
                 logger.warn("Business channel connection failed", failure);
-                scheduleBusinessNegotiation(targetSession);
+                scheduleBusinessNegotiation(targetSession, targetChannel.getKind());
             }
         } catch (Error fatal) {
             abortChannelOpening(targetChannel);
@@ -726,19 +723,19 @@ public class SessionManager {
         }
     }
 
-    private void scheduleBusinessNegotiation(ClientSession targetSession) {
+    private void scheduleBusinessNegotiation(ClientSession targetSession, NexalithicChannel.Kind kind) {
         if (!isAccepting() || getCurrentSession() != targetSession) {
             return;
         }
         try {
-            executeDelayed(() -> executeBusinessNegotiation(targetSession), TimeUnit.SECONDS.toMillis(1));
+            executeDelayed(() -> executeBusinessNegotiation(targetSession, kind), TimeUnit.SECONDS.toMillis(1));
         } catch (RejectedExecutionException failure) {
             logger.debug("Business reconnection rejected because SessionManager is stopping", failure);
         }
     }
-    private void executeBusinessNegotiation(ClientSession targetSession) {
+    private void executeBusinessNegotiation(ClientSession targetSession, NexalithicChannel.Kind kind) {
         if (isAccepting() && getCurrentSession() == targetSession) {
-            targetSession.tryOpenChannel(NexalithicChannel.Kind.Business_Packet);
+            targetSession.tryOpenChannel(kind);
         }
     }
 

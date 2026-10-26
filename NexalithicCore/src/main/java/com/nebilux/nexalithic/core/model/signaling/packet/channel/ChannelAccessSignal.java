@@ -47,7 +47,7 @@ public abstract sealed class ChannelAccessSignal extends SignalingPacket permits
         super(signal);
         Objects.requireNonNull(buffer, "buffer");
         validateLength(contentLength, minimumLength, maximumLength);
-        this.kind = NexalithicChannel.Kind.fromCode(buffer.unsafeGetByte());
+        this.kind = NexalithicChannel.Kind.from(buffer.unsafeGetByte());
         this.length = (short) contentLength;
     }
 

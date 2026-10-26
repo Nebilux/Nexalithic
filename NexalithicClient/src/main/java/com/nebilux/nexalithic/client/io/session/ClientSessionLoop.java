@@ -213,8 +213,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
     }
 
     private SessionChannel<?, ClientSession> acquireBusinessChannel(ClientChannelHandoff.Business handoff) throws Exception {
-        ClientSession target = handoff.targetSession();
-        SessionChannel<?, ClientSession> channel = target.getChannel(NexalithicChannel.Kind.Business_Packet);
+        SessionChannel<?, ClientSession> channel = handoff.targetChannel();
         openTransferredChannel(handoff, channel);
         return channel;
     }

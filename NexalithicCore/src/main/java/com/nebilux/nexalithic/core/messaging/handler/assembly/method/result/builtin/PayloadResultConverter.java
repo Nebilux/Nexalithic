@@ -19,7 +19,6 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.bui
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.lang.reflect.Method;
 
@@ -35,14 +34,14 @@ public class PayloadResultConverter<HC extends HandlerContext<?>> extends Abstra
 
     @Override
     public boolean supports(Method method, Class<?> resultType) {
-        return AbstractPayload.class.isAssignableFrom(resultType);
+        return BusinessPacket.Payload.class.isAssignableFrom(resultType);
     }
 
     @Override
     public void convert(HC context, Method method, Object result) {
         BusinessPacket response = createResponse();
         if (result != null) {
-            response.attach((AbstractPayload<?>) result);
+            response.attach((BusinessPacket.Payload<?>) result);
         }
         context.pushResponse(response);
     }

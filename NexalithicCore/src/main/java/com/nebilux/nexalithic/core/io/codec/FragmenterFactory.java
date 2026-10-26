@@ -26,8 +26,8 @@ import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.*;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.MpmcArrayQueue;
 
@@ -38,10 +38,14 @@ import org.jctools.queues.MpmcArrayQueue;
  * @since 0.1.0
  */
 public class FragmenterFactory {
+    private final ChunkCodecRegistry chunkCodecRegistry;
+
     private final int SignalingPacketsFragmenter_WrapperQueue_Capacity_, BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_;
     private final WrapperPool<BusinessPacketFragmentWrapper> businessPacketWrapperPool;
 
     public FragmenterFactory(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules) {
+        chunkCodecRegistry = context.getModule(CodecResources.MODULES.ChunkCodecRegistry);
+
         SignalingPacketsFragmenter_WrapperQueue_Capacity_ = context.getOption(SignalingPacketsFragmenter.OPTIONS.WrapperQueue_Capacity);
         BusinessPacketsFragmenter_WrapperQueue_Capacity_ = context.getOption(BusinessPacketsFragmenter.OPTIONS.WrapperQueue_Capacity);
         WrapperLinked_Capacity_ = context.getOption(BusinessPacketsFragmenter.OPTIONS.WrapperLinked_Capacity);
@@ -54,20 +58,16 @@ public class FragmenterFactory {
         );
     }
 
-    public ModelFragmenter<SignalingPacket> createSignaling() {
+    public ModelFragmenter<SignalingPacket> createSignalingPacket() {
         return new SignalingPacketsFragmenter(SignalingPacketsFragmenter_WrapperQueue_Capacity_);
     }
 
-    public ModelFragmenter<BusinessPacket> createBusiness(AbstractSession<?> session) {
+    public ModelFragmenter<BusinessPacket> createBusinessPacket(AbstractSession<?> session) {
         return new BusinessPacketsFragmenter(session, businessPacketWrapperPool,
                 BusinessPacketsFragmenter_WrapperQueue_Capacity_, WrapperLinked_Capacity_);
     }
 
-    public ModelFragmenter<MediaStream> createMedia() {
-        return new MediaStreamFragmenter();
-    }
-
-    public ModelFragmenter<FileStream> createFile() {
-        return new FileStreamFragmenter();
+    public ModelFragmenter<BusinessStream<?>> createBusinessStream() {
+        return new BusinessStreamFragmenter(chunkCodecRegistry);
     }
 }

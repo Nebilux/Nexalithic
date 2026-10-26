@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
+import java.util.Objects;
 
 /**
  * <h3>环形缓冲区</h3>
@@ -642,6 +643,17 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
             quota -= length;
         }
 
+        /** 从缓冲区读取至目标数组，最多读取当前配额。 */
+        public int writeTo(byte[] dst, int offset) {
+            Objects.checkFromIndexSize(offset, 0, dst.length);
+            int length = Math.min(dst.length - offset, quota);
+            if (length <= 0) {
+                return 0;
+            }
+            unsafeGetBytes(dst, offset, length);
+            quota -= length;
+            return length;
+        }
         public int writeTo(ByteBuffer dst) {
             if (quota <= 0) {
                 return 0;
@@ -769,6 +781,17 @@ public class LoopBuffer extends SelfStaticRecyclableWrapper<LoopBuffer> {
             quota -= length;
         }
 
+        /** 从源数组写入缓冲区，最多写入当前配额。 */
+        public int readFrom(byte[] src, int offset) {
+            Objects.checkFromIndexSize(offset, 0, src.length);
+            int length = Math.min(src.length - offset, quota);
+            if (length <= 0) {
+                return 0;
+            }
+            unsafePut(src, offset, length);
+            quota -= length;
+            return length;
+        }
         public int readFrom(ByteBuffer src) {
             if (quota <= 0) {
                 return 0;

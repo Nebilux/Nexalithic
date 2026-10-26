@@ -27,8 +27,7 @@ import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
 import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.signaling.packet.ScalarSignal;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
@@ -96,8 +95,7 @@ public abstract class AbstractSession<S extends AbstractSession<S>> implements N
     public final boolean pushBusiness(BusinessModel<?> model) {
         return switch (model) {
             case BusinessPacket packet -> pushBusinessModel(getBusinessChannel(Kind.Business_Packet), packet);
-            case MediaStream stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream_Media), stream);
-            case FileStream stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream_File), stream);
+            case BusinessStream<?> stream -> pushBusinessModel(getBusinessChannel(Kind.Business_Stream), stream);
             default -> throw new IllegalStateException("Unexpected value: " + model);
         };
     }

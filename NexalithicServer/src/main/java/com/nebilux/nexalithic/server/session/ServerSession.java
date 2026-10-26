@@ -28,7 +28,6 @@ import com.nebilux.nexalithic.core.io.codec.AssemblerFactory;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.FragmenterFactory;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
 import com.nebilux.nexalithic.server.io.session.ServiceUnit;
 import com.nebilux.nexalithic.server.io.session.business.BusinessLoop;
@@ -67,8 +66,8 @@ public class ServerSession extends AbstractSession<ServerSession> {
     public SignalingLoop getSignalingLoop() {
         return (SignalingLoop) getSignalingChannel().getOwnerLoop();
     }
-    public BusinessLoop getBusinessLoop() {
-        return (BusinessLoop) this.<BusinessPacket>getBusinessChannel(Kind.Business_Packet).getOwnerLoop();
+    public BusinessLoop getBusinessLoop(Kind kind) {
+        return (BusinessLoop) getBusinessChannel(kind).getOwnerLoop();
     }
 
     public ServiceUnit getServiceUnit() {
@@ -106,25 +105,22 @@ public class ServerSession extends AbstractSession<ServerSession> {
 
         public ChannelFactory(ServiceUnit serviceUnit, CodecResources resources) {
             this.serviceUnit = serviceUnit;
-            this.fragmenterFactory = resources.fragmenters();
-            this.assemblerFactory = resources.assemblers();
+            this.fragmenterFactory = resources.fragmenterFactory();
+            this.assemblerFactory = resources.assemblerFactory();
         }
 
         @Override
         public ChannelGroup<ServerSession> create(ServerSession session, SecretKeyContexts secretKeyContexts) {
             SessionSignalingChannel<ServerSession> signaling = new SessionSignalingChannel<>(
-                    serviceUnit.getSignalingLoop(), session, fragmenterFactory.createSignaling(),
-                    assemblerFactory.createSignaling(), secretKeyContexts.get(Kind.Signaling_Packet));
+                    serviceUnit.getSignalingLoop(), session, fragmenterFactory.createSignalingPacket(),
+                    assemblerFactory.createSignalingPacket(), secretKeyContexts.get(Kind.Signaling_Packet));
             EnumMap<Kind, SessionBusinessChannel<?, ServerSession>> business = new EnumMap<>(Kind.class);
             business.put(Kind.Business_Packet, new SessionBusinessChannel<>(Kind.Business_Packet,
-                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createBusiness(session),
-                    assemblerFactory.createBusiness(session), secretKeyContexts.get(Kind.Business_Packet)));
-            business.put(Kind.Business_Stream_Media, new SessionBusinessChannel<>(Kind.Business_Stream_Media,
-                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createMedia(), assemblerFactory.createMedia(),
-                    secretKeyContexts.get(Kind.Business_Stream_Media)));
-            business.put(Kind.Business_Stream_File, new SessionBusinessChannel<>(Kind.Business_Stream_File,
-                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createFile(), assemblerFactory.createFile(),
-                    secretKeyContexts.get(Kind.Business_Stream_File)));
+                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createBusinessPacket(session),
+                    assemblerFactory.createBusinessPacket(session), secretKeyContexts.get(Kind.Business_Packet)));
+            business.put(Kind.Business_Stream, new SessionBusinessChannel<>(Kind.Business_Stream,
+                    serviceUnit.selectBusinessLoop(), session, fragmenterFactory.createBusinessStream(),
+                    assemblerFactory.createBusinessStream(), secretKeyContexts.get(Kind.Business_Stream)));
             return new ChannelGroup<>(signaling, business);
         }
     }

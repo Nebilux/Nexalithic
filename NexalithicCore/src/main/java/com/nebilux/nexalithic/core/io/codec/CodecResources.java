@@ -18,6 +18,8 @@ package com.nebilux.nexalithic.core.io.codec;
 
 import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
+import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
@@ -26,20 +28,28 @@ import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketAssemblyWrap
 import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
 import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import org.jctools.queues.MpmcArrayQueue;
 
 import java.util.concurrent.CompletionStage;
 
 /**
- * 共用的编解码资源。工厂只创建编解码器，本对象持有装配时间轮的共享生命周期。
- * 客户端由会话 Loop 持有；服务端由 ServiceUnit 持有，并在所有相关 Loop 结束后释放。
+ * 共用的编解码资源。
  *
  * @author Reonvia
  * @since 0.4.0
  */
-public final class CodecResources {
-    private final FragmenterFactory fragmenters;
-    private final AssemblerFactory assemblers;
+public class CodecResources {
+    public static final Modules MODULES = new Modules();
+    public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<ChunkCodecRegistry> ChunkCodecRegistry = defineModule(ChunkCodecRegistry.class);
+        private Modules() {
+            super(CodecResources.class);
+        }
+    }
+
+    private final FragmenterFactory fragmenterFactory;
+    private final AssemblerFactory assemblerFactory;
     private final SharedLifecycle<TimeWheel<BusinessPacketAssemblyWrapper>> assemblyWheel;
 
     public CodecResources(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules, NexalithicEndpoint.Type type) {
@@ -57,16 +67,16 @@ public final class CodecResources {
                         ),
                         BusinessPacketsAssembler.class.getSimpleName()
                 )));
-        fragmenters = new FragmenterFactory(context, modules);
-        assemblers = new AssemblerFactory(context, modules, type, assemblyWheel.component());
+        fragmenterFactory = new FragmenterFactory(context, modules);
+        assemblerFactory = new AssemblerFactory(context, modules, type, assemblyWheel.component());
     }
 
-    public FragmenterFactory fragmenters() {
-        return fragmenters;
+    public FragmenterFactory fragmenterFactory() {
+        return fragmenterFactory;
     }
 
-    public AssemblerFactory assemblers() {
-        return assemblers;
+    public AssemblerFactory assemblerFactory() {
+        return assemblerFactory;
     }
 
     /** 在任何使用该资源的 Loop 启动前取得共享时间轮。 */

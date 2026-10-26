@@ -14,32 +14,23 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.codec.assembler;
-
-import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-
-import java.io.IOException;
+package com.nebilux.nexalithic.core.model.business.stream;
 
 /**
- * 文件流汇编程序
+ * 用户从输出流取出完整块。
  *
  * @author Reonvia
  * @since 0.5.0
  */
-public class FileStreamAssembler implements ModelAssembler<FileStream> {
-    @Override
-    public boolean feed(LoopBuffer source) throws IOException {
-        return false;
-    }
+public interface StreamDrainer<C extends BusinessStream.Chunk> {
+    /** 返回下一个完整块；目前没有块时返回 null。 */
+    C pollChunk();
 
-    @Override
-    public FileStream drain() {
-        return null;
-    }
+    /** 已收到结束标记且队列已经取空时返回 true。 */
+    boolean isFinished();
 
-    @Override
-    public void clear() {
-
-    }
+    /**
+     * 设置新块可供读取时的通知。实现必须在锁外调用回调；传入 null 清除回调。
+     */
+    void onAvailable(Runnable callback);
 }

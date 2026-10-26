@@ -38,7 +38,7 @@ public interface ModelFragmenter<M extends NexalithicModel> {
      * 当前有可立即写出的数据时返回 true。Stream 暂时没有块时应返回 false，
      * 并在新块可用时重新启用所属通道的写兴趣。
      */
-    default boolean hasReadyOutput() {
+    default boolean isReady() {
         return !isEmpty();
     }
 

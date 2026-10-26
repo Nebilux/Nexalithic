@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.bui
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.payload.FilePayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePayload;
 
 import java.io.File;
 import java.lang.reflect.Method;

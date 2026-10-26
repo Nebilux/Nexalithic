@@ -20,9 +20,8 @@ import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.TargetDynamicRecyclableWrapper;
 import com.nebilux.nexalithic.core.io.codec.CodecCallback;
-import com.nebilux.nexalithic.core.io.codec.PacketFrame;
+import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.io.IOException;
 import java.util.List;
@@ -40,7 +39,7 @@ public class BusinessPacketFragmentWrapper extends TargetDynamicRecyclableWrappe
     private long remaining;
     private int packetId;
     private int payloadIndex;
-    private List<? extends AbstractPayload<?>> payloads;
+    private List<? extends BusinessPacket.Payload<?>> payloads;
 
     public BusinessPacketFragmentWrapper(GenericWrapperPool<BusinessPacket, BusinessPacketFragmentWrapper> owner, CodecCallback codecCallback) {
         super(owner);
@@ -51,7 +50,7 @@ public class BusinessPacketFragmentWrapper extends TargetDynamicRecyclableWrappe
     public void onWrap(BusinessPacket packet) {
         codecCallback.prepare(packet.getTaskId(), packet.getWay());
         remaining = packet.getPacketSize();
-        packetId = packet.getPacketId();
+        packetId = packet.getModelId();
         payloads = packet.payloads();
         payloadIndex = 0;
     }
@@ -68,54 +67,54 @@ public class BusinessPacketFragmentWrapper extends TargetDynamicRecyclableWrappe
         codecCallback.start(remaining);
         int writable = output.writableBytes();
         int headerSize = target.getHeaderSize();
-        int offest = PacketFrame.FRAME_HEADER_LENGTH + headerSize;
+        int offest = CodecFrame.HEADER_LENGTH + headerSize;
         if (writable < offest) {
             return 0;
         }
         output.markTail();
-        output.advanceTail(PacketFrame.FRAME_HEADER_LENGTH);
+        output.advanceTail(CodecFrame.HEADER_LENGTH);
         writePacketHeader(output);
-        int total = headerSize + writePayloads(output, Math.min(writable - offest, PacketFrame.MAX_PAYLOAD_LENGTH));
+        int total = headerSize + writePayloads(output, Math.min(writable - offest, CodecFrame.MAX_PAYLOAD_LENGTH - headerSize));
         if (total == 0) {
             output.resetTail();
             return 0;
         } else {
             long tail = output.getTail();
             output.resetTail();
-            output.put(PacketFrame.pack(packetId, total, true));
+            output.put(CodecFrame.packStart(packetId, total));
             output.setTail(tail);
         }
         remaining -= total;
         codecCallback.update(remaining);
-        return total + PacketFrame.FRAME_HEADER_LENGTH;
+        return total + CodecFrame.HEADER_LENGTH;
     }
 
     public int nextFrame(LoopBuffer output) throws IOException {
         int writable = output.writableBytes();
-        if (writable <= PacketFrame.FRAME_HEADER_LENGTH) {
+        if (writable <= CodecFrame.HEADER_LENGTH) {
             return 0;
         }
         output.markTail();
-        output.advanceTail(PacketFrame.FRAME_HEADER_LENGTH);
-        int total = writePayloads(output, Math.min(writable - PacketFrame.FRAME_HEADER_LENGTH, PacketFrame.MAX_PAYLOAD_LENGTH));
+        output.advanceTail(CodecFrame.HEADER_LENGTH);
+        int total = writePayloads(output, Math.min(writable - CodecFrame.HEADER_LENGTH, CodecFrame.MAX_PAYLOAD_LENGTH));
         if (total == 0) {
             output.resetTail();
             return 0;
         } else {
             long tail = output.getTail();
             output.resetTail();
-            output.put(PacketFrame.pack(packetId, total, false));
+            output.put(CodecFrame.packData(packetId, total));
             output.setTail(tail);
         }
         remaining -= total;
         codecCallback.update(remaining);
-        return total + PacketFrame.FRAME_HEADER_LENGTH;
+        return total + CodecFrame.HEADER_LENGTH;
     }
 
     private void writePacketHeader(LoopBuffer output) {
         output.put(target.getTaskId());
         output.put(target.getPacketSize());
-        output.put(target.getWayCode());
+        output.put(target.getWay().code());
         byte pathDepth = target.getPathDepth();
         output.put(pathDepth);
         if (pathDepth > 0) {
@@ -137,7 +136,7 @@ public class BusinessPacketFragmentWrapper extends TargetDynamicRecyclableWrappe
         }
         int total = 0, written, size = payloads.size();
         while (payloadIndex < size) {
-            AbstractPayload<?> payload = payloads.get(payloadIndex);
+            BusinessPacket.Payload<?> payload = payloads.get(payloadIndex);
             long totalSize = payload.getTotalSize();
             long processedSize = payload.getProcessedSize();
             LoopBuffer.LimitedWritableView writableView = output.unsafeLimitedWritableView(Math.toIntExact(Math.min(totalSize - processedSize, quota - total)));

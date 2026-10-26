@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.model.business.packet.payload;
+package com.nebilux.nexalithic.core.model.business.packet.builtin;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.messaging.task.visual.TransferSnapshot;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacketException;
 
 import java.io.File;
@@ -36,7 +37,7 @@ import java.util.UUID;
  * @author Reonvia
  * @since 0.1.0
  */
-public class FilePayload extends AbstractPayload<File> {
+public class FilePayload extends BusinessPacket.Payload<File> {
     public static final long UID = 2;
     public static final String TEMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "nexalithic").toAbsolutePath().toString();
     private volatile String sourceFileName;
@@ -93,7 +94,7 @@ public class FilePayload extends AbstractPayload<File> {
     }
 
     @Override
-    public AbstractPayload<File> duplicate() {
+    public BusinessPacket.Payload<File> duplicate() {
         try {
             FilePayload clone = new FilePayload();
             clone.value = this.value;

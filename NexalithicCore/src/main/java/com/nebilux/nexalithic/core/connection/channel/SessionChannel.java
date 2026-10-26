@@ -19,6 +19,7 @@ package com.nebilux.nexalithic.core.connection.channel;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.connection.transport.TCP_Transport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.io.codec.assembler.BusinessStreamAssembler;
 import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
@@ -56,6 +57,9 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         this.fragmenter = fragmenter;
         this.assembler = assembler;
         securityCodec = new SecurityCodec(secretKeyContext);
+        if (assembler instanceof BusinessStreamAssembler streamAssembler) {
+            streamAssembler.onReadRetry(() -> ownerLoop.postReadRetry(this));
+        }
     }
 
     public final void open(SelectionKey selectionKey) throws IOException {
@@ -66,10 +70,12 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     }
 
     /**
-     * 将与当前通道类型匹配的模型交给编码器。Stream 的后续块由框架内部实现提供。
-     * 成功提交后，调用方仍需启用写兴趣；后续异步产生的块也需要再次唤醒写入。
+     * 将与当前通道类型匹配的模型交给编码器。
      */
     public final boolean put(M model) {
+        if (getState() == State.Closing) {
+            return false;
+        }
         return fragmenter.feed(model);
     }
 
@@ -83,7 +89,7 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     }
 
     public final boolean hasReadyOutput() {
-        return fragmenter.hasReadyOutput();
+        return fragmenter.isReady();
     }
 
     /**
@@ -124,13 +130,13 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         if (written > 0) {
             updateLastActiveTimeNanos(System.nanoTime());
         }
-        if (readPlainBuffer.isEmpty() && writeCipheBuffer.isEmpty() && !fragmenter.hasReadyOutput()) {
+        if (readPlainBuffer.isEmpty() && writeCipheBuffer.isEmpty() && !fragmenter.isReady()) {
             readPlainBuffer.recycle();
             readPlainBuffer = null;
             writeCipheBuffer.recycle();
             writeCipheBuffer = null;
             updateInterest(SelectionKey.OP_WRITE, false);
-            if (fragmenter.hasReadyOutput()) {
+            if (fragmenter.isReady()) {
                 updateInterest(SelectionKey.OP_WRITE, true);
             }
         }
@@ -154,6 +160,31 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         if (read < 0) {
             return -1;
         }
+        processBufferedInput();
+        recycleReadBuffersIfEmpty();
+        onBytesRead(read);
+        if (read > 0) {
+            updateLastActiveTimeNanos(System.nanoTime());
+        }
+        return read;
+    }
+
+    /** 输出队列腾出容量后，由所属 Loop 重试已解密或已接收的缓冲数据。 */
+    public final void retryBufferedRead() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException,
+            ShortBufferException, BadPaddingException, InvalidKeyException {
+        if (!ownerLoop.inEventLoop()) {
+            throw new IllegalStateException("Buffered read must run in the owner loop");
+        }
+        if (readCipheBuffer == null) {
+            readCipheBuffer = ownerLoop.aquireLoopBuffer();
+            writePlainBuffer = ownerLoop.aquireLoopBuffer();
+        }
+        processBufferedInput();
+        recycleReadBuffersIfEmpty();
+    }
+
+    private void processBufferedInput() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException,
+            ShortBufferException, BadPaddingException, InvalidKeyException {
         boolean progressed;
         do {
             progressed = securityCodec.decrypt(readCipheBuffer, writePlainBuffer);
@@ -161,17 +192,15 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
                 progressed = true;
             }
         } while (progressed);
+    }
+
+    private void recycleReadBuffersIfEmpty() {
         if (readCipheBuffer.isEmpty() && writePlainBuffer.isEmpty()) {
             readCipheBuffer.recycle();
             readCipheBuffer = null;
             writePlainBuffer.recycle();
             writePlainBuffer = null;
         }
-        onBytesRead(read);
-        if (read > 0) {
-            updateLastActiveTimeNanos(System.nanoTime());
-        }
-        return read;
     }
 
     public final S getOwnerSession() {

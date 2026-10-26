@@ -18,8 +18,7 @@ package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.model.NexalithicModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-import com.nebilux.nexalithic.core.model.business.stream.media.MediaStream;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 
 import java.io.IOException;
@@ -32,10 +31,10 @@ import java.io.IOException;
  */
 public interface NexalithicChannel {
     enum Kind {
-        Signaling_Packet((byte) 0x0, NexalithicModel.Form.Packet, SignalingPacket.class),
-        Business_Packet((byte) 0x1, NexalithicModel.Form.Packet, BusinessPacket.class),
-        Business_Stream_Media((byte) 0x2, NexalithicModel.Form.Stream, MediaStream.class),
-        Business_Stream_File((byte) 0x3, NexalithicModel.Form.Stream, FileStream.class);
+        Signaling_Packet((byte) 0x01, NexalithicModel.Form.Packet, SignalingPacket.class),
+        Business_Packet((byte) 0x11, NexalithicModel.Form.Packet, BusinessPacket.class),
+        Business_Stream((byte) 0x12, NexalithicModel.Form.Stream, BusinessStream.class),
+        ;
 
         private final byte code;
         private final NexalithicModel.Form form;
@@ -47,12 +46,11 @@ public interface NexalithicChannel {
             this.clazz = clazz;
         }
 
-        public static Kind fromCode(byte code) {
+        public static Kind from(byte code) {
             return switch (code) {
-                case 0x0 -> Signaling_Packet;
-                case 0x1 -> Business_Packet;
-                case 0x2 -> Business_Stream_Media;
-                case 0x3 -> Business_Stream_File;
+                case 0x01 -> Signaling_Packet;
+                case 0x11 -> Business_Packet;
+                case 0x12 -> Business_Stream;
                 default -> throw new IllegalArgumentException(
                         "Unknown channel kind protocol id: " + Byte.toUnsignedInt(code)
                 );
@@ -107,7 +105,7 @@ public interface NexalithicChannel {
         State state = getState();
         return state == State.Opening || state == State.Opened;
     }
-    default boolean isClos() {
+    default boolean isClose() {
         State state = getState();
         return state == State.Closing || state == State.Closed;
     }

@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.messaging.payload;
 
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -41,8 +41,8 @@ public class PayloadRegistry {
         return new Builder();
     }
 
-    public AbstractPayload<?> get(long UID) {
-        Supplier<? extends AbstractPayload<?>> constructor = constructors.get(UID);
+    public BusinessPacket.Payload<?> get(long UID) {
+        Supplier<? extends BusinessPacket.Payload<?>> constructor = constructors.get(UID);
         if (constructor == null) {
             return null;
         }
@@ -50,13 +50,13 @@ public class PayloadRegistry {
     }
 
     public static class Builder {
-        private record Registration(Supplier<? extends AbstractPayload<?>> constructor, Class<?> payloadType) {}
+        private record Registration(Supplier<? extends BusinessPacket.Payload<?>> constructor, Class<?> payloadType) {}
 
         private final Map<Long, Registration> map = new ConcurrentHashMap<>();
         private Supplier<PayloadConstructorStorage> storageSupplier = PayloadConstructorStorage.ArrayPayloadStorage::new;
 
-        public Builder payloadConstructor(Supplier<? extends AbstractPayload<?>> constructor) {
-            AbstractPayload<?> payload = constructor.get();
+        public Builder payloadConstructor(Supplier<? extends BusinessPacket.Payload<?>> constructor) {
+            BusinessPacket.Payload<?> payload = constructor.get();
             long uid = payload.getPayloadUID();
             Registration existing = map.putIfAbsent(uid, new Registration(constructor, payload.getClass()));
             if (existing != null) {
@@ -65,8 +65,8 @@ public class PayloadRegistry {
             return this;
         }
 
-        public Builder payloadConstructors(Collection<Supplier<? extends AbstractPayload<?>>> constructors) {
-            for (Supplier<? extends AbstractPayload<?>> constructor : constructors) {
+        public Builder payloadConstructors(Collection<Supplier<? extends BusinessPacket.Payload<?>>> constructors) {
+            for (Supplier<? extends BusinessPacket.Payload<?>> constructor : constructors) {
                 payloadConstructor(constructor);
             }
             return this;
@@ -79,7 +79,7 @@ public class PayloadRegistry {
 
 
         public PayloadRegistry build() {
-            Map<Long, Supplier<? extends AbstractPayload<?>>> constructors = new HashMap<>();
+            Map<Long, Supplier<? extends BusinessPacket.Payload<?>>> constructors = new HashMap<>();
             map.forEach((uid, registration) -> constructors.put(uid, registration.constructor()));
             return new PayloadRegistry(storageSupplier.get().freeze(constructors));
         }

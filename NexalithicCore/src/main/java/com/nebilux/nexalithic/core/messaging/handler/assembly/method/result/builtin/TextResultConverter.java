@@ -18,7 +18,7 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.bui
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
-import com.nebilux.nexalithic.core.model.business.packet.payload.TextPayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPayload;
 
 import java.lang.reflect.Method;
 

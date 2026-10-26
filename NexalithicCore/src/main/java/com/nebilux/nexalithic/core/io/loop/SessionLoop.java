@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.io.loop;
 
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
+import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionBusinessChannel;
 import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
@@ -40,9 +41,26 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
     private static final Logger logger = LoggerFactory.getLogger(SessionLoop.class);
     private final AtomicAdmissionQueue<SessionBusinessChannel<?, ?>> rateUpdateQueue;
     private final Set<SessionBusinessChannel<?, ?>> queuedRateUpdates;
+    private final AtomicAdmissionQueue<C> readRetryQueue;
+    private final Set<C> queuedReadRetries;
 
     public SessionLoop(NexalithicBuilderContext context, Options options) throws IOException {
         super(context, options);
+        queuedReadRetries = ConcurrentHashMap.newKeySet();
+        readRetryQueue = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>(), queuedReadRetries::add);
+        int drainLimit = context.getOption(options.InterestQueue_DrainLimit);
+        registerPreSelectTask(() -> {
+            for (int remaining = drainLimit; remaining > 0; remaining--) {
+                C channel = readRetryQueue.poll();
+                if (channel == null) {
+                    break;
+                }
+                queuedReadRetries.remove(channel);
+                processReadRetry(channel);
+            }
+        });
+        registerImmediateWorkCondition(() -> !readRetryQueue.isEmpty());
+        registerDrainCondition(readRetryQueue::isEmpty);
         if (!supportsRateUpdates(context)) {
             queuedRateUpdates = null;
             rateUpdateQueue = null;
@@ -79,8 +97,35 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
         }
     }
 
+    public final void postReadRetry(C channel) {
+        if (channel.getState() != NexalithicChannel.State.Opened) {
+            return;
+        }
+        if (readRetryQueue.offer(channel)) {
+            wakeup();
+        }
+    }
+
+    private void processReadRetry(C channel) {
+        if (channel.getState() != NexalithicChannel.State.Opened) {
+            return;
+        }
+        try {
+            channel.retryBufferedRead();
+            dispatchReceivedModels(channel);
+        } catch (GeneralSecurityException e) {
+            logger.warn("Channel[{}] read retry[{}] error", channel, name, e);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
+        } catch (IOException e) {
+            logger.debug("Channel[{}] read retry[{}] error", channel, name, e);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
+        }
+    }
+
     @Override
     protected void onOwnedChannelsCleared() {
+        readRetryQueue.close();
+        readRetryQueue.drain(queuedReadRetries::remove);
         if (rateUpdateQueue != null) {
             rateUpdateQueue.close();
             rateUpdateQueue.drain(queuedRateUpdates::remove);

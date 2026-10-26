@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.client.io.session;
 
 import com.nebilux.nexalithic.client.session.ClientSession;
+import com.nebilux.nexalithic.core.connection.channel.SessionChannel;
 import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.io.loop.ChannelLoop;
 import com.nebilux.nexalithic.core.security.SecretKeyContexts;
@@ -112,15 +113,19 @@ public abstract sealed class ClientChannelHandoff implements ChannelLoop.Handoff
 
     /** 业务通道连接结果。 */
     public static final class Business extends ClientChannelHandoff {
-        private final ClientSession targetSession;
+        private final SessionChannel<?, ClientSession> targetChannel;
 
-        public Business(long stamp, SocketChannel channel, ClientSession targetSession) {
+        public Business(long stamp, SocketChannel channel, SessionChannel<?, ClientSession> targetChannel) {
             super(stamp, channel);
-            this.targetSession = Objects.requireNonNull(targetSession, "targetSession");
+            this.targetChannel = Objects.requireNonNull(targetChannel, "targetChannel");
         }
 
         public ClientSession targetSession() {
-            return targetSession;
+            return targetChannel.getOwnerSession();
+        }
+
+        public SessionChannel<?, ClientSession> targetChannel() {
+            return targetChannel;
         }
     }
 }

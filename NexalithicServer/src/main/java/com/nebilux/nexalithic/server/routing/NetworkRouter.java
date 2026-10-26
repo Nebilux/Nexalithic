@@ -140,8 +140,6 @@ public class NetworkRouter {
      * @return CIDR、默认路由或活动监听器目标；没有可用目标时返回 {@code null}
      */
     public RouteTarget chooseTarget(NexalithicChannel.Kind kind, InetAddress remoteAddress) {
-        Objects.requireNonNull(kind, "kind");
-        Objects.requireNonNull(remoteAddress, "remoteAddress");
         RouteTable table = routingTables.get(kind);
         byte[] rawAddress = remoteAddress.getAddress();
         RouteTarget matched = findRoute(

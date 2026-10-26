@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.model.business.stream.media;
+package com.nebilux.nexalithic.core.model.business.stream.builtin;
 
-import com.nebilux.nexalithic.core.model.business.stream.AbstractChunk;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 
-import java.nio.ByteBuffer;
 import java.util.Objects;
 
 /**
@@ -27,7 +27,7 @@ import java.util.Objects;
  * @author Reonvia
  * @since 0.5.0
  */
-public final class MediaChunk extends AbstractChunk {
+public final class MediaChunk extends BusinessStream.Chunk {
     public enum Kind { Audio, Video }
 
     private final Kind kind;
@@ -64,11 +64,31 @@ public final class MediaChunk extends AbstractChunk {
         return keyFrame;
     }
 
+    @Override
     public int size() {
         return data.length;
     }
 
-    public ByteBuffer data() {
-        return ByteBuffer.wrap(data).asReadOnlyBuffer();
+    public static final class Codec implements ChunkCodec<MediaChunk> {
+
+        @Override
+        public int id() {
+            return 1;
+        }
+
+        @Override
+        public Class<MediaChunk> clazz() {
+            return MediaChunk.class;
+        }
+
+        @Override
+        public Encoder<MediaChunk> encoder() {
+            return null;
+        }
+
+        @Override
+        public Decoder<MediaChunk> decoder() {
+            return null;
+        }
     }
 }

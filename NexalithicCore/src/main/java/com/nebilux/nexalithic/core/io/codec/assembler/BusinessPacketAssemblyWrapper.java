@@ -22,7 +22,6 @@ import com.nebilux.nexalithic.core.infra.recyclable.SelfStaticRecyclableWrapper;
 import com.nebilux.nexalithic.core.io.codec.CodecCallback;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -74,14 +73,14 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
                 return quota;
             }
             total += readPacketHeader(input);
-            codecCallback.prepare(packetBuilder.taskId, PacketBuilder.WAYS[packetBuilder.way]);
+            codecCallback.prepare(packetBuilder.taskId, BusinessPacket.Way.from(packetBuilder.way));
             codecCallback.start(remaining);
             headerRead = true;
         }
-        List<AbstractPayload<?>> payloads = packetBuilder.payloads;
+        List<BusinessPacket.Payload<?>> payloads = packetBuilder.payloads;
         int read;
         while (total < quota && payloadIndex < packetBuilder.payloadCount) {
-            AbstractPayload<?> payload = payloads.get(payloadIndex);
+            BusinessPacket.Payload<?> payload = payloads.get(payloadIndex);
             long totalSize = packetBuilder.payloadsMeta[payloadIndex * 2 + 1];
             long processedSize = payload.getProcessedSize();
             LoopBuffer.LimitedReadableView readableView = input.unsafeLimitedReadableView(
@@ -122,7 +121,7 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
             read += depth * Short.BYTES;
         }
         byte count = input.unsafeGetByte();
-        List<AbstractPayload<?>> payloads = null;
+        List<BusinessPacket.Payload<?>> payloads = null;
         long[] payloadsMeta = null;
         if (count > 0) {
             payloads = new ArrayList<>(count);
@@ -130,7 +129,7 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
             for (int i = 0; i < count; i++) {
                 long uid = input.unsafeGetLong();
                 long size = input.unsafeGetLong();
-                AbstractPayload<?> payload = payloadRegistry.get(uid);
+                BusinessPacket.Payload<?> payload = payloadRegistry.get(uid);
                 if (payload == null) {
                     throw new IOException("Unknown Payload UID: " + uid);
                 }
@@ -189,7 +188,6 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
     }
 
     private static class PacketBuilder {
-        private static final BusinessPacket.Way[] WAYS = BusinessPacket.Way.values();
         public long taskId;
         public long packetSize;
         public short way;
@@ -197,10 +195,10 @@ public class BusinessPacketAssemblyWrapper extends SelfStaticRecyclableWrapper<B
         public short[] path;
         public byte payloadCount;
         public long[] payloadsMeta;
-        public List<AbstractPayload<?>> payloads;
+        public List<BusinessPacket.Payload<?>> payloads;
 
         public BusinessPacket build() {
-            BusinessPacket packet = BusinessPacket.create(WAYS[way], path).attach(payloads).setTaskId(taskId).seal();
+            BusinessPacket packet = BusinessPacket.create(BusinessPacket.Way.from(way), path).attach(payloads).setTaskId(taskId).seal();
             if (packetSize != packet.getPacketSize()) {
                 throw new IllegalStateException("Packet Size Mismatch, %d or %d".formatted(packetSize, packet.getPacketSize()));
             }

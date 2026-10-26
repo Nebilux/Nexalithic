@@ -16,35 +16,13 @@
 
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
-import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.model.business.stream.file.FileStream;
-
-import java.io.IOException;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 
 /**
- * 文件流碎片器
+ * 业务模型碎片器的类型基类。
  *
  * @author Reonvia
  * @since 0.5.0
  */
-public class FileStreamFragmenter implements ModelFragmenter<FileStream> {
-    @Override
-    public boolean feed(FileStream model) {
-        return false;
-    }
-
-    @Override
-    public boolean drain(LoopBuffer target) throws IOException {
-        return false;
-    }
-
-    @Override
-    public boolean isEmpty() {
-        return false;
-    }
-
-    @Override
-    public void clear() {
-
-    }
+public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> implements ModelFragmenter<M> {
 }

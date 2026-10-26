@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.model.business.packet.payload;
+package com.nebilux.nexalithic.core.model.business.packet.builtin;
 
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacketException;
 
 import java.io.IOException;
@@ -28,7 +29,7 @@ import java.nio.charset.StandardCharsets;
  * @author Reonvia
  * @since 0.1.0
  */
-public class TextPayload extends AbstractPayload<String> {
+public class TextPayload extends BusinessPacket.Payload<String> {
     public static final long UID = 1;
     private static final byte TYPE_NULL = 0x00;
     private static final byte TYPE_EMPTY = 0x01;
@@ -102,7 +103,7 @@ public class TextPayload extends AbstractPayload<String> {
     }
 
     @Override
-    public AbstractPayload<String> duplicate() {
+    public BusinessPacket.Payload<String> duplicate() {
         TextPayload clone = new TextPayload();
         clone.value = this.value;
         clone.bytes = this.bytes;

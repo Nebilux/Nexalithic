@@ -19,7 +19,7 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.b
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.HandlerMethodArgumentConverter;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.annotation.RequestPayload;
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -36,13 +36,13 @@ public class BusinessPacketPayloadArgumentConverter<HC extends HandlerContext<?>
 
     @Override
     public boolean supports(Method method, Parameter parameter, int index) {
-        return parameter.isAnnotationPresent(RequestPayload.class) && AbstractPayload.class.isAssignableFrom(parameter.getType());
+        return parameter.isAnnotationPresent(RequestPayload.class) && BusinessPacket.Payload.class.isAssignableFrom(parameter.getType());
     }
 
     @Override
     public Object convert(HC context, Method method, Parameter parameter, int index) {
         RequestPayload annotation = parameter.getAnnotation(RequestPayload.class);
-        AbstractPayload<?> payload = payload(context, method, parameter, annotation.value());
+        BusinessPacket.Payload<?> payload = payload(context, method, parameter, annotation.value());
         if (!parameter.getType().isInstance(payload)) {
             throw new IllegalArgumentException(
                     "Request payload at index %d is '%s' but parameter '%s' requires '%s' in method %s"

@@ -19,7 +19,6 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.argument.b
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.payload.AbstractPayload;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -61,14 +60,14 @@ abstract class AbstractBusinessPacketArgumentConverter<HC extends HandlerContext
      * @param payloadIndex Payload 下标
      * @return 指定下标的 Payload
      */
-    protected final AbstractPayload<?> payload(HC context, Method method, Parameter parameter, int payloadIndex) {
+    protected final BusinessPacket.Payload<?> payload(HC context, Method method, Parameter parameter, int payloadIndex) {
         if (payloadIndex < 0) {
             throw new IllegalArgumentException(
                     "Request payload index must not be negative for parameter '%s' of method %s"
                             .formatted(parameter.getName(), method.toGenericString())
             );
         }
-        AbstractPayload<?> payload = request(context, method).payload(payloadIndex);
+        BusinessPacket.Payload<?> payload = request(context, method).payload(payloadIndex);
         if (payload == null) {
             throw new IllegalArgumentException(
                     "No request payload at index %d for parameter '%s' of method %s"

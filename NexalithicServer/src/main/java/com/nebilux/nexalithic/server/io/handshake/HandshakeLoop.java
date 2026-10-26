@@ -348,7 +348,7 @@ public class HandshakeLoop extends ChannelLoop<HandshakeContext, HandshakeContex
                 }
                 context.setPhase(HandshakeContext.Phase.READY);
                 context.setTargetSession(session);
-                if (!submitTransferEvent(context, context, session.getBusinessLoop())) {
+                if (!submitTransferEvent(context, context, session.getBusinessLoop(context.getKind()))) {
                     submitDisconnectEvent(context, Event.Disconnect.Reason.TRANSFER_FAILURE);
                 }
             }

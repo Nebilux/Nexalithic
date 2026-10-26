@@ -33,6 +33,7 @@ import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.session.NexalithicSessionException;
 import com.nebilux.nexalithic.core.event.NexalithicEventBus;
 import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
+import com.nebilux.nexalithic.core.io.codec.CodecResources;
 import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
@@ -169,6 +170,7 @@ public class NexalithicClient extends NexalithicEndpoint {
                 context.setModule(MODULES.EventBus, new NexalithicEventBus());
                 context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
                 context.setModule(BusinessPacketsAssembler.MODULES.PayloadRegistry, payloadRegistryBuilder.build());
+                context.setModule(CodecResources.MODULES.ChunkCodecRegistry, chunkCodecRegistryBuilder.build());
                 ClientHandlerCoordinator handlerCoordinator = new ClientHandlerCoordinator(context);
                 context.setModule(MODULES.HandlerCoordinator, handlerCoordinator);
                 context.setModule(MODULES.TaskScheduler, new TaskScheduler(context));

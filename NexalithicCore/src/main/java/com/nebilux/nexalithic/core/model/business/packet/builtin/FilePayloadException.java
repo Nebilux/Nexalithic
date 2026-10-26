@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.model.business.packet.payload;
+package com.nebilux.nexalithic.core.model.business.packet.builtin;
 
 import com.nebilux.nexalithic.core.exception.NexalithicCheckedException;
 

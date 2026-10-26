@@ -19,6 +19,7 @@ package com.nebilux.nexalithic.core.model.business;
 import com.nebilux.nexalithic.core.model.NexalithicModel;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 业务模型
@@ -29,8 +30,6 @@ import java.util.Objects;
  * @since 0.5.0
  */
 public abstract class BusinessModel<M extends BusinessModel<M>> implements NexalithicModel {
-    public static final int MAX_PATH_DEPTH = Byte.MAX_VALUE;
-
     /**
      * 消息处理方式。
      *
@@ -418,7 +417,7 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
         /**
          * 当前处理方式所属的消息类型。
          */
-        public final Type type;
+        private final Type type;
         /**
          * 当前处理方式对应的协议状态码。
          *
@@ -427,11 +426,44 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
          * 同时按照数值区间携带一定的分类语义。
          * </p>
          */
-        public final short code;
+        private final short code;
 
         Way(Type type, short code) {
             this.type = type;
             this.code = code;
+        }
+
+        public static Way from(short code) {
+            return switch (code) {
+                case 11000 -> REQUEST_Post;
+                case 12000 -> REQUEST_Delete;
+                case 13000 -> REQUEST_Update;
+                case 14000 -> REQUEST_Get;
+
+                case 21000 -> RESPONSE_Ok;
+                case 21100 -> RESPONSE_Success;
+                case 21200 -> RESPONSE_Failure;
+                case 22000 -> RESPONSE_Error;
+
+                case 23100 -> RESPONSE_BadRequest;
+                case 23200 -> RESPONSE_Unauthorized;
+                case 23300 -> RESPONSE_Forbidden;
+
+                case 24100 -> RESPONSE_NotHandler;
+                case 24200 -> RESPONSE_NotResource;
+                case 24300 -> RESPONSE_MethodNotAllowed;
+                case 25100 -> RESPONSE_Busy;
+
+                default -> throw new IllegalArgumentException("Unknown Way code: " + code);
+            };
+        }
+
+        public Type type() {
+            return type;
+        }
+
+        public short code() {
+            return code;
         }
 
         /**
@@ -536,18 +568,34 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
         }
     }
 
-    private final Form form;
+    public static final int MAX_PATH_DEPTH = Byte.MAX_VALUE;
+    private static final AtomicInteger counter = new AtomicInteger(0);
+
+    private final int modelId = counter.getAndIncrement();
     private final Way way;
     private final short[] path;
     private long taskId = Long.MIN_VALUE;
 
-    protected BusinessModel(Form form, Way way, short... path) {
-        this.form = Objects.requireNonNull(form, "form");
+    protected BusinessModel(Way way, short... path) {
         this.way = Objects.requireNonNull(way, "way");
         if (path != null && path.length > MAX_PATH_DEPTH) {
             throw new IllegalArgumentException("Business path exceeds maximum depth: " + MAX_PATH_DEPTH);
         }
         this.path = path == null || path.length == 0 ? null : path.clone();
+    }
+
+    @SuppressWarnings("unchecked")
+    public final M setTaskId(long taskId) {
+        this.taskId = taskId;
+        return (M) this;
+    }
+
+    public final int getModelId() {
+        return modelId;
+    }
+
+    public final long getTaskId() {
+        return taskId;
     }
 
     public final Way getWay() {
@@ -557,27 +605,7 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
     public final short[] getPath() {
         return path == null ? null : path.clone();
     }
-
     public final byte getPathDepth() {
         return (byte) (path == null ? 0 : path.length);
-    }
-
-    public final short getWayCode() {
-        return (short) way.ordinal();
-    }
-
-    public final long getTaskId() {
-        return taskId;
-    }
-
-    @SuppressWarnings("unchecked")
-    public final M setTaskId(long taskId) {
-        this.taskId = taskId;
-        return (M) this;
-    }
-
-    @Override
-    public final Form form() {
-        return form;
     }
 }

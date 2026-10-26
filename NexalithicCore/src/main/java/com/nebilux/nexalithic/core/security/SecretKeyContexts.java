@@ -32,14 +32,12 @@ import java.util.Objects;
  * @since 0.5.0
  */
 public class SecretKeyContexts {
-    private static final byte[] LABEL_CLIENT_SIGNALING = "LABEL_CLIENT_SIGNALING".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_SERVER_SIGNALING = "LABEL_SERVER_SIGNALING".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_CLIENT_BUSINESS = "LABEL_CLIENT_BUSINESS".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_SERVER_BUSINESS = "LABEL_SERVER_BUSINESS".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_CLIENT_MEDIA = "LABEL_CLIENT_MEDIA".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_SERVER_MEDIA = "LABEL_SERVER_MEDIA".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_CLIENT_FILE  = "LABEL_CLIENT_FILE".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] LABEL_SERVER_FILE  = "LABEL_SERVER_FILE".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_CLIENT_SIGNALING_PACKET = "LABEL_CLIENT_SIGNALING_PACKET".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_SERVER_SIGNALING_PACKET = "LABEL_SERVER_SIGNALING_PACKET".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_CLIENT_BUSINESS_PACKET = "LABEL_CLIENT_BUSINESS_PACKET".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_SERVER_BUSINESS_PACKET = "LABEL_SERVER_BUSINESS_PACKET".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_CLIENT_BUSINESS_Stream = "LABEL_CLIENT_BUSINESS_Stream".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] LABEL_SERVER_BUSINESS_Stream = "LABEL_SERVER_BUSINESS_Stream".getBytes(StandardCharsets.UTF_8);
 
     public enum Side {
         CLIENT, SERVER;
@@ -76,17 +74,14 @@ public class SecretKeyContexts {
     private static byte[] label(NexalithicChannel.Kind kind, Side side) {
         return switch (kind) {
             case Signaling_Packet -> side == Side.CLIENT
-                    ? LABEL_CLIENT_SIGNALING
-                    : LABEL_SERVER_SIGNALING;
+                    ? LABEL_CLIENT_SIGNALING_PACKET
+                    : LABEL_SERVER_SIGNALING_PACKET;
             case Business_Packet -> side == Side.CLIENT
-                    ? LABEL_CLIENT_BUSINESS
-                    : LABEL_SERVER_BUSINESS;
-            case Business_Stream_Media -> side == Side.CLIENT
-                    ? LABEL_CLIENT_MEDIA
-                    : LABEL_SERVER_MEDIA;
-            case Business_Stream_File -> side == Side.CLIENT
-                    ? LABEL_CLIENT_FILE
-                    : LABEL_SERVER_FILE;
+                    ? LABEL_CLIENT_BUSINESS_PACKET
+                    : LABEL_SERVER_BUSINESS_PACKET;
+            case Business_Stream -> side == Side.CLIENT
+                    ? LABEL_CLIENT_BUSINESS_Stream
+                    : LABEL_SERVER_BUSINESS_Stream;
         };
     }
 }

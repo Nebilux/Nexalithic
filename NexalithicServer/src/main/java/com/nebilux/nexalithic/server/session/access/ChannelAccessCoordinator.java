@@ -80,7 +80,7 @@ public class ChannelAccessCoordinator {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(remoteAddress, "remoteAddress");
-        if (kind != NexalithicChannel.Kind.Business_Packet) {
+        if (kind == NexalithicChannel.Kind.Signaling_Packet) {
             return Result.UNSUPPORTED_KIND;
         }
         NetworkRouter.RouteTarget target = networkRouter.chooseTarget(kind, remoteAddress);

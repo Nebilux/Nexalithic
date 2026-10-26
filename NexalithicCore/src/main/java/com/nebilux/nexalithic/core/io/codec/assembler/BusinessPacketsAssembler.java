@@ -27,7 +27,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.WrapperPool;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
-import com.nebilux.nexalithic.core.io.codec.PacketFrame;
+import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
@@ -107,11 +107,12 @@ public class BusinessPacketsAssembler implements ModelAssembler<BusinessPacket>,
             }
         }
         int read;
-        while (source.readableBytes() > PacketFrame.FRAME_HEADER_LENGTH) {
+        while (source.readableBytes() >= CodecFrame.HEADER_LENGTH) {
             source.markHead();
-            long meta = source.unsafeGetLong();
-            int payloadLength = PacketFrame.parsePayloadLength(meta);
-            int packetId = PacketFrame.parsePacketId(meta);
+            long header = source.unsafeGetLong();
+            CodecFrame.Type type = CodecFrame.parseFrameType(header);
+            int payloadLength = CodecFrame.parsePayloadLength(header);
+            int packetId = CodecFrame.parseModelId(header);
             if (source.readableBytes() < payloadLength) {
                 source.resetHead();
                 break;
@@ -124,7 +125,7 @@ public class BusinessPacketsAssembler implements ModelAssembler<BusinessPacket>,
                 assemblingMap.put(packetId, wrapper);
                 timeWheel.schedule(wrapper, wrapper.stamp(), this);
             }
-            read = wrapper.onFrame(source, payloadLength, PacketFrame.isStart(meta));
+            read = wrapper.onFrame(source, payloadLength, type.isStart());
             if (!wrapper.hasFrame()) {
                 assemblingMap.remove(packetId);
                 BusinessPacket packet = wrapper.getPacket();

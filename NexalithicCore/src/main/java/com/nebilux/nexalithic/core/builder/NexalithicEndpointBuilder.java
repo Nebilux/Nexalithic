@@ -27,8 +27,12 @@ import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistryConf
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryConfigurer;
 import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryHelper;
-import com.nebilux.nexalithic.core.model.business.packet.payload.FilePayload;
-import com.nebilux.nexalithic.core.model.business.packet.payload.TextPayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPayload;
+import com.nebilux.nexalithic.core.model.business.stream.builtin.TextChunk;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistryConfigurer;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistryHelper;
 
 import java.util.List;
 
@@ -91,6 +95,9 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      */
     protected final PayloadRegistry.Builder payloadRegistryBuilder = new PayloadRegistry.Builder();
 
+    /** 用户通过 {@link #chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer)} 注册流块编解码器。 */
+    protected final ChunkCodecRegistry.Builder chunkCodecRegistryBuilder = ChunkCodecRegistry.builder();
+
     /**
      * Handler 注册表构建器。
      *
@@ -117,6 +124,9 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
         payloadRegistryBuilder.payloadConstructors(List.of(
                 TextPayload::new,
                 FilePayload::new
+        ));
+        chunkCodecRegistryBuilder.chunkCodecs(List.of(
+                new TextChunk.Codec()
         ));
     }
 
@@ -163,6 +173,12 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
      */
     public SELF payloadRegistryConfigurer(PayloadRegistryConfigurer configurer) {
         configure("payload registry", () -> configurer.configure(payloadRegistryBuilder, PayloadRegistryHelper.INSTANCE));
+        return self();
+    }
+
+    /** 配置业务流块编解码器及其存储策略。 */
+    public SELF chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer configurer) {
+        configure("chunk codec registry", () -> configurer.configure(chunkCodecRegistryBuilder, ChunkCodecRegistryHelper.INSTANCE));
         return self();
     }
 
