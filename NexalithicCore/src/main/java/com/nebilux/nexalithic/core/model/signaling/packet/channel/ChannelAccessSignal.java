@@ -25,8 +25,8 @@ import java.util.Objects;
 /**
  * Channel 接入信号的公共基类。
  *
- * <p>统一管理稳定的 Channel Kind 协议编号、内容长度和序列化模板。子类只负责 Kind
- * 之后的专属载荷，避免请求与响应分别实现相同的 Kind 编解码逻辑。</p>
+ * <p>统一管理稳定的 Channel Type 协议编号、内容长度和序列化模板。子类只负责 Type
+ * 之后的专属载荷，避免请求与响应分别实现相同的 Type 编解码逻辑。</p>
  *
  * @author Reonvia
  * @since 0.3.0
@@ -74,10 +74,10 @@ public abstract sealed class ChannelAccessSignal extends SignalingPacket permits
      */
     @Override
     public String toString() {
-        return super.toString() + ", Kind: " + kind;
+        return super.toString() + ", Type: " + kind;
     }
 
-    /** 将 Kind 之后的专属载荷写入 LoopBuffer。 */
+    /** 将 Type 之后的专属载荷写入 LoopBuffer。 */
     protected abstract void writePayload(LoopBuffer buffer);
 
     private static void validateLength(int contentLength, int minimumLength, int maximumLength) {

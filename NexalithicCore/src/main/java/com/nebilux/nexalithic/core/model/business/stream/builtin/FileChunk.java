@@ -19,7 +19,6 @@ package com.nebilux.nexalithic.core.model.business.stream.builtin;
 import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 
-import java.nio.ByteBuffer;
 import java.util.Objects;
 
 /**
@@ -28,7 +27,7 @@ import java.util.Objects;
  * @author Reonvia
  * @since 0.5.0
  */
-public final class FileChunk extends BusinessStream.Chunk {
+public class FileChunk extends BusinessStream.Chunk {
     private final long offset;
     private final byte[] data;
 
@@ -53,15 +52,18 @@ public final class FileChunk extends BusinessStream.Chunk {
         return data.length;
     }
 
-    public ByteBuffer data() {
-        return ByteBuffer.wrap(data).asReadOnlyBuffer();
-    }
-
+    /**
+     * 编解码器
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
     public static final class Codec implements ChunkCodec<FileChunk> {
+        public static final int UID = 2;
 
         @Override
         public int id() {
-            return 2;
+            return UID;
         }
 
         @Override

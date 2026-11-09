@@ -18,12 +18,12 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.bui
 
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
-import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPart;
 
 import java.lang.reflect.Method;
 
 /**
- * 将 Handler 方法返回的 {@link String} 包装为 {@link TextPayload} 响应。
+ * 将 Handler 方法返回的 {@link String} 包装为 {@link TextPart} 响应。
  *
  * @param <HC> Handler 上下文类型
  *
@@ -39,7 +39,7 @@ public class TextResultConverter<HC extends HandlerContext<?>> extends AbstractB
 
     @Override
     public void convert(HC context, Method method, Object result) {
-        context.pushResponse(createResponse().attach(new TextPayload((String) result)));
+        context.pushResponse(responseBuilder().part(new TextPart((String) result)));
     }
 
     @Override

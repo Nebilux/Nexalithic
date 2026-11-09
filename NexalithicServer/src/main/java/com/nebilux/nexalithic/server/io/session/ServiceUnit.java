@@ -16,7 +16,6 @@
 
 package com.nebilux.nexalithic.server.io.session;
 
-import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
@@ -59,7 +58,7 @@ public class ServiceUnit extends AbstractLifecycle implements LoadBalanceable {
 
     public ServiceUnit(NexalithicBuilderContext context) throws IOException {
         super(ServiceUnit.class.getSimpleName() + "-" + context.nextOrdinal(ServiceUnit.class, ServiceUnit.class));
-        codecResources = new CodecResources(context, NexalithicServer.MODULES, NexalithicEndpoint.Type.SERVER);
+        codecResources = new CodecResources(context, NexalithicServer.MODULES);
         signalingLoop = new SignalingLoop(context, this, codecResources);
         businessLoops = new BusinessLoop[context.getOption(OPTIONS.BusinessLoop_Count)];
         for (int i = 0; i < businessLoops.length; i++) {

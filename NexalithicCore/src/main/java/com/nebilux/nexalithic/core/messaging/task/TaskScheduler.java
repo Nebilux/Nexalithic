@@ -297,20 +297,20 @@ public class TaskScheduler extends AbstractLifecycle implements TimerCoordinator
         } while (mailbox.check());
     }
     private void executeRequest(NexalithicTask task, AbstractSession<?> session) {
-        BusinessModel<?> request;
+        BusinessModel.Builder<?> requestBuilder;
         try {
-            request = task.request();
-            if (request == null) {
-                executeFailed(task, new IllegalStateException("Task request returned null"));
+            requestBuilder = task.request();
+            if (requestBuilder == null) {
+                executeFailed(task, new IllegalStateException("Task requestBuilder returned null"));
                 return;
             }
-            if (!request.getWay().isRequest()) {
-                executeFailed(task, new IllegalArgumentException("Task request requires a request way"));
+            if (!requestBuilder.getWay().isRequest()) {
+                executeFailed(task, new IllegalArgumentException("Task requestBuilder requires a requestBuilder way"));
                 return;
             }
-            boolean submitted = session.pushBusiness(request.setTaskId(task.awaitResponse().getTaskId()));
+            boolean submitted = session.pushBusiness(requestBuilder.build(task.awaitResponse().getTaskId()));
             if (!submitted) {
-                executeFailed(task, new IllegalStateException("Task request submission failed"));
+                executeFailed(task, new IllegalStateException("Task requestBuilder submission failed"));
             }
         } catch (Exception e) {
             executeFailed(task, e);

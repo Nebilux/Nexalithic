@@ -23,25 +23,25 @@ import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import java.lang.reflect.Method;
 
 /**
- * 将 Handler 方法返回的 Payload 包装为成功响应包。
+ * 将 Handler 方法返回的 Part 包装为成功响应包。
  *
  * @param <HC> Handler 上下文类型
  *
  * @author Reonvia
  * @since 0.2.0
  */
-public class PayloadResultConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketResultConverter<HC> implements HandlerMethodResultConverter<HC> {
+public class PartResultConverter<HC extends HandlerContext<?>> extends AbstractBusinessPacketResultConverter<HC> implements HandlerMethodResultConverter<HC> {
 
     @Override
     public boolean supports(Method method, Class<?> resultType) {
-        return BusinessPacket.Payload.class.isAssignableFrom(resultType);
+        return BusinessPacket.Part.class.isAssignableFrom(resultType);
     }
 
     @Override
     public void convert(HC context, Method method, Object result) {
-        BusinessPacket response = createResponse();
+        BusinessPacket.Builder response = responseBuilder();
         if (result != null) {
-            response.attach((BusinessPacket.Payload<?>) result);
+            response.part((BusinessPacket.Part<?>) result);
         }
         context.pushResponse(response);
     }

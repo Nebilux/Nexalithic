@@ -24,8 +24,7 @@ import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
-import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketAssemblyWrapper;
-import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketsAssembler;
+import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketAssembler;
 import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
@@ -48,35 +47,29 @@ public class CodecResources {
         }
     }
 
-    private final FragmenterFactory fragmenterFactory;
-    private final AssemblerFactory assemblerFactory;
-    private final SharedLifecycle<TimeWheel<BusinessPacketAssemblyWrapper>> assemblyWheel;
+    private final CodecSupplier codecSupplier;
+    private final SharedLifecycle<TimeWheel<BusinessPacketAssembler>> assemblyWheel;
 
-    public CodecResources(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules, NexalithicEndpoint.Type type) {
-        assemblyWheel = context.getModule(BusinessPacketsAssembler.MODULES.SharedTimeWheel,
+    public CodecResources(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules) {
+        assemblyWheel = context.getModule(BusinessPacketAssembler.MODULES.SharedTimeWheel,
                 () -> new SharedLifecycle<>(new TimeWheel<>(
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickMillis),
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.SlotCount),
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.TickQuotaShift),
-                        context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                         new GenericWrapperPool<>(
                                 PoolStorageFactory.bounded(MpmcArrayQueue::new,
-                                        context.getOption(BusinessPacketsAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
                                 PoolStrategyFactory.alwaysCreate(),
-                                TimeWheel.ScheduleWrapper<BusinessPacketAssemblyWrapper>::new
+                                TimeWheel.ScheduleWrapper<BusinessPacketAssembler>::new
                         ),
-                        BusinessPacketsAssembler.class.getSimpleName()
+                        BusinessPacketAssembler.class.getSimpleName()
                 )));
-        fragmenterFactory = new FragmenterFactory(context, modules);
-        assemblerFactory = new AssemblerFactory(context, modules, type, assemblyWheel.component());
+        codecSupplier = new CodecSupplier(context, modules, assemblyWheel.component());
     }
 
-    public FragmenterFactory fragmenterFactory() {
-        return fragmenterFactory;
-    }
-
-    public AssemblerFactory assemblerFactory() {
-        return assemblerFactory;
+    public CodecSupplier codecFactory() {
+        return codecSupplier;
     }
 
     /** 在任何使用该资源的 Loop 启动前取得共享时间轮。 */

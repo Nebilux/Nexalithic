@@ -170,9 +170,8 @@ public class ControllerHandlerAssemblerHelper<HC extends HandlerContext<?>> {
 
     private DefaultHandlerMethodResultConverterSelector.Builder<HC> defaultHandlerMethodResultConverterSelectorBuilder() {
         return DefaultHandlerMethodResultConverterSelector.<HC>builder().converters(List.of(
-                new BusinessPacketResultConverter<>(),
                 new BusinessModelResultConverter<>(),
-                new PayloadResultConverter<>(),
+                new PartResultConverter<>(),
                 new TextResultConverter<>(),
                 new FileResultConverter<>()
         ));

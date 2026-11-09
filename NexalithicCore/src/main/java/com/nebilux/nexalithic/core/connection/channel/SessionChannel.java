@@ -19,7 +19,6 @@ package com.nebilux.nexalithic.core.connection.channel;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.connection.transport.TCP_Transport;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
-import com.nebilux.nexalithic.core.io.codec.assembler.BusinessStreamAssembler;
 import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
@@ -35,6 +34,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.util.Objects;
 
 /**
  * 会话通道
@@ -57,9 +57,6 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         this.fragmenter = fragmenter;
         this.assembler = assembler;
         securityCodec = new SecurityCodec(secretKeyContext);
-        if (assembler instanceof BusinessStreamAssembler streamAssembler) {
-            streamAssembler.onReadRetry(() -> ownerLoop.postReadRetry(this));
-        }
     }
 
     public final void open(SelectionKey selectionKey) throws IOException {
@@ -76,7 +73,7 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         if (getState() == State.Closing) {
             return false;
         }
-        return fragmenter.feed(model);
+        return fragmenter.feed(Objects.requireNonNull(model, "Model cannot be null"));
     }
 
     /** 取出一个可交付模型；没有完整 Packet 或尚未建立的 Stream 时返回 null。 */
@@ -105,17 +102,13 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     }
 
     public final long write() throws IOException, InvalidAlgorithmParameterException, ShortBufferException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+        checkInEventLoop();
         if (readPlainBuffer == null) {
-            if (!ownerLoop.inEventLoop()) {
-                throw new IllegalStateException(
-                        String.format("Thread safety violation: [Session-%s] read/write must be performed in LoopThread. Current thread: %s",
-                                ownerSession.getSessionKey(), Thread.currentThread().getName()));
-            }
             readPlainBuffer = ownerLoop.aquireLoopBuffer();
             writeCipheBuffer = ownerLoop.aquireLoopBuffer();
         }
-        long writeCredit = availableWriteBytes();
-        if (writeCredit <= 0) {
+        long writable = availableWriteBytes();
+        if (writable <= 0) {
             return 0;
         }
         boolean progressed;
@@ -125,9 +118,9 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
                 progressed = true;
             }
         } while (progressed);
-        long written = getTransport().write(writeCipheBuffer, (int) Math.min(writeCredit, Integer.MAX_VALUE));
-        onBytesWritten(written);
-        if (written > 0) {
+        long advanced = getTransport().write(writeCipheBuffer, (int) Math.min(writable, Integer.MAX_VALUE));
+        onBytesWrite(advanced);
+        if (advanced > 0) {
             updateLastActiveTimeNanos(System.nanoTime());
         }
         if (readPlainBuffer.isEmpty() && writeCipheBuffer.isEmpty() && !fragmenter.isReady()) {
@@ -140,66 +133,36 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
                 updateInterest(SelectionKey.OP_WRITE, true);
             }
         }
-        return written;
+        return advanced;
     }
+
     public final long read() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
+        checkInEventLoop();
         if (readCipheBuffer == null) {
-            if (!ownerLoop.inEventLoop()) {
-                throw new IllegalStateException(
-                        String.format("Thread safety violation: [Session-%s] read/write must be performed in LoopThread. Current thread: %s",
-                                ownerSession.getSessionKey(), Thread.currentThread().getName()));
-            }
             readCipheBuffer = ownerLoop.aquireLoopBuffer();
             writePlainBuffer = ownerLoop.aquireLoopBuffer();
         }
-        long readCredit = availableReadBytes();
-        if (readCredit <= 0) {
+        long readable = availableReadBytes();
+        if (readable <= 0) {
             return 0;
         }
-        long read = getTransport().read(readCipheBuffer, (int) Math.min(readCredit, Integer.MAX_VALUE));
-        if (read < 0) {
+        long advanced = getTransport().read(readCipheBuffer, (int) Math.min(readable, Integer.MAX_VALUE));
+        if (advanced < 0) {
             return -1;
         }
-        processBufferedInput();
-        recycleReadBuffersIfEmpty();
-        onBytesRead(read);
-        if (read > 0) {
+        onBytesRead(advanced);
+        if (advanced > 0) {
             updateLastActiveTimeNanos(System.nanoTime());
         }
-        return read;
+        processBufferedInput();
+        return advanced;
     }
 
     /** 输出队列腾出容量后，由所属 Loop 重试已解密或已接收的缓冲数据。 */
-    public final void retryBufferedRead() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException,
-            ShortBufferException, BadPaddingException, InvalidKeyException {
-        if (!ownerLoop.inEventLoop()) {
-            throw new IllegalStateException("Buffered read must run in the owner loop");
-        }
-        if (readCipheBuffer == null) {
-            readCipheBuffer = ownerLoop.aquireLoopBuffer();
-            writePlainBuffer = ownerLoop.aquireLoopBuffer();
-        }
-        processBufferedInput();
-        recycleReadBuffersIfEmpty();
-    }
-
-    private void processBufferedInput() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException,
-            ShortBufferException, BadPaddingException, InvalidKeyException {
-        boolean progressed;
-        do {
-            progressed = securityCodec.decrypt(readCipheBuffer, writePlainBuffer);
-            if (assembler.feed(writePlainBuffer)) {
-                progressed = true;
-            }
-        } while (progressed);
-    }
-
-    private void recycleReadBuffersIfEmpty() {
-        if (readCipheBuffer.isEmpty() && writePlainBuffer.isEmpty()) {
-            readCipheBuffer.recycle();
-            readCipheBuffer = null;
-            writePlainBuffer.recycle();
-            writePlainBuffer = null;
+    public final void retryBufferedRead() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
+        checkInEventLoop();
+        if (readCipheBuffer != null) {
+            processBufferedInput();
         }
     }
 
@@ -216,7 +179,7 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         return Integer.MAX_VALUE;
     }
 
-    protected void onBytesWritten(long bytes) {}
+    protected void onBytesWrite(long bytes) {}
 
     protected void onBytesRead(long bytes) {}
 
@@ -241,5 +204,29 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         }
         fragmenter.clear();
         assembler.clear();
+    }
+
+    private void processBufferedInput() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
+        boolean progressed;
+        do {
+            progressed = securityCodec.decrypt(readCipheBuffer, writePlainBuffer);
+            if (assembler.feed(writePlainBuffer)) {
+                progressed = true;
+            }
+        } while (progressed);
+        if (readCipheBuffer.isEmpty() && writePlainBuffer.isEmpty()) {
+            readCipheBuffer.recycle();
+            readCipheBuffer = null;
+            writePlainBuffer.recycle();
+            writePlainBuffer = null;
+        }
+    }
+
+    private void checkInEventLoop() {
+        if (!ownerLoop.inEventLoop()) {
+            throw new IllegalStateException(
+                    String.format("Thread safety violation: [Session-%s] read/write must be performed in LoopThread. Current thread: %s",
+                            ownerSession.getSessionKey(), Thread.currentThread().getName()));
+        }
     }
 }

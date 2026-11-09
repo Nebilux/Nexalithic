@@ -27,13 +27,13 @@ import java.io.FileNotFoundException;
  * <p>传入的源文件在构造时不存在便会产生；文件路径写入异常消息，
  * 底层 {@link FileNotFoundException} 可通过 {@link #getCause()} 获取。</p>
  */
-public final class FilePayloadException extends NexalithicCheckedException {
-    private FilePayloadException(String message, Throwable cause) {
+public final class FilePartException extends NexalithicCheckedException {
+    private FilePartException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public static FilePayloadException missingSource(File file) {
+    public static FilePartException missingSource(File file) {
         String path = file.getAbsolutePath();
-        return new FilePayloadException("Source file not found: " + path, new FileNotFoundException(path));
+        return new FilePartException("Source file not found: " + path, new FileNotFoundException(path));
     }
 }

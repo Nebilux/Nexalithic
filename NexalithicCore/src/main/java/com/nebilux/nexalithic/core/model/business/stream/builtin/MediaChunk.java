@@ -27,21 +27,21 @@ import java.util.Objects;
  * @author Reonvia
  * @since 0.5.0
  */
-public final class MediaChunk extends BusinessStream.Chunk {
-    public enum Kind { Audio, Video }
+public class MediaChunk extends BusinessStream.Chunk {
+    public enum Type { Audio, Video }
 
-    private final Kind kind;
+    private final Type type;
     private final long timestampMicros;
     private final boolean keyFrame;
     private final byte[] data;
 
-    public MediaChunk(long sequence, Kind kind, long timestampMicros, boolean keyFrame, byte[] data) {
+    public MediaChunk(long sequence, Type type, long timestampMicros, boolean keyFrame, byte[] data) {
         super(sequence);
-        this.kind = Objects.requireNonNull(kind, "kind");
+        this.type = Objects.requireNonNull(type, "type");
         if (timestampMicros < 0) {
             throw new IllegalArgumentException("timestampMicros must be non-negative");
         }
-        if (keyFrame && kind != Kind.Video) {
+        if (keyFrame && type != Type.Video) {
             throw new IllegalArgumentException("only video chunks can be key frames");
         }
         this.data = Objects.requireNonNull(data, "data").clone();
@@ -52,8 +52,8 @@ public final class MediaChunk extends BusinessStream.Chunk {
         this.keyFrame = keyFrame;
     }
 
-    public Kind kind() {
-        return kind;
+    public Type kind() {
+        return type;
     }
 
     public long timestampMicros() {
@@ -69,11 +69,18 @@ public final class MediaChunk extends BusinessStream.Chunk {
         return data.length;
     }
 
+    /**
+     * 编解码器
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
     public static final class Codec implements ChunkCodec<MediaChunk> {
+        public static final int UID = 1;
 
         @Override
         public int id() {
-            return 1;
+            return UID;
         }
 
         @Override

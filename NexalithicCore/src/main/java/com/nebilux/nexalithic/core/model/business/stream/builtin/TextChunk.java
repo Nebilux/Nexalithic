@@ -29,7 +29,7 @@ import java.util.Objects;
  * @author Reonvia
  * @since 0.5.0
  */
-public final class TextChunk extends BusinessStream.Chunk {
+public class TextChunk extends BusinessStream.Chunk {
     private final String content;
     private final byte[] bytes;
     private final int size;
@@ -57,6 +57,12 @@ public final class TextChunk extends BusinessStream.Chunk {
         return size;
     }
 
+    /**
+     * 编解码器
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
     public static final class Codec implements ChunkCodec<TextChunk> {
         public static final int UID = 3;
 
@@ -92,10 +98,9 @@ public final class TextChunk extends BusinessStream.Chunk {
             }
 
             @Override
-            public int encode(LoopBuffer.LimitedWritableView target) {
+            public void encode(LoopBuffer.LimitedWritableView target) {
                 int encoded = target.readFrom(bytes, processed);
                 processed += encoded;
-                return encoded;
             }
 
             @Override
@@ -107,6 +112,11 @@ public final class TextChunk extends BusinessStream.Chunk {
             public void reset() {
                 bytes = null;
                 processed = 0;
+            }
+
+            @Override
+            public void clear() {
+                reset();
             }
         }
 
@@ -123,10 +133,9 @@ public final class TextChunk extends BusinessStream.Chunk {
             }
 
             @Override
-            public int decode(LoopBuffer.LimitedReadableView source) {
+            public void decode(LoopBuffer.LimitedReadableView source) {
                 int decoded = source.writeTo(bytes, processed);
                 processed += decoded;
-                return decoded;
             }
 
             @Override
@@ -143,6 +152,11 @@ public final class TextChunk extends BusinessStream.Chunk {
                 sequence = 0;
                 bytes = null;
                 processed = 0;
+            }
+
+            @Override
+            public void clear() {
+                reset();
             }
         }
     }

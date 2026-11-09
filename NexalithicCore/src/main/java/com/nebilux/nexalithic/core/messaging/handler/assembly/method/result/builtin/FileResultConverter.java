@@ -19,13 +19,13 @@ package com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.bui
 import com.nebilux.nexalithic.core.messaging.handler.HandlerContext;
 import com.nebilux.nexalithic.core.messaging.handler.assembly.method.result.HandlerMethodResultConverter;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
-import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePayload;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePart;
 
 import java.io.File;
 import java.lang.reflect.Method;
 
 /**
- * 将 Handler 方法返回的 {@link File} 包装为 {@link FilePayload} 响应。
+ * 将 Handler 方法返回的 {@link File} 包装为 {@link FilePart} 响应。
  *
  * @param <HC> Handler 上下文类型
  *
@@ -41,9 +41,9 @@ public class FileResultConverter<HC extends HandlerContext<?>> extends AbstractB
 
     @Override
     public void convert(HC context, Method method, Object result) throws Exception {
-        BusinessPacket response = createResponse();
+        BusinessPacket.Builder response = responseBuilder();
         if (result != null) {
-            response.attach(new FilePayload((File) result));
+            response.part(new FilePart((File) result));
         }
         context.pushResponse(response);
     }

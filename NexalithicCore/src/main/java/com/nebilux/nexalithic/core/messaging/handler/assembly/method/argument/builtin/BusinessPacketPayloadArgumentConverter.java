@@ -36,13 +36,13 @@ public class BusinessPacketPayloadArgumentConverter<HC extends HandlerContext<?>
 
     @Override
     public boolean supports(Method method, Parameter parameter, int index) {
-        return parameter.isAnnotationPresent(RequestPayload.class) && BusinessPacket.Payload.class.isAssignableFrom(parameter.getType());
+        return parameter.isAnnotationPresent(RequestPayload.class) && BusinessPacket.Part.class.isAssignableFrom(parameter.getType());
     }
 
     @Override
     public Object convert(HC context, Method method, Parameter parameter, int index) {
         RequestPayload annotation = parameter.getAnnotation(RequestPayload.class);
-        BusinessPacket.Payload<?> payload = payload(context, method, parameter, annotation.value());
+        BusinessPacket.Part<?> payload = payload(context, method, parameter, annotation.value());
         if (!parameter.getType().isInstance(payload)) {
             throw new IllegalArgumentException(
                     "Request payload at index %d is '%s' but parameter '%s' requires '%s' in method %s"

@@ -41,7 +41,7 @@ import com.nebilux.nexalithic.core.model.business.BusinessModel;
 public interface TaskFunction {
     @FunctionalInterface
     interface RequestAction extends TaskFunction {
-        BusinessModel<?> execute();
+        BusinessModel.Builder<?> execute();
     }
     @FunctionalInterface
     interface ResponseAction extends TaskFunction {

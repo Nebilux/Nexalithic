@@ -65,7 +65,7 @@ public class TaskCoordinator {
     }
 
     public void accept(BusinessModel<?> model) {
-        NexalithicTask activeTask = pick(model.getTaskId());
+        NexalithicTask activeTask = pick(model.getCorrelationId());
         if (activeTask == null) {
             return;
         }

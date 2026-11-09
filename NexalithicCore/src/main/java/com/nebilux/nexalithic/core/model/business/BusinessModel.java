@@ -19,7 +19,6 @@ package com.nebilux.nexalithic.core.model.business;
 import com.nebilux.nexalithic.core.model.NexalithicModel;
 
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 业务模型
@@ -30,6 +29,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 0.5.0
  */
 public abstract class BusinessModel<M extends BusinessModel<M>> implements NexalithicModel {
+    /**
+     * 应用层载荷标记。
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
+    public interface Payload {
+    }
+
     /**
      * 消息处理方式。
      *
@@ -569,33 +577,16 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
     }
 
     public static final int MAX_PATH_DEPTH = Byte.MAX_VALUE;
-    private static final AtomicInteger counter = new AtomicInteger(0);
+    public static final long DEFAULT_CORRELATION_ID = -1L;
 
-    private final int modelId = counter.getAndIncrement();
-    private final Way way;
-    private final short[] path;
-    private long taskId = Long.MIN_VALUE;
+    protected final Way way;
+    protected final short[] path;
+    protected final long correlationId;
 
-    protected BusinessModel(Way way, short... path) {
+    protected BusinessModel(Way way, short[] path, long correlationId) {
         this.way = Objects.requireNonNull(way, "way");
-        if (path != null && path.length > MAX_PATH_DEPTH) {
-            throw new IllegalArgumentException("Business path exceeds maximum depth: " + MAX_PATH_DEPTH);
-        }
-        this.path = path == null || path.length == 0 ? null : path.clone();
-    }
-
-    @SuppressWarnings("unchecked")
-    public final M setTaskId(long taskId) {
-        this.taskId = taskId;
-        return (M) this;
-    }
-
-    public final int getModelId() {
-        return modelId;
-    }
-
-    public final long getTaskId() {
-        return taskId;
+        this.path = path;
+        this.correlationId = correlationId;
     }
 
     public final Way getWay() {
@@ -607,5 +598,58 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
     }
     public final byte getPathDepth() {
         return (byte) (path == null ? 0 : path.length);
+    }
+
+    public final long getCorrelationId() {
+        return correlationId;
+    }
+
+    protected static short[] verifyAndCopyPath(short[] path) {
+        if (path != null && path.length > MAX_PATH_DEPTH) {
+            throw new IllegalArgumentException("Business path exceeds maximum depth: " + MAX_PATH_DEPTH);
+        }
+        return path == null || path.length == 0 ? null : path.clone();
+    }
+
+    /**
+     * 固定业务方式与路径，供具体模型的 Builder 保存逐模型构建状态。
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
+    public abstract static class Builder<M extends BusinessModel<M>> {
+        protected final Way way;
+        protected final short[] path;
+
+        protected Builder(Way way, short... path) {
+            this.way = Objects.requireNonNull(way, "way");
+            this.path = verifyAndCopyPath(path);
+        }
+
+        public final Way getWay() {
+            return way;
+        }
+
+        public final short[] getPath() {
+            return path == null ? null : path.clone();
+        }
+
+        public abstract void reset();
+
+        public abstract M build(long correlationId);
+
+        public final M build() {
+            return build(DEFAULT_CORRELATION_ID);
+        }
+
+        public final M buildAndReset(long correlationId) {
+            M model = build(correlationId);
+            reset();
+            return model;
+        }
+
+        public final M buildAndReset() {
+            return buildAndReset(DEFAULT_CORRELATION_ID);
+        }
     }
 }

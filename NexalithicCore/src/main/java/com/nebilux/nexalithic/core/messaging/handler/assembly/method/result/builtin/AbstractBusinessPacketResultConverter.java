@@ -30,10 +30,10 @@ import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 abstract class AbstractBusinessPacketResultConverter<HC extends HandlerContext<?>> {
 
     /**
-     * 创建响应包。
+     * 创建响应包的 Builder。
      *
      */
-    protected final BusinessPacket createResponse() {
-        return BusinessPacket.create(BusinessPacket.Way.RESPONSE_Ok);
+    protected final BusinessPacket.Builder responseBuilder() {
+        return BusinessPacket.builder(BusinessPacket.Way.RESPONSE_Ok);
     }
 }

@@ -149,7 +149,7 @@ public class NexalithicTask {
         return new Builder();
     }
 
-    public BusinessModel<?> request() {
+    public BusinessModel.Builder<?> request() {
         if (state.get() == State.NEW || state.get() == State.ENQUEUED) {
             state.set(State.REQUESTING);
         } else {
@@ -296,8 +296,8 @@ public class NexalithicTask {
             this.requestAction = requestAction;
             return this;
         }
-        public Builder onRequest(BusinessModel<?> model) {
-            this.requestAction = () -> model;
+        public Builder onRequest(BusinessModel.Builder<?> modelBuilder) {
+            this.requestAction = () -> modelBuilder;
             return this;
         }
         public Builder onResponse(TaskFunction.ResponseAction responseAction) {

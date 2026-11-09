@@ -111,13 +111,13 @@ public abstract class HandlerCoordinator<
                         return thread;
                     }
                 },
-                (recyclable, executor) -> recyclable.unwrap().pushResponse(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy)),
+                (recyclable, executor) -> recyclable.unwrap().pushResponse(BusinessPacket.builder(BusinessPacket.Way.RESPONSE_Busy)),
                 (recyclable, thread) -> {
                     NexalithicHandler<HC> handler = recyclable.getHandler();
                     try {
                         handler.handle(recyclable.unwrap());
                     } catch (Exception e) {
-                        recyclable.unwrap().pushResponse(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Error));
+                        recyclable.unwrap().pushResponse(BusinessPacket.builder(BusinessPacket.Way.RESPONSE_Error));
                     } finally {
                         recyclable.recycle();
                     }
@@ -137,13 +137,13 @@ public abstract class HandlerCoordinator<
             NexalithicHandler<HC> handler = handlerRegistry.match(model.getPath());
             if (handler == null) {
                 logger.warn("No handler registered for path {}", model.getPath());
-                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_NotHandler).setTaskId(model.getTaskId()));
+                session.pushBusiness(BusinessPacket.builder(BusinessPacket.Way.RESPONSE_NotHandler).build(model.getCorrelationId()));
                 return;
             }
             HR recyclable = wrapperPool.acquire();
             if (recyclable == null) {
                 logger.warn("No recyclable handler registered for path {}", model.getPath());
-                session.pushBusiness(BusinessPacket.create(BusinessPacket.Way.RESPONSE_Busy).setTaskId(model.getTaskId()));
+                session.pushBusiness(BusinessPacket.builder(BusinessPacket.Way.RESPONSE_Busy).build(model.getCorrelationId()));
                 return;
             }
             recyclable.initTarget(model, session, handler);

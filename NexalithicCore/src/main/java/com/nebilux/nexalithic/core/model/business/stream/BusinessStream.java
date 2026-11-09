@@ -37,6 +37,33 @@ import static java.util.Objects.requireNonNull;
  * @since 0.5.0
  */
 public abstract class BusinessStream<C extends BusinessStream.Chunk> extends BusinessModel<BusinessStream<C>> {
+    /**
+     * 流交付给上层的最小完整单位。
+     *
+     * <p>序号用于识别块的顺序或缺失。底层可以分片传输一个块，但不得向上层
+     * 交付尚未重组完成的块。媒体时间戳、文件偏移及载荷由具体子类定义。</p>
+     *
+     * @author Reonvia
+     * @since 0.1.0
+     */
+    public abstract static class Chunk implements BusinessModel.Payload {
+        private final long sequence;
+
+        protected Chunk(long sequence) {
+            if (sequence < 0) {
+                throw new IllegalArgumentException("sequence must be non-negative");
+            }
+            this.sequence = sequence;
+        }
+
+        public final long sequence() {
+            return sequence;
+        }
+
+        /** 用于队列字节限额的块载荷字节数；同一块的返回值必须保持不变。 */
+        public abstract int size();
+    }
+
     /** 相对于应用的流方向：输入发送至通道，输出从通道交付给应用。 */
     public enum Direction {
         INPUT((byte) 0x01, true, false),
@@ -176,47 +203,28 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
         }
     }
 
-    /**
-     * 流交付给上层的最小完整单位。
-     *
-     * <p>序号用于识别块的顺序或缺失。底层可以分片传输一个块，但不得向上层
-     * 交付尚未重组完成的块。媒体时间戳、文件偏移及载荷由具体子类定义。</p>
-     *
-     * @author Reonvia
-     * @since 0.1.0
-     */
-    public abstract static class Chunk {
-        private final long sequence;
-
-        protected Chunk(long sequence) {
-            if (sequence < 0) {
-                throw new IllegalArgumentException("sequence must be non-negative");
-            }
-            this.sequence = sequence;
-        }
-
-        public final long sequence() {
-            return sequence;
-        }
-
-        /** 用于队列字节限额的块载荷字节数；同一块的返回值必须保持不变。 */
-        public abstract int size();
-    }
-
     private final Direction direction;
     private final Policy policy;
     private final Class<C> type;
     private final AtomicReference<RuntimeException> callbackFailure = new AtomicReference<>();
 
-    protected BusinessStream(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
-        super(way, path);
+    protected BusinessStream(Class<C> type, Direction direction, Policy policy, Way way, short[] path, long correlationId) {
+        super(way, verifyAndCopyPath(path), correlationId);
         this.type = requireNonNull(type, "type");
         this.direction = requireNonNull(direction, "direction");
         this.policy = requireNonNull(policy, "policy");
     }
 
+    public static <C extends Chunk> BusinessStream<C> open(Class<C> type, Direction direction, Policy policy, Way way, short[] path, long correlationId) {
+        return new BusinessStreamImpl<>(type, direction, policy, way, path, correlationId);
+    }
+
     public static <C extends Chunk> BusinessStream<C> open(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
-        return new BusinessStreamImpl<>(type, direction, policy, way, path);
+        return new BusinessStreamImpl<>(type, direction, policy, way, path, BusinessModel.DEFAULT_CORRELATION_ID);
+    }
+
+    public static <C extends Chunk> Builder<C> builder(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
+        return new Builder<>(type, direction, policy, way, path);
     }
 
     /**
@@ -260,5 +268,35 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
     @Override
     public Form form() {
         return Form.Stream;
+    }
+
+    /**
+     * 可复用的流构建器。每次构建均创建独立的流与块队列。
+     * 所有配置在创建构建器时固定，因此 {@link #reset()} 无需清理逐流状态。
+     *
+     * @param <C> 流块类型
+     *
+     * @author Reonvia
+     * @since 0.5.0
+     */
+    public static class Builder<C extends Chunk> extends BusinessModel.Builder<BusinessStream<C>> {
+        private final Class<C> type;
+        private final Direction direction;
+        private final Policy policy;
+
+        protected Builder(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
+            super(way, path);
+            this.type = requireNonNull(type, "type");
+            this.direction = requireNonNull(direction, "direction");
+            this.policy = requireNonNull(policy, "policy");
+        }
+
+        @Override
+        public void reset() {}
+
+        @Override
+        public BusinessStream<C> build(long correlationId) {
+            return BusinessStream.open(type, direction, policy, way, path, correlationId);
+        }
     }
 }

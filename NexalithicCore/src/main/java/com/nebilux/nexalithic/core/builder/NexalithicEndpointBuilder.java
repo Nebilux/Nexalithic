@@ -24,15 +24,14 @@ import com.nebilux.nexalithic.core.messaging.handler.assembly.ControllerHandlerA
 import com.nebilux.nexalithic.core.messaging.handler.assembly.ControllerHandlerAssemblerHelper;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistryConfigurer;
-import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistry;
-import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryConfigurer;
-import com.nebilux.nexalithic.core.messaging.payload.PayloadRegistryHelper;
-import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePayload;
-import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPayload;
+import com.nebilux.nexalithic.core.model.business.codec.CodecRegistryHelper;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePart;
+import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPart;
+import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodecRegistry;
+import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodecRegistryConfigurer;
 import com.nebilux.nexalithic.core.model.business.stream.builtin.TextChunk;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistryConfigurer;
-import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistryHelper;
 
 import java.util.List;
 
@@ -49,8 +48,8 @@ import java.util.List;
  * <pre>{@code
  * NexalithicServer server = NexalithicServer.builder()
  *         .apply(SomeOptions.Enabled, true)
- *         .payloadRegistryConfigurer((registry, helper) -> {
- *             registry.payloadConstructor(LoginPayload::new);
+ *         .payloadCodecRegistryConfigurer((registry, helper) -> {
+ *             registry.payloadCodec(new LoginPayload.Codec());
  *         })
  *         .controllerHandlerAssemblerConfigurer((assembler, helper) -> {
  *             helper.defaultHandlerMethodConverterSelector(assembler)
@@ -88,12 +87,12 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     protected final NexalithicBuilderContext context = new NexalithicBuilderContext();
 
     /**
-     * Payload 注册表构建器。
+     * Payload 编解码器注册表构建器。
      *
-     * <p>构造函数会预先注册 Nexalithic 内置的文本、文件和可序列化 Payload。
-     * 用户可通过 {@link #payloadRegistryConfigurer(PayloadRegistryConfigurer)} 继续追加自定义 Payload。</p>
+     * <p>构造函数会预先注册内置的文本和文件编解码器。
+     * 用户可通过 {@link #payloadCodecRegistryConfigurer(PartCodecRegistryConfigurer)} 追加自定义编解码器。</p>
      */
-    protected final PayloadRegistry.Builder payloadRegistryBuilder = new PayloadRegistry.Builder();
+    protected final PartCodecRegistry.Builder payloadCodecRegistryBuilder = PartCodecRegistry.builder();
 
     /** 用户通过 {@link #chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer)} 注册流块编解码器。 */
     protected final ChunkCodecRegistry.Builder chunkCodecRegistryBuilder = ChunkCodecRegistry.builder();
@@ -121,11 +120,11 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     protected NexalithicEndpointBuilder(Class<HC> handlerContextType) {
         this.handlerContextType = handlerContextType;
         controllerHandlerAssemblyBuilder = ControllerHandlerAssembler.builder(handlerContextType);
-        payloadRegistryBuilder.payloadConstructors(List.of(
-                TextPayload::new,
-                FilePayload::new
+        payloadCodecRegistryBuilder.codecs(List.of(
+                new TextPart.Codec(),
+                new FilePart.Codec()
         ));
-        chunkCodecRegistryBuilder.chunkCodecs(List.of(
+        chunkCodecRegistryBuilder.codecs(List.of(
                 new TextChunk.Codec()
         ));
     }
@@ -163,22 +162,22 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     }
 
     /**
-     * 配置 Payload 注册表。
+     * 配置 Payload 编解码器注册表。
      *
-     * <p>当业务需要传输自定义 Payload 类型时，使用该入口注册对应的 Payload 构造器。
-     * Builder 已经默认注册 {@link TextPayload}、{@link FilePayload}，用户只需要追加业务自己的 Payload。</p>
+     * <p>当业务需要传输自定义 Payload 类型时，使用该入口注册对应的 PartCodec。
+     * Builder 已默认注册 {@link TextPart}、{@link FilePart} 的编解码器。</p>
      *
-     * @param configurer {@link PayloadRegistryConfigurer} Payload 注册表配置器
+     * @param configurer Payload 编解码器注册表配置器
      * @return 当前具体 Builder，用于继续链式配置
      */
-    public SELF payloadRegistryConfigurer(PayloadRegistryConfigurer configurer) {
-        configure("payload registry", () -> configurer.configure(payloadRegistryBuilder, PayloadRegistryHelper.INSTANCE));
+    public SELF payloadCodecRegistryConfigurer(PartCodecRegistryConfigurer configurer) {
+        configure("payload codec registry", () -> configurer.configure(payloadCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
         return self();
     }
 
     /** 配置业务流块编解码器及其存储策略。 */
     public SELF chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer configurer) {
-        configure("chunk codec registry", () -> configurer.configure(chunkCodecRegistryBuilder, ChunkCodecRegistryHelper.INSTANCE));
+        configure("chunk codec registry", () -> configurer.configure(chunkCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
         return self();
     }
 

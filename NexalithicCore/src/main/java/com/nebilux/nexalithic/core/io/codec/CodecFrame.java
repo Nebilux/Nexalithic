@@ -20,7 +20,7 @@ package com.nebilux.nexalithic.core.io.codec;
  * 包与流共用的编解码帧头。
  *
  * <p>帧头占 8 字节，以大端序写入：高 2 位为类型，随后 14 位保留，
- * 接着 16 位为载荷长度，低 32 位为模型编解码帧 ID。类型的具体语义由所属通道决定。</p>
+ * 接着 16 位为载荷长度，低 32 位为通道内的模型序号。类型的具体语义由所属通道决定。</p>
  *
  * @author Reonvia
  * @since 0.5.0
@@ -32,7 +32,7 @@ public final class CodecFrame {
     private static final int TYPE_SHIFT = 62;
     private static final int PAYLOAD_LENGTH_SHIFT = 32;
     private static final long PAYLOAD_LENGTH_MASK = 0xFFFFL;
-    private static final long ID_MASK = 0xFFFF_FFFFL;
+    private static final long MODEL_SEQUENCE_MASK = 0xFFFF_FFFFL;
 
     public enum Type {
         START(1),
@@ -70,20 +70,20 @@ public final class CodecFrame {
     private CodecFrame() {}
 
     /** 将帧头字段打包为 64 位值。 */
-    public static long pack(Type type, int id, int payloadLength) {
-        return (long) type.code << TYPE_SHIFT | (long) payloadLength << PAYLOAD_LENGTH_SHIFT | (id & ID_MASK);
+    public static long pack(Type type, int modelSequence, int payloadLength) {
+        return (long) type.code << TYPE_SHIFT | (long) payloadLength << PAYLOAD_LENGTH_SHIFT | (modelSequence & MODEL_SEQUENCE_MASK);
     }
 
-    public static long packStart(int id, int payloadLength) {
-        return pack(Type.START, id, payloadLength);
+    public static long packStart(int modelSequence, int payloadLength) {
+        return pack(Type.START, modelSequence, payloadLength);
     }
 
-    public static long packData(int id, int payloadLength) {
-        return pack(Type.DATA, id, payloadLength);
+    public static long packData(int modelSequence, int payloadLength) {
+        return pack(Type.DATA, modelSequence, payloadLength);
     }
 
-    public static long packEnd(int id) {
-        return pack(Type.END, id, 0);
+    public static long packEnd(int modelSequence) {
+        return pack(Type.END, modelSequence, 0);
     }
 
     /** 解析类型，并校验保留位、载荷长度及结束帧。 */
@@ -96,8 +96,8 @@ public final class CodecFrame {
         return (int) ((header >>> PAYLOAD_LENGTH_SHIFT) & PAYLOAD_LENGTH_MASK);
     }
 
-    /** 解析模型编解码帧 ID。 */
-    public static int parseModelId(long header) {
+    /** 解析通道内的模型序号。 */
+    public static int parseModelSequence(long header) {
         return (int) header;
     }
 }

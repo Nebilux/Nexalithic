@@ -48,28 +48,28 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
         super(context, options);
         queuedReadRetries = ConcurrentHashMap.newKeySet();
         readRetryQueue = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>(), queuedReadRetries::add);
-        int drainLimit = context.getOption(options.InterestQueue_DrainLimit);
+        int interestQueueDrainLimit = context.getOption(options.InterestQueue_DrainLimit);
         registerPreSelectTask(() -> {
-            for (int remaining = drainLimit; remaining > 0; remaining--) {
+            for (int remaining = interestQueueDrainLimit; remaining > 0; remaining--) {
                 C channel = readRetryQueue.poll();
                 if (channel == null) {
                     break;
                 }
                 queuedReadRetries.remove(channel);
-                processReadRetry(channel);
+                executeReadRetry(channel);
             }
         });
         registerImmediateWorkCondition(() -> !readRetryQueue.isEmpty());
         registerDrainCondition(readRetryQueue::isEmpty);
+
         if (!supportsRateUpdates(context)) {
             queuedRateUpdates = null;
             rateUpdateQueue = null;
             return;
         }
+
         queuedRateUpdates = ConcurrentHashMap.newKeySet();
         rateUpdateQueue = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>(), queuedRateUpdates::add);
-        int interestQueueDrainLimit = context.getOption(options.InterestQueue_DrainLimit);
-
         registerPreSelectTask(() -> {
             for (int remaining = interestQueueDrainLimit; remaining > 0; remaining--) {
                 SessionBusinessChannel<?, ?> channel = rateUpdateQueue.poll();
@@ -103,22 +103,6 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
         }
         if (readRetryQueue.offer(channel)) {
             wakeup();
-        }
-    }
-
-    private void processReadRetry(C channel) {
-        if (channel.getState() != NexalithicChannel.State.Opened) {
-            return;
-        }
-        try {
-            channel.retryBufferedRead();
-            dispatchReceivedModels(channel);
-        } catch (GeneralSecurityException e) {
-            logger.warn("Channel[{}] read retry[{}] error", channel, name, e);
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
-        } catch (IOException e) {
-            logger.debug("Channel[{}] read retry[{}] error", channel, name, e);
-            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
         }
     }
 
@@ -173,8 +157,23 @@ public abstract class SessionLoop<H extends ChannelLoop.Handoff,C extends Sessio
         }
     }
 
-
     /** 子类可返回是否处理限速更新；该方法在 SessionLoop 构造期间调用，不应读取子类字段。 */
     protected abstract boolean supportsRateUpdates(NexalithicBuilderContext context);
     protected abstract void dispatchReceivedModels(C channel);
+
+    private void executeReadRetry(C channel) {
+        if (channel.getState() != NexalithicChannel.State.Opened) {
+            return;
+        }
+        try {
+            channel.retryBufferedRead();
+            dispatchReceivedModels(channel);
+        } catch (GeneralSecurityException e) {
+            logger.warn("Channel[{}] read retry[{}] error", channel, name, e);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.SECURITY_FAILURE);
+        } catch (IOException e) {
+            logger.debug("Channel[{}] read retry[{}] error", channel, name, e);
+            submitDisconnectEvent(channel, Event.Disconnect.Reason.IO_FAILURE);
+        }
+    }
 }

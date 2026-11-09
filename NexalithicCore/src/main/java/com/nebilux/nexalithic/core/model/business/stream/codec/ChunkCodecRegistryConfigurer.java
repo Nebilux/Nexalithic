@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.model.business.stream.codec;
 
 import com.nebilux.nexalithic.core.builder.NexalithicConfigurer;
+import com.nebilux.nexalithic.core.model.business.codec.CodecRegistryHelper;
 
 /**
  * ChunkCodec 注册表的配置入口。通过终端 Builder 注册 Codec，并可选择存储策略。
@@ -25,7 +26,7 @@ import com.nebilux.nexalithic.core.builder.NexalithicConfigurer;
  * @since 0.5.0
  */
 @FunctionalInterface
-public interface ChunkCodecRegistryConfigurer extends NexalithicConfigurer<ChunkCodecRegistry.Builder, ChunkCodecRegistryHelper> {
+public interface ChunkCodecRegistryConfigurer extends NexalithicConfigurer<ChunkCodecRegistry.Builder, CodecRegistryHelper> {
     @Override
-    void configure(ChunkCodecRegistry.Builder builder, ChunkCodecRegistryHelper helper);
+    void configure(ChunkCodecRegistry.Builder builder, CodecRegistryHelper helper);
 }

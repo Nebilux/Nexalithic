@@ -16,7 +16,10 @@
 
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
+import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.io.codec.NexalithicModelCodec;
+import com.nebilux.nexalithic.core.io.codec.fragmenter.SignalingPacketFragmenter;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import org.jctools.queues.SpscArrayQueue;
 import org.slf4j.Logger;
@@ -28,16 +31,35 @@ import org.slf4j.LoggerFactory;
  * @author Reonvia
  * @since 0.1.0
  */
-public class SignalingPacketsAssembler implements ModelAssembler<SignalingPacket> {
-    private static final Logger logger = LoggerFactory.getLogger(SignalingPacketsAssembler.class);
-    private final SpscArrayQueue<SignalingPacket> packets = new SpscArrayQueue<>(128);
+public class SignalingPacketAssembler extends NexalithicModelCodec implements ModelAssembler<SignalingPacket> {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, SignalingPacketFragmenter.class);
+    public static final class Options extends NexalithicModelCodec.Options {
+        private Options(Class<?> holder) {
+            super(holder);
+        }
+
+        @Override
+        protected int MaxOutstandingContextCount_Value() {
+            return 128;
+        }
+    }
+
+    private static final Logger logger = LoggerFactory.getLogger(SignalingPacketAssembler.class);
+    private static final boolean LOGGER_TRACE_ENABLED = logger.isTraceEnabled();
+
+    private final SpscArrayQueue<SignalingPacket> completedPackets;
     private SignalingPacket pendingPacket;
+
+    public SignalingPacketAssembler(int maxOutstandingContextCount) {
+        super(maxOutstandingContextCount);
+        completedPackets = new SpscArrayQueue<>(maxOutstandingContextCount);
+    }
 
     @Override
     public boolean feed(LoopBuffer source) {
-        int flag = source.readableBytes();
+        int initialReadable = source.readableBytes();
         if (pendingPacket != null) {
-            if (packets.offer(pendingPacket)) {
+            if (completedPackets.offer(pendingPacket)) {
                 pendingPacket = null;
             } else {
                 return false;
@@ -52,30 +74,30 @@ public class SignalingPacketsAssembler implements ModelAssembler<SignalingPacket
             if (packet == null) {
                 break;
             }
-            if (logger.isTraceEnabled()) {
+            if (LOGGER_TRACE_ENABLED) {
                 logger.trace("received SIGNALING packet [{}]", packet);
             }
-            if (packets.offer(packet)) {
+            if (completedPackets.offer(packet)) {
                 source.dropMarkHead();
             } else {
                 this.pendingPacket = packet;
                 break;
             }
         }
-        return flag != source.readableBytes();
+        return initialReadable != source.readableBytes();
     }
 
     @Override
     public SignalingPacket drain() {
-        if (pendingPacket != null && packets.offer(pendingPacket)) {
+        if (pendingPacket != null && completedPackets.offer(pendingPacket)) {
             pendingPacket = null;
         }
-        return packets.poll();
+        return completedPackets.poll();
     }
 
     @Override
     public void clear() {
-        packets.clear();
+        completedPackets.clear();
         pendingPacket = null;
     }
 }

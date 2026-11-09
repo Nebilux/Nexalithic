@@ -60,14 +60,14 @@ abstract class AbstractBusinessPacketArgumentConverter<HC extends HandlerContext
      * @param payloadIndex Payload 下标
      * @return 指定下标的 Payload
      */
-    protected final BusinessPacket.Payload<?> payload(HC context, Method method, Parameter parameter, int payloadIndex) {
+    protected final BusinessPacket.Part<?> payload(HC context, Method method, Parameter parameter, int payloadIndex) {
         if (payloadIndex < 0) {
             throw new IllegalArgumentException(
                     "Request payload index must not be negative for parameter '%s' of method %s"
                             .formatted(parameter.getName(), method.toGenericString())
             );
         }
-        BusinessPacket.Payload<?> payload = request(context, method).payload(payloadIndex);
+        BusinessPacket.Part<?> payload = request(context, method).part(payloadIndex);
         if (payload == null) {
             throw new IllegalArgumentException(
                     "No request payload at index %d for parameter '%s' of method %s"

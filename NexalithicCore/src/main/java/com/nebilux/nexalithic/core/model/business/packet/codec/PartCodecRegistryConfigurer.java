@@ -14,24 +14,19 @@
  * limitations under the License.
  */
 
-package com.nebilux.nexalithic.core.io.codec;
+package com.nebilux.nexalithic.core.model.business.packet.codec;
 
-import com.nebilux.nexalithic.core.connection.session.AbstractSession;
-import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
+import com.nebilux.nexalithic.core.builder.NexalithicConfigurer;
+import com.nebilux.nexalithic.core.model.business.codec.CodecRegistryHelper;
 
 /**
- * 编解码器回调
+ * 终端 Builder 的 Payload 编解码器配置入口。
  *
  * @author Reonvia
- * @since 0.2.0
+ * @since 0.5.0
  */
-public interface CodecCallback {
-    void bind(AbstractSession<?> session);
-
-    void prepare(long taskId, BusinessPacket.Way way);
-    void start(long total);
-    void update(long remaining);
-    void complete();
-
-    void clear();
+@FunctionalInterface
+public interface PartCodecRegistryConfigurer extends NexalithicConfigurer<PartCodecRegistry.Builder, CodecRegistryHelper> {
+    @Override
+    void configure(PartCodecRegistry.Builder builder, CodecRegistryHelper helper);
 }

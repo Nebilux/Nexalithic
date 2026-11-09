@@ -20,7 +20,6 @@ import com.nebilux.nexalithic.client.NexalithicClient;
 import com.nebilux.nexalithic.client.messaging.ClientHandlerCoordinator;
 import com.nebilux.nexalithic.client.session.ClientSession;
 import com.nebilux.nexalithic.client.session.SessionManager;
-import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.connection.channel.NexalithicChannel;
@@ -75,7 +74,7 @@ public class ClientSessionLoop extends SessionLoop<ClientChannelHandoff, Session
         sessionManager = context.getModule(NexalithicClient.MODULES.SessionManager);
         handlerCoordinator = context.getModule(NexalithicClient.MODULES.HandlerCoordinator);
         TaskScheduler taskScheduler = context.getModule(NexalithicClient.MODULES.TaskScheduler);
-        CodecResources codecResources = new CodecResources(context, NexalithicClient.MODULES, NexalithicEndpoint.Type.CLIENT);
+        CodecResources codecResources = new CodecResources(context, NexalithicClient.MODULES);
         channelFactory = new ClientSession.ChannelFactory(this, codecResources);
         sessionFactory = handoff -> new ClientSession(
                 handoff.sessionKey(), handoff.secretKeyContexts(),

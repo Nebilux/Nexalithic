@@ -41,8 +41,8 @@ public class BusinessStreamImpl<C extends BusinessStream.Chunk> extends Business
     private final StreamFeeder<C> feeder;
     private final StreamDrainer<C> drainer;
 
-    public BusinessStreamImpl(Class<C> type, Direction direction, Policy policy, BusinessModel.Way way, short... path) {
-        super(type, direction, policy, way, path);
+    public BusinessStreamImpl(Class<C> type, Direction direction, Policy policy, BusinessModel.Way way, short[] path, long correlationId) {
+        super(type, direction, policy, way, path, correlationId);
         input = direction.hasInput() ? new ChunkQueue<>(policy.sequence(), policy.input(), this::onCallbackFailure) : null;
         output = direction.hasOutput() ? new ChunkQueue<>(policy.sequence(), policy.output(), this::onCallbackFailure) : null;
         feeder = input == null ? null : new StreamFeeder<>() {

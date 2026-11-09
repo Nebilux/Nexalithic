@@ -16,21 +16,20 @@
 
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
+import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.internal.model.stream.StreamCodecAccess;
+import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
 import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.business.stream.StreamFeeder;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
-import org.jctools.queues.SpmcArrayQueue;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 业务流汇编程序
@@ -39,162 +38,39 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 0.5.0
  */
 public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStream<?>> {
-    private static final int COMPLETED_CAPACITY = 16;
-    private static final int BUFFERING_PAYLOAD_SIZE = Integer.BYTES + Long.BYTES + Byte.BYTES;
-    private static final int START_PAYLOAD_FIXED_SIZE = Long.BYTES // taskId
-            + Short.BYTES // Way
-            + Byte.BYTES // pathDepth
-            + Byte.BYTES // Direction
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessStreamAssembler.class);
+    public static class Options extends BusinessModelAssembler.Options {
+        private Options(Class<?> holder) {
+            super(holder);
+        }
+
+        @Override
+        protected int MaxOutstandingContextCount_Value() {
+            return 16;
+        }
+    }
+
+    private static final int EXTRA_HEADER_SIZE = Byte.BYTES // Direction
             + Byte.BYTES // Policy.Sequence
-            + 2 * BUFFERING_PAYLOAD_SIZE // 输入和输出 Buffering
+            + 2 * (Integer.BYTES // maxChunks
+                    + Long.BYTES // maxBytes
+                    + Byte.BYTES // OnFull
+            ) // 输入和输出 Buffering
             + Integer.BYTES; // ChunkCodec ID
+    private static final int CHUNK_METADATA_SIZE = Long.BYTES // Chunk 序号
+            + Integer.BYTES; // 编码长度
 
     private final ChunkCodecRegistry chunkCodecRegistry;
-    private final Map<Integer, CodecContext<?>> assembling = new ConcurrentHashMap<>();
-    private final SpmcArrayQueue<BusinessStream<?>> completed = new SpmcArrayQueue<>(COMPLETED_CAPACITY);
-    private BusinessStream<?> pending;
-    private CodecContext<?> blockedContext;
-    private Runnable readRetry;
 
-    public BusinessStreamAssembler(ChunkCodecRegistry chunkCodecRegistry) {
-        this.chunkCodecRegistry = chunkCodecRegistry;
-    }
-
-    /** 输出块队列恢复容量后，由所属 Loop 重新处理已缓存的输入。 */
-    public void onReadRetry(Runnable callback) {
-        readRetry = Objects.requireNonNull(callback, "callback");
+    public BusinessStreamAssembler(ChunkCodecRegistry chunkCodecRegistry, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
+        super(maxOutstandingContextCount, codecCallbackFactory);
+        this.chunkCodecRegistry = Objects.requireNonNull(chunkCodecRegistry, "chunkCodecRegistry");
     }
 
     @Override
-    public boolean feed(LoopBuffer source) throws IOException {
-        int initialReadable = source.readableBytes();
-        synchronized (this) {
-            if (pending != null) {
-                if (!completed.offer(pending)) {
-                    return false;
-                }
-                pending = null;
-            }
-        }
-        if (blockedContext != null) {
-            CodecContext<?> blocked = blockedContext;
-            try {
-                if (!blocked.flushPendingChunks()) {
-                    return false;
-                }
-                blockedContext = null;
-            } catch (Throwable throwable) {
-                blockedContext = null;
-                assembling.remove(blocked.modelId, blocked);
-                blocked.clear();
-                throw throwable;
-            }
-        }
-        while (source.readableBytes() >= CodecFrame.HEADER_LENGTH) {
-            source.markHead();
-            long header = source.unsafeGetLong();
-            CodecFrame.Type frameType;
-            try {
-                frameType = CodecFrame.parseFrameType(header);
-            } catch (IllegalArgumentException failure) {
-                throw new IOException("Invalid Stream frame type", failure);
-            }
-            int payloadLength = CodecFrame.parsePayloadLength(header);
-            int modelId = CodecFrame.parseModelId(header);
-            if (payloadLength > CodecFrame.MAX_PAYLOAD_LENGTH) {
-                throw new IOException("Stream frame payload exceeds maximum: " + payloadLength);
-            }
-            if (source.readableBytes() < payloadLength) {
-                source.resetHead();
-                break;
-            }
-            CodecContext<?> context = assembling.get(modelId);
-            try {
-                if (context == null) {
-                    if (!frameType.isStart()) {
-                        throw new IOException("Invalid model id " + modelId);
-                    }
-                    context = createContext(modelId, source, payloadLength);
-                    BusinessStream<?> model = context.model();
-                    assembling.put(modelId, context);
-                    if (!completed.offer(model)) {
-                        synchronized (this) {
-                            pending = model;
-                        }
-                        break;
-                    }
-                } else {
-                    if (!context.nextFrame(frameType, source, payloadLength)) {
-                        blockedContext = context;
-                        break;
-                    }
-                }
-                if (context.isComplete()) {
-                    assembling.remove(modelId);
-                }
-            } catch (Throwable throwable) {
-                if (context != null) {
-                    assembling.remove(modelId, context);
-                    if (blockedContext == context) {
-                        blockedContext = null;
-                    }
-                    context.clear();
-                }
-                if (throwable instanceof RuntimeException failure) {
-                    throw new IOException("Stream frame decoding failed", failure);
-                }
-                throw throwable;
-            }
-        }
-        return initialReadable != source.readableBytes();
-    }
-
-    @Override
-    public BusinessStream<?> drain() {
-        BusinessStream<?> model = completed.poll();
-        if (model != null) {
-            boolean retry;
-            synchronized (this) {
-                retry = pending != null;
-            }
-            if (retry && readRetry != null) {
-                readRetry.run();
-            }
-            return model;
-        }
-        synchronized (this) {
-            model = pending;
-            pending = null;
-        }
-        return model;
-    }
-
-    @Override
-    public void clear() {
-        blockedContext = null;
-        for (CodecContext<?> context : assembling.values()) {
-            context.clear();
-        }
-        assembling.clear();
-        synchronized (this) {
-            pending = null;
-        }
-        completed.clear();
-    }
-
-    private CodecContext<?> createContext(int modelId, LoopBuffer input, int quota) throws IOException {
-        if (quota < START_PAYLOAD_FIXED_SIZE) {
-            throw new IOException("Stream START payload is too short: " + quota);
-        }
-        long taskId = input.unsafeGetLong();
-        int wayCode = input.unsafeGetShort();
-        int pathDepth = input.unsafeGetByte();
-        if (pathDepth > BusinessModel.MAX_PATH_DEPTH || quota != START_PAYLOAD_FIXED_SIZE + pathDepth * Short.BYTES) {
-            throw new IOException("Invalid Stream START payload length: " + quota);
-        }
-        short[] path = new short[pathDepth];
-        for (int i = 0; i < pathDepth; i++) {
-            path[i] = input.unsafeGetShort();
+    protected CodecContext<BusinessStream<?>> createCodecContext(int modelSequence, BusinessModel.Way way, short[] path, long correlationId, LoopBuffer input, int surplus) throws IOException {
+        if (surplus != EXTRA_HEADER_SIZE) {
+            throw new IOException("Invalid Stream START payload length: " + surplus);
         }
         try {
             BusinessStream.Direction direction = BusinessStream.Direction.from(input.unsafeGetByte()).opposite();
@@ -207,7 +83,7 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
             if (codec == null) {
                 throw new IOException("Unknown Stream chunk codec: " + codecId);
             }
-            return createTypedContext(modelId, codec, direction, policy, BusinessModel.Way.from((short) wayCode), path, taskId, readRetry);
+            return createTypedContext(modelSequence, codec, direction, policy, way, path, correlationId, outputAvailableCallback());
         } catch (IllegalArgumentException | IllegalStateException failure) {
             throw new IOException("Invalid Stream START payload", failure);
         }
@@ -220,38 +96,34 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
         return new BusinessStream.Policy.Buffering(maxChunks, maxBytes, onFull);
     }
 
-    private static <C extends BusinessStream.Chunk> CodecContext<C> createTypedContext(
-            int modelId, ChunkCodec<C> codec, BusinessStream.Direction direction,
-            BusinessStream.Policy policy, BusinessModel.Way way, short[] path, long taskId, Runnable readRetry) {
-        BusinessStream<C> model = BusinessStream.open(codec.clazz(), direction, policy, way, path).setTaskId(taskId);
-        return new CodecContext<>(modelId, model, codec, readRetry);
+    private <C extends BusinessStream.Chunk> CodecContext<BusinessStream<?>> createTypedContext(
+            int modelSequence, ChunkCodec<C> codec, BusinessStream.Direction direction,
+            BusinessStream.Policy policy, BusinessModel.Way way, short[] path, long correlationId, Runnable readRetry) {
+        return new StreamCodecContext<>(modelSequence, codecCallbackFactory.create(modelSequence, correlationId, way),
+                BusinessStream.open(codec.clazz(), direction, policy, way, path, correlationId), codec, readRetry);
     }
 
-    private static class CodecContext<C extends BusinessStream.Chunk> {
-        private static final int CHUNK_METADATA_SIZE = Long.BYTES + Integer.BYTES;
-
-        protected final int modelId;
-        protected final BusinessStream<C> model;
-        protected final StreamCodecAccess<C> access;
-        protected final ChunkCodec.Decoder<C> decoder;
+    private static final class StreamCodecContext<C extends BusinessStream.Chunk> extends CodecContext<BusinessStream<?>> {
+        private final BusinessStream<?> stream;
+        private final StreamCodecAccess<C> access;
+        private final ChunkCodec.Decoder<C> decoder;
         private final ArrayDeque<C> pendingChunks = new ArrayDeque<>();
         private final Runnable readRetry;
         private int chunkRemaining = -1;
         private boolean waitingForCapacity;
         private boolean complete;
 
-        protected CodecContext(int modelId, BusinessStream<C> model, ChunkCodec<C> codec, Runnable readRetry) {
-            this.modelId = modelId;
-            this.model = model;
+        private StreamCodecContext(int modelSequence, BusinessModelCodecCallback callback, BusinessStream<C> model, ChunkCodec<C> codec, Runnable readRetry) {
+            super(modelSequence, callback);
+            this.stream = model;
             this.decoder = codec.decoder();
-            if (decoder == null) {
-                throw new IllegalStateException("Chunk codec has no decoder: " + codec.clazz().getName());
-            }
             this.access = StreamCodecAccess.from(model);
             this.readRetry = readRetry;
+            this.complete = !model.direction().hasOutput();
         }
 
-        protected boolean nextFrame(CodecFrame.Type type, LoopBuffer input, int quota) throws IOException {
+        @Override
+        protected boolean readNextFrame(CodecFrame.Type type, LoopBuffer input, int quota) throws IOException {
             if (complete || !pendingChunks.isEmpty()) {
                 throw new IOException("Stream frame received in an invalid state");
             }
@@ -285,10 +157,10 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
                 int limit = Math.min(remaining, chunkRemaining);
                 if (limit > 0) {
                     LoopBuffer.LimitedReadableView view = input.unsafeLimitedReadableView(limit);
-                    int decoded = decoder.decode(view);
+                    decoder.decode(view);
                     int consumed = limit - view.remaining();
-                    if (decoded != consumed || consumed == 0) {
-                        throw new IOException("Chunk decoder made no progress or returned an invalid length");
+                    if (consumed <= 0 || consumed > chunkRemaining) {
+                        throw new IOException("Chunk decoder made no progress or consumed an invalid length");
                     }
                     remaining -= consumed;
                     chunkRemaining -= consumed;
@@ -304,6 +176,36 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
                 }
             }
             return flushPendingChunks();
+        }
+
+        @Override
+        public BusinessStream<?> model() {
+            return stream;
+        }
+
+        @Override
+        protected boolean flushPending() {
+            return flushPendingChunks();
+        }
+
+        @Override
+        protected boolean isComplete() {
+            return complete;
+        }
+
+        @Override
+        protected void onComplete() {
+            onDiscard();
+        }
+
+        @Override
+        protected void onDiscard() {
+            if (waitingForCapacity) {
+                access.onOutputAvailable(null);
+                waitingForCapacity = false;
+            }
+            pendingChunks.clear();
+            decoder.clear();
         }
 
         private boolean flushPendingChunks() {
@@ -324,23 +226,6 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
                 waitingForCapacity = false;
             }
             return true;
-        }
-
-        protected boolean isComplete() {
-            return complete;
-        }
-
-        protected void clear() {
-            if (waitingForCapacity) {
-                access.onOutputAvailable(null);
-                waitingForCapacity = false;
-            }
-            pendingChunks.clear();
-            decoder.reset();
-        }
-
-        public BusinessStream<C> model() {
-            return model;
         }
     }
 }

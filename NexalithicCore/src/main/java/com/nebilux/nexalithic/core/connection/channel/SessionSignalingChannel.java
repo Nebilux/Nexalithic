@@ -17,8 +17,8 @@
 package com.nebilux.nexalithic.core.connection.channel;
 
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
-import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
-import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
+import com.nebilux.nexalithic.core.io.codec.assembler.SignalingPacketAssembler;
+import com.nebilux.nexalithic.core.io.codec.fragmenter.SignalingPacketFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
@@ -31,7 +31,7 @@ import com.nebilux.nexalithic.core.security.SecretKeyContext;
  */
 public class SessionSignalingChannel<S extends AbstractSession<S>> extends SessionChannel<SignalingPacket, S> {
     public SessionSignalingChannel(SessionLoop<?, ? super SessionChannel<SignalingPacket, S>> ownerLoop, S ownerSession,
-                                   ModelFragmenter<SignalingPacket> fragmenter, ModelAssembler<SignalingPacket> assembler, SecretKeyContext secretKeyContext) {
+                                   SignalingPacketFragmenter fragmenter, SignalingPacketAssembler assembler, SecretKeyContext secretKeyContext) {
         super(Kind.Signaling_Packet, ownerLoop, ownerSession, fragmenter, assembler, secretKeyContext);
     }
 }

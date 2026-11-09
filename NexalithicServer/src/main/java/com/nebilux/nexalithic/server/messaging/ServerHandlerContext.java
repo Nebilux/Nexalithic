@@ -71,7 +71,6 @@ public class ServerHandlerContext extends HandlerContext<ServerSession> {
     }
 
     public void broadcastToOthers(BusinessPacket packet) {
-        packet.seal();
         String currentSessionName = session.getSessionName();
         sessionRegistry.forEachNamedSession(s -> {
             if (!s.getSessionName().equals(currentSessionName)) {

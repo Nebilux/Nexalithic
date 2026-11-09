@@ -16,7 +16,7 @@
 
 package com.nebilux.nexalithic.core.model.business.stream.codec;
 
-import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.model.business.codec.PayloadCodec;
 import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 
 import java.io.IOException;
@@ -27,11 +27,9 @@ import java.io.IOException;
  * @author Reonvia
  * @since 0.5.0
  */
-public interface ChunkCodec<C extends BusinessStream.Chunk> {
-    int id();
-    Class<C> clazz();
-
+public interface ChunkCodec<C extends BusinessStream.Chunk> extends PayloadCodec<C> {
     Encoder<C> encoder();
+
     Decoder<C> decoder();
 
     /**
@@ -40,10 +38,10 @@ public interface ChunkCodec<C extends BusinessStream.Chunk> {
      * @author Reonvia
      * @since 0.5.0
      */
-    interface Encoder<C extends BusinessStream.Chunk> {
+    interface Encoder<C extends BusinessStream.Chunk> extends PayloadCodec.Encoder {
         int prepare(C chunk) throws IOException;
-        int encode(LoopBuffer.LimitedWritableView target) throws IOException;
-        boolean tryFinish() throws IOException;
+
+        /** 完成一个 Chunk 后重置状态，以便编码下一个 Chunk。 */
         void reset();
     }
 
@@ -53,10 +51,10 @@ public interface ChunkCodec<C extends BusinessStream.Chunk> {
      * @author Reonvia
      * @since 0.5.0
      */
-    interface Decoder<C extends BusinessStream.Chunk> {
+    interface Decoder<C extends BusinessStream.Chunk> extends PayloadCodec.Decoder<C> {
         void prepare(long sequence, int size) throws IOException;
-        int decode(LoopBuffer.LimitedReadableView source) throws IOException;
-        C tryFinish() throws IOException;
+
+        /** 完成一个 Chunk 后重置状态，以便解码下一个 Chunk。 */
         void reset();
     }
 }

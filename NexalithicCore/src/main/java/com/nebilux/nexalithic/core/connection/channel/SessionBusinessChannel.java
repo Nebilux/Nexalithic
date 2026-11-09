@@ -19,12 +19,14 @@ package com.nebilux.nexalithic.core.connection.channel;
 import com.nebilux.nexalithic.core.connection.session.AbstractSession;
 import com.nebilux.nexalithic.core.infra.rate.DynamicRateController;
 import com.nebilux.nexalithic.core.infra.rate.RateLimiter;
-import com.nebilux.nexalithic.core.io.codec.assembler.ModelAssembler;
-import com.nebilux.nexalithic.core.io.codec.fragmenter.ModelFragmenter;
+import com.nebilux.nexalithic.core.io.codec.assembler.BusinessModelAssembler;
+import com.nebilux.nexalithic.core.io.codec.fragmenter.BusinessModelFragmenter;
+import com.nebilux.nexalithic.core.io.codec.fragmenter.BusinessStreamFragmenter;
 import com.nebilux.nexalithic.core.io.loop.SessionLoop;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.security.SecretKeyContext;
 
+import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -41,8 +43,16 @@ public class SessionBusinessChannel<M extends BusinessModel<?>, S extends Abstra
     private final LongAdder writeBytesWindow = new LongAdder();
 
     public SessionBusinessChannel(Kind kind, SessionLoop<?, ? super SessionChannel<M, S>> ownerLoop, S ownerSession,
-                                  ModelFragmenter<M> fragmenter, ModelAssembler<M> assembler, SecretKeyContext secretKeyContext) {
+                                  BusinessModelFragmenter<M> fragmenter, BusinessModelAssembler<M> assembler, SecretKeyContext secretKeyContext) {
         super(kind, ownerLoop, ownerSession, fragmenter, assembler, secretKeyContext);
+        assembler.onOutputAvailable(() -> ownerLoop.postReadRetry(this));
+        if (fragmenter instanceof BusinessStreamFragmenter streamFragmenter) {
+            streamFragmenter.onOutputAvailable(() -> {
+                if (getState() == State.Opened) {
+                    updateInterest(SelectionKey.OP_WRITE, true);
+                }
+            });
+        }
     }
 
     public void updateReadRate(long rate) {
@@ -82,7 +92,7 @@ public class SessionBusinessChannel<M extends BusinessModel<?>, S extends Abstra
     }
 
     @Override
-    protected void onBytesWritten(long bytes) {
+    protected void onBytesWrite(long bytes) {
         rateLimiter.consumeWrite(bytes);
         if (bytes > 0) {
             writeBytesWindow.add(bytes);

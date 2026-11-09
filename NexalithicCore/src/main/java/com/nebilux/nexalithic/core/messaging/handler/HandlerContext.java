@@ -57,14 +57,14 @@ public abstract class HandlerContext<S extends AbstractSession<?>> {
     /**
      * 向当前上下文关联的会话推送业务响应模型。
      *
-     * @param response 需要发送给对端的响应模型
+     * @param responseBuilder 需要发送给对端的响应模型
      * @return 响应成功进入发送流程时返回 {@code true}
      */
-    public boolean pushResponse(BusinessModel<?> response) {
-        if (!response.getWay().isResponse()) {
+    public boolean pushResponse(BusinessModel.Builder<?> responseBuilder) {
+        if (!responseBuilder.getWay().isResponse()) {
             throw new IllegalArgumentException("A response business model is required");
         }
-        return session.pushBusiness(response.setTaskId(request.getTaskId()));
+        return session.pushBusiness(responseBuilder.build(request.getCorrelationId()));
     }
 
     public static class Recyclable<S extends AbstractSession<?>, T extends HandlerContext<S>, W extends Recyclable<S, T, W>> extends TargetStaticRecyclableWrapper<T, W> {

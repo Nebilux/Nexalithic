@@ -35,40 +35,41 @@ public class TransferSnapshot {
     private static final VarHandle VH;
     static {
         try {
-            VH = MethodHandles.lookup().findVarHandle(TransferSnapshot.class, "remaining", long.class);
+            VH = MethodHandles.lookup().findVarHandle(TransferSnapshot.class, "transferred", long.class);
         } catch (Exception e) {
             throw new Error(e);
         }
     }
 
     private final long total;
-    private long remaining;
+    private long transferred;
 
     private final long startTimeNanos;
     private long lastSnapshotTimeNanos;
-    private long lastRemaining;
+    private long lastTransferred;
     private int lastFrameIndex;
 
+    /** @param total 总字节数；-1 表示总量未知。 */
     public TransferSnapshot(long total) {
+        if (total < -1) {
+            throw new IllegalArgumentException("total must be non-negative or -1");
+        }
         this.total = total;
         this.startTimeNanos = System.nanoTime();
         this.lastSnapshotTimeNanos = startTimeNanos;
-        this.lastRemaining = total;
-        updateRemaining(total);
+        this.lastTransferred = 0;
     }
 
-    public void updateRemaining(long remaining) {
-        VH.setRelease(this, remaining);
+    /** 累加本次传输的字节数。 */
+    public void appendTransferred(long increment) {
+        VH.getAndAddRelease(this, increment);
     }
 
     public long getTotal() {
         return total;
     }
-    public long getRemaining() {
+    public long getTransferred() {
         return (long) VH.getAcquire(this);
-    }
-    public long getProcessed() {
-        return total - getRemaining();
     }
 
     /**
@@ -79,7 +80,7 @@ public class TransferSnapshot {
         if (durationNanos <= 0) {
             return 0;
         }
-        return (getProcessed() * 1_000_000_000.0) / durationNanos;
+        return (getTransferred() * 1_000_000_000.0) / durationNanos;
     }
 
     /**
@@ -87,15 +88,15 @@ public class TransferSnapshot {
      */
     public double getInstantSpeed() {
         long currentTimeNanos = System.nanoTime();
-        long currentRemaining = getRemaining();
+        long currentTransferred = getTransferred();
         long timeDelta = currentTimeNanos - lastSnapshotTimeNanos;
         if (timeDelta <= 0) {
             return 0;
         }
-        long bytesDelta = lastRemaining - currentRemaining;
+        long bytesDelta = currentTransferred - lastTransferred;
         double speed = (bytesDelta * 1_000_000_000.0) / timeDelta;
         this.lastSnapshotTimeNanos = currentTimeNanos;
-        this.lastRemaining = currentRemaining;
+        this.lastTransferred = currentTransferred;
         return Math.max(0, speed);
     }
 
@@ -104,6 +105,13 @@ public class TransferSnapshot {
      * 基于瞬时速度计算，如果瞬时速度为0则回退到平均速度
      */
     public long getEstimateArrivalTime() {
+        if (total < 0) {
+            return -1;
+        }
+        long remaining = Math.max(0, total - getTransferred());
+        if (remaining == 0) {
+            return 0;
+        }
         double speed = getInstantSpeed();
         if (speed <= 0) {
             speed = getAverageSpeed();
@@ -111,36 +119,33 @@ public class TransferSnapshot {
         if (speed <= 0) {
             return -1;
         }
-        return (long) (getRemaining() / speed);
+        return (long) (remaining / speed);
     }
 
-    /**
-     * 获取当前进度百分比 (0.00 - 100.00)
-     */
+    /** 获取当前进度百分比（0.00 至 100.00）；总量未知时返回 -1。 */
     public double getPercent() {
-        if (total <= 0) return 100.0;
-        // 使用同步读取的 processed 值
-        double percent = (getProcessed() * 100.0) / total;
-        return Math.min(100.0, Math.max(0.0, percent));
+        if (total < 0) return -1;
+        if (total == 0) return 100.0;
+        double percent = (getTransferred() * 100.0) / total;
+        return Math.clamp(percent, 0.0, 100.0);
     }
 
     /**
      * 格式化当前进度百分比字符串
      */
     public String formatPercent() {
-        return String.format("%.2f%%", getPercent());
+        return total < 0 ? "--" : String.format("%.2f%%", getPercent());
     }
 
     /**
-     * 获取格式化的进度描述 (e.g., "1.24 MB / 10.00 MB")
-     * */
+     * 获取格式化的进度描述 (e.g. {@code "1.24 MB / 10.00 MB"})；总量未知时以 ? 表示总量。
+     */
     public String getProgressStatus() {
-        return formatSize(getProcessed()) + " / " + formatSize(total);
+        return formatSize(getTransferred()) + " / " + (total < 0 ? "?" : formatSize(total));
     }
 
     /**
-     * 生成默认长度（100格）的文本进度条
-     * 示例: [##########----------]
+     * 生成默认长度（100格）的文本进度条 (e.g. {@code [##########----------]})；总量未知时显示旋转指示符。
      */
     public String getProgressBar() {
         return getProgressBar(100, '#', '-', SPIN_FRAMES);
@@ -156,14 +161,14 @@ public class TransferSnapshot {
      */
     public String getProgressBar(int width, char completedChar, char remainingChar, char[] spinFrames) {
         double percent = getPercent();
-        long processed = getProcessed();
+        long transferred = getTransferred();
         int completedWidth = (int) (width * (percent / 100.0));
-        completedWidth = Math.min(width, Math.max(0, completedWidth));
+        completedWidth = Math.clamp(completedWidth, 0, width);
         StringBuilder sb = new StringBuilder(width + 2);
         sb.append('[');
-        boolean showSpin = spinFrames != null && spinFrames.length > 0 && processed > 0 && percent < 100.0;
+        boolean showSpin = spinFrames != null && spinFrames.length > 0 && (total < 0 || transferred > 0 && percent < 100.0);
         int fillWidth = showSpin ? Math.min(completedWidth, width - 1) : completedWidth;
-        sb.append(String.valueOf(completedChar).repeat(Math.max(0, fillWidth)));
+        sb.repeat(String.valueOf(completedChar), Math.max(0, fillWidth));
         if (showSpin) {
             char frame = spinFrames[lastFrameIndex % spinFrames.length];
             sb.append(frame);
@@ -171,7 +176,7 @@ public class TransferSnapshot {
         }
         int currentContentLen = sb.length() - 1;
         int remainingCount = width - currentContentLen;
-        sb.append(String.valueOf(remainingChar).repeat(Math.max(0, remainingCount)));
+        sb.repeat(String.valueOf(remainingChar), Math.max(0, remainingCount));
         sb.append(']');
         return sb.toString();
     }
