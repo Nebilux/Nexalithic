@@ -33,6 +33,7 @@ import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
 import com.nebilux.nexalithic.core.messaging.task.TaskScheduler;
+import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.server.exception.NexalithicServerOpenException;
 import com.nebilux.nexalithic.server.io.accept.AcceptorLoop;
@@ -145,21 +146,21 @@ public class NexalithicServer extends NexalithicEndpoint {
     }
 
     /**
-     * 向指定的用户推送数据包
+     * 向指定的会话推送 {@link BusinessModel<>}
      *
      * @param sessionName 目标会话名
-     * @param packet 业务数据包
+     * @param model 业务模型
      */
-    public boolean push(String sessionName, BusinessPacket packet) {
+    public boolean push(String sessionName, BusinessModel<?> model) {
         ServerSession session = sessionRegistry.getSession(sessionName);
         if (session == null) {
             return false;
         }
-        return session.pushBusiness(packet);
+        return session.pushBusiness(model);
     }
 
     /**
-     * 向所有已命名（已登录）的用户推送数据包
+     * 向所有已命名会话推送数据包
      *
      * @param packet 业务数据包
      */

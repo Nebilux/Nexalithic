@@ -306,7 +306,7 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
         long readExtraHeaderAfter = input.getHead();
         context.firstFrame(input, surplus - (int) (readExtraHeaderAfter - readExtraHeaderBefore), frameType, (int) (readExtraHeaderAfter - readHeaderBefore));
         if (LOGGER_TRACE_ENABLED) {
-            logger.trace("accepted [{}] - [modelSequence: {}, correlationId: {}]",
+            logger.trace("accepted [{}] - [modelSequence={}, correlationId={}]",
                     sessionKey, modelSequence, correlationId);
         }
         return context;

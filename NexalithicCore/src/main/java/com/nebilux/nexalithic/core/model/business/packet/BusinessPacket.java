@@ -66,15 +66,15 @@ public class BusinessPacket extends BusinessModel<BusinessPacket> {
     private final byte partCount;
     private final List<Part<?>> parts;
 
-    private BusinessPacket(Way way, short[] path, long correlationId, List<Part<?>> parts) {
-        super(way, path, correlationId);
+    private BusinessPacket(long correlationId, Way way, short[] path, List<Part<?>> parts) {
+        super(correlationId, way, path);
         this.parts = parts;
         this.partCount = (byte) parts.size();
         packetSize = logicalSize(this.parts);
     }
 
-    public static BusinessPacket create(Way way, short[] path, long correlationId, List<Part<?>> parts) {
-        return new BusinessPacket(way, verifyAndCopyPath(path), correlationId, verifyAndCopyParts(parts));
+    public static BusinessPacket create(long correlationId, Way way, short[] path, List<Part<?>> parts) {
+        return new BusinessPacket(correlationId, way, verifyAndCopyPath(path), verifyAndCopyParts(parts));
     }
 
     public static Builder builder(Way way, short... path) {
@@ -89,7 +89,7 @@ public class BusinessPacket extends BusinessModel<BusinessPacket> {
         for (Part<?> part : parts) {
             copies.add(part.duplicate());
         }
-        return new BusinessPacket(way, path, correlationId, copies);
+        return new BusinessPacket(correlationId, way, path, copies);
     }
 
     public final List<Part<?>> parts() {
@@ -142,6 +142,21 @@ public class BusinessPacket extends BusinessModel<BusinessPacket> {
         return Form.Packet;
     }
 
+    @Override
+    public final String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("CorrelationId: ").append(getCorrelationId()).append(", Way: ").append(getWay()).append(", Path: ").append(Arrays.toString(getPath())).append(", partCount: ").append(partCount);
+        if (parts != null) {
+            sb.append(", Parts: { ");
+            for (Part<?> part : parts) {
+                sb.append(part).append(", ");
+            }
+            sb.delete(sb.length() - 2, sb.length());
+            sb.append(" }");
+        }
+        return sb.toString();
+    }
+
     private static long logicalSize(List<? extends Part<?>> parts) {
         long size = 0;
         for (Part<?> part : parts) {
@@ -159,22 +174,6 @@ public class BusinessPacket extends BusinessModel<BusinessPacket> {
             throw PayloadOverflowException.exceeding(0, parts.size(), MAX_PART_COUNT);
         }
         return List.copyOf(parts);
-    }
-
-    @Override
-    public final String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Way: ").append(getWay()).append(", Path: ").append(Arrays.toString(getPath())).append(", CorrelationId: ").append(getCorrelationId())
-                .append(", partCount: ").append(partCount);
-        if (parts != null) {
-            sb.append(", Parts: { ");
-            for (Part<?> part : parts) {
-                sb.append(part).append(", ");
-            }
-            sb.delete(sb.length() - 2, sb.length());
-            sb.append(" }");
-        }
-        return sb.toString();
     }
 
     /**
@@ -219,7 +218,7 @@ public class BusinessPacket extends BusinessModel<BusinessPacket> {
 
         @Override
         public BusinessPacket build(long correlationId) {
-            return new BusinessPacket(way, path, correlationId, List.copyOf(parts));
+            return new BusinessPacket(correlationId, way, path, List.copyOf(parts));
         }
     }
 }

@@ -19,6 +19,7 @@ package com.nebilux.nexalithic.core.model.business.stream;
 import com.nebilux.nexalithic.core.internal.model.stream.BusinessStreamImpl;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Objects.requireNonNull;
@@ -208,23 +209,23 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
     private final Class<C> type;
     private final AtomicReference<RuntimeException> callbackFailure = new AtomicReference<>();
 
-    protected BusinessStream(Class<C> type, Direction direction, Policy policy, Way way, short[] path, long correlationId) {
-        super(way, verifyAndCopyPath(path), correlationId);
-        this.type = requireNonNull(type, "type");
+    protected BusinessStream(long correlationId, Way way, short[] path, Direction direction, Policy policy, Class<C> type) {
+        super(correlationId, way, verifyAndCopyPath(path));
         this.direction = requireNonNull(direction, "direction");
         this.policy = requireNonNull(policy, "policy");
+        this.type = requireNonNull(type, "type");
     }
 
-    public static <C extends Chunk> BusinessStream<C> open(Class<C> type, Direction direction, Policy policy, Way way, short[] path, long correlationId) {
-        return new BusinessStreamImpl<>(type, direction, policy, way, path, correlationId);
+    public static <C extends Chunk> BusinessStream<C> open(long correlationId, Way way, short[] path, Direction direction, Policy policy, Class<C> type) {
+        return new BusinessStreamImpl<>(correlationId, way, path, direction, policy, type);
     }
 
-    public static <C extends Chunk> BusinessStream<C> open(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
-        return new BusinessStreamImpl<>(type, direction, policy, way, path, BusinessModel.DEFAULT_CORRELATION_ID);
+    public static <C extends Chunk> BusinessStream<C> open(Way way, short[] path, Direction direction, Policy policy, Class<C> type) {
+        return new BusinessStreamImpl<>(BusinessModel.DEFAULT_CORRELATION_ID, way, path, direction, policy, type);
     }
 
-    public static <C extends Chunk> Builder<C> builder(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
-        return new Builder<>(type, direction, policy, way, path);
+    public static <C extends Chunk> Builder<C> builder(Way way, short[] path, Direction direction, Policy policy, Class<C> type) {
+        return new Builder<>(way, path, direction, policy, type);
     }
 
     /**
@@ -270,6 +271,16 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
         return Form.Stream;
     }
 
+    @Override
+    public final String toString() {
+        return "CorrelationId: " + getCorrelationId()
+                + ", Way: " + getWay()
+                + ", Path: " + Arrays.toString(getPath())
+                + ", Direction: " + direction
+                + ", Policy: " + policy
+                + ", ChunkType: " + type.getSimpleName();
+    }
+
     /**
      * 可复用的流构建器。每次构建均创建独立的流与块队列。
      * 所有配置在创建构建器时固定，因此 {@link #reset()} 无需清理逐流状态。
@@ -284,7 +295,7 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
         private final Direction direction;
         private final Policy policy;
 
-        protected Builder(Class<C> type, Direction direction, Policy policy, Way way, short... path) {
+        protected Builder(Way way, short[] path, Direction direction, Policy policy, Class<C> type) {
             super(way, path);
             this.type = requireNonNull(type, "type");
             this.direction = requireNonNull(direction, "direction");
@@ -296,7 +307,7 @@ public abstract class BusinessStream<C extends BusinessStream.Chunk> extends Bus
 
         @Override
         public BusinessStream<C> build(long correlationId) {
-            return BusinessStream.open(type, direction, policy, way, path, correlationId);
+            return BusinessStream.open(correlationId, way, path, direction, policy, type);
         }
     }
 }

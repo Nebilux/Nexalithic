@@ -102,7 +102,7 @@ public class NexalithicTask {
         }
     }
     private static final Logger logger = LoggerFactory.getLogger(NexalithicTask.class);
-    private static final AtomicLong COUNTER = new AtomicLong(0);
+    private static final AtomicLong COUNTER = new AtomicLong();
     private final long taskId;
     private final AtomicReference<State> state = new  AtomicReference<>(State.NEW);
     private final TaskFunction.RequestAction requestAction;
@@ -127,7 +127,7 @@ public class NexalithicTask {
                            TaskFunction.TimeoutAction timeoutAction, TaskFunction.FailedAction failedAction, TaskFunction.CancelAction cancelAction,
                            TaskFunction.FinishAction finishAction, TransferListener requestListener, TransferListener responseListener,
                            Pattern pattern, Strategy strategy, long waitTimeNanos, AbstractSession<?> owner) {
-        this.taskId = COUNTER.getAndIncrement();
+        this.taskId = COUNTER.incrementAndGet();
         this.requestAction = requestAction;
         this.responseAction = responseAction;
         this.completeAction = completeAction;

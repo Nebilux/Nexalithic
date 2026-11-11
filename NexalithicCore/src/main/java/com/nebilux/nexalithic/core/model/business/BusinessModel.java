@@ -577,16 +577,16 @@ public abstract class BusinessModel<M extends BusinessModel<M>> implements Nexal
     }
 
     public static final int MAX_PATH_DEPTH = Byte.MAX_VALUE;
-    public static final long DEFAULT_CORRELATION_ID = -1L;
+    public static final long DEFAULT_CORRELATION_ID = 0L;
 
+    protected final long correlationId;
     protected final Way way;
     protected final short[] path;
-    protected final long correlationId;
 
-    protected BusinessModel(Way way, short[] path, long correlationId) {
+    protected BusinessModel(long correlationId, Way way, short[] path) {
+        this.correlationId = correlationId;
         this.way = Objects.requireNonNull(way, "way");
         this.path = path;
-        this.correlationId = correlationId;
     }
 
     public final Way getWay() {

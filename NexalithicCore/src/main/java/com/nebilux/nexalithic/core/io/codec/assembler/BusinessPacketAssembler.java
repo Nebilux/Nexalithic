@@ -173,7 +173,7 @@ public class BusinessPacketAssembler extends BusinessModelAssembler<BusinessPack
             if (remaining != 0 || currentPartIndex != decoders.length) {
                 throw new IOException("Business packet ended before all Parts completed");
             }
-            packet = BusinessPacket.create(way, path, correlationId, parts);
+            packet = BusinessPacket.create(correlationId, way, path, parts);
             return true;
         }
 

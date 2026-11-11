@@ -105,7 +105,7 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
             int modelSequence, ChunkCodec<C> codec, BusinessStream.Direction direction,
             BusinessStream.Policy policy, BusinessModel.Way way, short[] path, long correlationId, Runnable readRetry) {
         return new StreamCodecContext<>(modelSequence, codecCallbackFactory.create(modelSequence, correlationId, way),
-                BusinessStream.open(codec.clazz(), direction, policy, way, path, correlationId), codec, readRetry);
+                BusinessStream.open(correlationId, way, path, direction, policy, codec.clazz()), codec, readRetry);
     }
 
     private static final class StreamCodecContext<C extends BusinessStream.Chunk> extends CodecContext<BusinessStream<?>> {
