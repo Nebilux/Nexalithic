@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.io.codec.NexalithicModelCodec;
 import com.nebilux.nexalithic.core.model.signaling.packet.SignalingPacket;
@@ -49,8 +50,8 @@ public class SignalingPacketFragmenter extends NexalithicModelCodec implements M
     private final MpscArrayQueue<SignalingPacket> incomingPackets;
     private SignalingPacket pendingPacket;
 
-    public SignalingPacketFragmenter(int maxOutstandingContextCount) {
-        super(maxOutstandingContextCount);
+    public SignalingPacketFragmenter(SessionKey sessionKey, int maxOutstandingContextCount) {
+        super(sessionKey, maxOutstandingContextCount);
         incomingPackets = new MpscArrayQueue<>(maxOutstandingContextCount);
     }
 
@@ -65,7 +66,7 @@ public class SignalingPacketFragmenter extends NexalithicModelCodec implements M
         for (SignalingPacket packet = takeInitialPacket(); packet != null; packet = incomingPackets.poll()) {
             if (packet.toBuffer(target)) {
                 if (LOGGER_TRACE_ENABLED) {
-                    logger.trace("SignalingPacketFragmenter drain packet [{}]", packet);
+                    logger.trace("completed [{}] - [model: [{}]]", sessionKey, packet);
                 }
             } else {
                 pendingPacket = packet;

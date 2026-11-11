@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.io.codec.NexalithicModelCodec;
 import com.nebilux.nexalithic.core.io.codec.fragmenter.SignalingPacketFragmenter;
@@ -50,8 +51,8 @@ public class SignalingPacketAssembler extends NexalithicModelCodec implements Mo
     private final SpscArrayQueue<SignalingPacket> completedPackets;
     private SignalingPacket pendingPacket;
 
-    public SignalingPacketAssembler(int maxOutstandingContextCount) {
-        super(maxOutstandingContextCount);
+    public SignalingPacketAssembler(SessionKey sessionKey, int maxOutstandingContextCount) {
+        super(sessionKey, maxOutstandingContextCount);
         completedPackets = new SpscArrayQueue<>(maxOutstandingContextCount);
     }
 
@@ -75,7 +76,7 @@ public class SignalingPacketAssembler extends NexalithicModelCodec implements Mo
                 break;
             }
             if (LOGGER_TRACE_ENABLED) {
-                logger.trace("received SIGNALING packet [{}]", packet);
+                logger.trace("completed [{}] - [model: [{}]]", sessionKey, packet);
             }
             if (completedPackets.offer(packet)) {
                 source.dropMarkHead();

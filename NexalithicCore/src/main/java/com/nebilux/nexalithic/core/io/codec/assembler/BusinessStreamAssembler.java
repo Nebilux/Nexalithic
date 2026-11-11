@@ -17,10 +17,11 @@
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.internal.model.stream.StreamCodecAccess;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
-import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
 import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.business.stream.StreamFeeder;
@@ -28,8 +29,6 @@ import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Objects;
 
 /**
  * 业务流汇编程序
@@ -39,7 +38,7 @@ import java.util.Objects;
  */
 public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStream<?>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessStreamAssembler.class);
-    public static class Options extends BusinessModelAssembler.Options {
+    public static final class Options extends BusinessModelAssembler.Options {
         private Options(Class<?> holder) {
             super(holder);
         }
@@ -62,15 +61,21 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
 
     private final ChunkCodecRegistry chunkCodecRegistry;
 
-    public BusinessStreamAssembler(ChunkCodecRegistry chunkCodecRegistry, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount, codecCallbackFactory);
-        this.chunkCodecRegistry = Objects.requireNonNull(chunkCodecRegistry, "chunkCodecRegistry");
+    public BusinessStreamAssembler(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory,
+                                   long maxIdleTimeNanos, ChunkCodecRegistry chunkCodecRegistry, TimeWheel<CodecContext<?>> timeWheel) {
+        super(sessionKey, maxOutstandingContextCount, codecCallbackFactory, maxIdleTimeNanos, timeWheel);
+        this.chunkCodecRegistry = chunkCodecRegistry;
+    }
+
+    @Override
+    protected boolean deliverOnFirstFrame() {
+        return true;
     }
 
     @Override
     protected CodecContext<BusinessStream<?>> createCodecContext(int modelSequence, BusinessModel.Way way, short[] path, long correlationId, LoopBuffer input, int surplus) throws IOException {
-        if (surplus != EXTRA_HEADER_SIZE) {
-            throw new IOException("Invalid Stream START payload length: " + surplus);
+        if (surplus < EXTRA_HEADER_SIZE) {
+            throw new IOException("Stream model header is incomplete");
         }
         try {
             BusinessStream.Direction direction = BusinessStream.Direction.from(input.unsafeGetByte()).opposite();
@@ -107,11 +112,9 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
         private final BusinessStream<?> stream;
         private final StreamCodecAccess<C> access;
         private final ChunkCodec.Decoder<C> decoder;
-        private final ArrayDeque<C> pendingChunks = new ArrayDeque<>();
         private final Runnable readRetry;
-        private int chunkRemaining = -1;
-        private boolean waitingForCapacity;
-        private boolean complete;
+        private C pendingChunk;
+        private int currentChunkRemaining = -1;
 
         private StreamCodecContext(int modelSequence, BusinessModelCodecCallback callback, BusinessStream<C> model, ChunkCodec<C> codec, Runnable readRetry) {
             super(modelSequence, callback);
@@ -119,31 +122,20 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
             this.decoder = codec.decoder();
             this.access = StreamCodecAccess.from(model);
             this.readRetry = readRetry;
-            this.complete = !model.direction().hasOutput();
         }
 
         @Override
-        protected boolean readNextFrame(CodecFrame.Type type, LoopBuffer input, int quota) throws IOException {
-            if (complete || !pendingChunks.isEmpty()) {
-                throw new IOException("Stream frame received in an invalid state");
+        protected void readPayload(LoopBuffer input, int quota) throws IOException {
+            if (quota > 0 && !stream.direction().hasOutput()) {
+                throw new IOException("Stream without output received chunk data");
             }
-            if (type.isEnd()) {
-                if (quota != 0 || chunkRemaining >= 0) {
-                    throw new IOException("Stream END before the current chunk is complete");
-                }
-                access.finishOutput();
-                complete = true;
-                return true;
+            if (!flushPendingChunk()) {
+                return;
             }
-            if (!type.isData() || quota == 0) {
-                throw new IOException("Expected Stream DATA frame");
-            }
-
-            int remaining = quota;
-            while (remaining > 0) {
-                if (chunkRemaining < 0) {
-                    if (remaining < CHUNK_METADATA_SIZE) {
-                        throw new IOException("Incomplete chunk metadata in Stream DATA frame");
+            while (quota > 0) {
+                if (currentChunkRemaining < 0) {
+                    if (quota < CHUNK_METADATA_SIZE) {
+                        throw new IOException("Incomplete chunk metadata in Stream frame");
                     }
                     long sequence = input.unsafeGetLong();
                     int length = input.unsafeGetInt();
@@ -151,31 +143,53 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
                         throw new IOException("Negative encoded chunk length: " + length);
                     }
                     decoder.prepare(sequence, length);
-                    chunkRemaining = length;
-                    remaining -= CHUNK_METADATA_SIZE;
+                    currentChunkRemaining = length;
+                    quota -= CHUNK_METADATA_SIZE;
                 }
-                int limit = Math.min(remaining, chunkRemaining);
-                if (limit > 0) {
-                    LoopBuffer.LimitedReadableView view = input.unsafeLimitedReadableView(limit);
-                    decoder.decode(view);
-                    int consumed = limit - view.remaining();
-                    if (consumed <= 0 || consumed > chunkRemaining) {
-                        throw new IOException("Chunk decoder made no progress or consumed an invalid length");
+                if (currentChunkRemaining > 0) {
+                    int consumed = decode(decoder, currentChunkRemaining, input, quota);
+                    if (consumed == 0) {
+                        throw new IOException("Chunk decoder made no progress");
                     }
-                    remaining -= consumed;
-                    chunkRemaining -= consumed;
+                    quota -= consumed;
+                    currentChunkRemaining -= consumed;
                 }
-                if (chunkRemaining == 0) {
+                if (currentChunkRemaining == 0) {
                     C chunk = decoder.tryFinish();
                     if (chunk == null) {
                         throw new IOException("Chunk decoder did not finish at the declared length");
                     }
-                    pendingChunks.addLast(chunk);
                     decoder.reset();
-                    chunkRemaining = -1;
+                    currentChunkRemaining = -1;
+                    if (access.offerOutputChunk(chunk) == StreamFeeder.OfferResult.RETRY) {
+                        pendingChunk = chunk;
+                        if (readRetry != null) {
+                            access.onOutputAvailable(readRetry);
+                        }
+                        return;
+                    }
                 }
             }
-            return flushPendingChunks();
+        }
+
+        @Override
+        protected boolean tryCompleteDecoding() throws IOException {
+            if (currentChunkRemaining >= 0) {
+                throw new IOException("Stream END before the current chunk is complete");
+            }
+            return flushPendingChunk();
+        }
+
+        private boolean flushPendingChunk() {
+            if (pendingChunk == null) {
+                return true;
+            }
+            if (access.offerOutputChunk(pendingChunk) == StreamFeeder.OfferResult.RETRY) {
+                return false;
+            }
+            pendingChunk = null;
+            access.onOutputAvailable(null);
+            return true;
         }
 
         @Override
@@ -184,48 +198,18 @@ public class BusinessStreamAssembler extends BusinessModelAssembler<BusinessStre
         }
 
         @Override
-        protected boolean flushPending() {
-            return flushPendingChunks();
-        }
-
-        @Override
-        protected boolean isComplete() {
-            return complete;
-        }
-
-        @Override
         protected void onComplete() {
+            if (stream.direction().hasOutput()) {
+                access.finishOutput();
+            }
             onDiscard();
         }
 
         @Override
         protected void onDiscard() {
-            if (waitingForCapacity) {
-                access.onOutputAvailable(null);
-                waitingForCapacity = false;
-            }
-            pendingChunks.clear();
+            pendingChunk = null;
             decoder.clear();
-        }
-
-        private boolean flushPendingChunks() {
-            C chunk;
-            while ((chunk = pendingChunks.peekFirst()) != null) {
-                StreamFeeder.OfferResult result = access.offerOutputChunk(chunk);
-                if (result == StreamFeeder.OfferResult.RETRY) {
-                    if (readRetry != null && !waitingForCapacity) {
-                        waitingForCapacity = true;
-                        access.onOutputAvailable(readRetry);
-                    }
-                    return false;
-                }
-                pendingChunks.removeFirst();
-            }
-            if (waitingForCapacity) {
-                access.onOutputAvailable(null);
-                waitingForCapacity = false;
-            }
-            return true;
+            access.onOutputAvailable(null);
         }
     }
 }

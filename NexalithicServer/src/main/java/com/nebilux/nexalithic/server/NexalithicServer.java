@@ -29,7 +29,6 @@ import com.nebilux.nexalithic.core.exception.NexalithicUncheckedException;
 import com.nebilux.nexalithic.core.infra.loadbalance.LoadBalancer;
 import com.nebilux.nexalithic.core.infra.loadbalance.P2CBalancer;
 import com.nebilux.nexalithic.core.io.codec.CodecResources;
-import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketAssembler;
 import com.nebilux.nexalithic.core.messaging.handler.HandlerCoordinator;
 import com.nebilux.nexalithic.core.messaging.task.NexalithicTask;
 import com.nebilux.nexalithic.core.messaging.task.TaskHandle;
@@ -234,7 +233,7 @@ public class NexalithicServer extends NexalithicEndpoint {
                 context.setModule(MODULES.SessionRegistry, new SessionRegistry(context));
                 context.getModule(MODULES.NetworkRouter, NetworkRouter::new);
                 context.setModule(MODULES.ChannelAccessCoordinator, new ChannelAccessCoordinator(context));
-                context.setModule(BusinessPacketAssembler.MODULES.PayloadCodecRegistry, payloadCodecRegistryBuilder.build());
+                context.setModule(CodecResources.MODULES.PartCodecRegistry, partCodecRegistryBuilder.build());
                 context.setModule(CodecResources.MODULES.ChunkCodecRegistry, chunkCodecRegistryBuilder.build());
                 context.setModule(HandlerCoordinator.MODULES.HandlerRegistry, handlerRegistryBuilder.build());
                 ServerHandlerCoordinator handlerCoordinator = new ServerHandlerCoordinator(context);

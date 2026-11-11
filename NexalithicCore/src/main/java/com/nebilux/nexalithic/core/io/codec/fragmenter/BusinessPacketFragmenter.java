@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
 import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
@@ -47,8 +48,8 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
 
     private final PartCodecRegistry partCodecRegistry;
 
-    public BusinessPacketFragmenter(PartCodecRegistry partCodecRegistry, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount, codecCallbackFactory);
+    public BusinessPacketFragmenter(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory, PartCodecRegistry partCodecRegistry) {
+        super(sessionKey, maxOutstandingContextCount, codecCallbackFactory);
         this.partCodecRegistry = partCodecRegistry;
     }
 
@@ -69,6 +70,11 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
             BusinessModelCodecCallback callback = codecCallbackFactory.create(modelSequence, model.getCorrelationId(), model.getWay());
             return new PacketCodecContext(callback, model, modelSequence, encoders, codecIds, lengths, totalSize);
         } catch (IOException failure) {
+            for (PartCodec.Encoder<?> encoder : encoders) {
+                if (encoder != null) {
+                    encoder.clear();
+                }
+            }
             throw new UncheckedIOException(failure);
         }
     }
@@ -101,7 +107,6 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
         private final int[] codecIds;
         private final long[] lengths;
         private final long totalSize;
-        private long remaining;
         /** 仅当前 Payload 需要记录尚未编码的字节数。 */
         private long currentPartRemaining;
         private int currentPartIndex;
@@ -113,12 +118,11 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
             this.codecIds = codecIds;
             this.lengths = lengths;
             this.totalSize = totalSize;
-            remaining = totalSize;
             currentPartRemaining = lengths.length == 0 ? 0 : lengths[0];
         }
 
         @Override
-        protected long callbackTotalSize() {
+        protected long encodedTotalSize() {
             return totalSize;
         }
 
@@ -128,28 +132,20 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
         }
 
         @Override
-        protected void writeExtraFirstFrame(LoopBuffer output) {
-            output.put((byte) encoders.length);
+        protected void writeExtraHeader(LoopBuffer output) {
+            output.unsafePut((byte) encoders.length);
             for (int i = 0; i < encoders.length; i++) {
-                output.put(codecIds[i]);
-                output.put(lengths[i]);
+                output.unsafePut(codecIds[i]);
+                output.unsafePut(lengths[i]);
             }
         }
 
         @Override
-        protected void onFirstFrameCommitted(int advanced) {
-            remaining -= advanced;
-        }
-
-        @Override
-        protected void writeNextFrame(LoopBuffer output, int quota) throws IOException {
-            while (currentPartIndex < encoders.length) {
+        protected void writePayload(LoopBuffer output, int quota) throws IOException {
+            while (currentPartIndex < encoders.length && (quota > 0 || currentPartRemaining == 0)) {
                 PartCodec.Encoder<?> encoder = encoders[currentPartIndex];
                 if (currentPartRemaining > 0) {
-                    int limit = Math.toIntExact(Math.min(currentPartRemaining, quota));
-                    LoopBuffer.LimitedWritableView view = output.unsafeLimitedWritableView(limit);
-                    encoder.encode(view);
-                    int consumed = limit - view.remaining();
+                    int consumed = encode(encoder, currentPartRemaining, output, quota);
                     if (consumed == 0) {
                         break;
                     }
@@ -165,25 +161,17 @@ public class BusinessPacketFragmenter extends BusinessModelFragmenter<BusinessPa
                         currentPartRemaining = lengths[currentPartIndex];
                     }
                 }
-                if (quota == 0) {
-                    break;
-                }
             }
         }
 
         @Override
-        protected void onNextFrameCommitted(int advanced) {
-            remaining -= advanced;
-        }
-
-        @Override
-        protected boolean isComplete() {
-            return remaining == 0;
+        protected boolean hasPayload() {
+            return currentPartIndex < encoders.length;
         }
 
         @Override
         protected boolean isReady() {
-            return !isComplete();
+            return true;
         }
 
         @Override

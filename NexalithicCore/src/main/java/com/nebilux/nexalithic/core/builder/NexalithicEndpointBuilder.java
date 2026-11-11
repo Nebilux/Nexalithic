@@ -25,11 +25,17 @@ import com.nebilux.nexalithic.core.messaging.handler.assembly.ControllerHandlerA
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistry;
 import com.nebilux.nexalithic.core.messaging.handler.mapping.HandlerRegistryConfigurer;
 import com.nebilux.nexalithic.core.model.business.codec.CodecRegistryHelper;
+import com.nebilux.nexalithic.core.model.business.packet.BusinessPacket;
 import com.nebilux.nexalithic.core.model.business.packet.builtin.FilePart;
 import com.nebilux.nexalithic.core.model.business.packet.builtin.TextPart;
+import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodec;
 import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodecRegistry;
 import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodecRegistryConfigurer;
+import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
+import com.nebilux.nexalithic.core.model.business.stream.builtin.FileChunk;
+import com.nebilux.nexalithic.core.model.business.stream.builtin.MediaChunk;
 import com.nebilux.nexalithic.core.model.business.stream.builtin.TextChunk;
+import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistryConfigurer;
 
@@ -87,14 +93,19 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     protected final NexalithicBuilderContext context = new NexalithicBuilderContext();
 
     /**
-     * Payload 编解码器注册表构建器。
+     * {@link BusinessPacket.Part} 编解码器注册表构建器。
      *
-     * <p>构造函数会预先注册内置的文本和文件编解码器。
-     * 用户可通过 {@link #payloadCodecRegistryConfigurer(PartCodecRegistryConfigurer)} 追加自定义编解码器。</p>
+     * <p>构造函数会预先注册内置编解码器。
+     * 用户可通过 {@link #partCodecRegistryConfigurer(PartCodecRegistryConfigurer)} 追加自定义编解码器。</p>
      */
-    protected final PartCodecRegistry.Builder payloadCodecRegistryBuilder = PartCodecRegistry.builder();
+    protected final PartCodecRegistry.Builder partCodecRegistryBuilder = PartCodecRegistry.builder();
 
-    /** 用户通过 {@link #chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer)} 注册流块编解码器。 */
+    /**
+     * {@link BusinessStream.Chunk} 编解码器注册表构建器。
+     *
+     * <p>构造函数会预先注册内置编解码器。
+     * 用户可通过 {@link #chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer)} 追加自定义编解码器。</p>
+     */
     protected final ChunkCodecRegistry.Builder chunkCodecRegistryBuilder = ChunkCodecRegistry.builder();
 
     /**
@@ -120,11 +131,13 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     protected NexalithicEndpointBuilder(Class<HC> handlerContextType) {
         this.handlerContextType = handlerContextType;
         controllerHandlerAssemblyBuilder = ControllerHandlerAssembler.builder(handlerContextType);
-        payloadCodecRegistryBuilder.codecs(List.of(
+        partCodecRegistryBuilder.codecs(List.of(
                 new TextPart.Codec(),
                 new FilePart.Codec()
         ));
         chunkCodecRegistryBuilder.codecs(List.of(
+                new MediaChunk.Codec(),
+                new FileChunk.Codec(),
                 new TextChunk.Codec()
         ));
     }
@@ -162,22 +175,30 @@ public abstract class NexalithicEndpointBuilder<SELF extends NexalithicEndpointB
     }
 
     /**
-     * 配置 Payload 编解码器注册表。
+     * 配置 {@link PartCodecRegistry}
      *
-     * <p>当业务需要传输自定义 Payload 类型时，使用该入口注册对应的 PartCodec。
+     * <p>当业务需要传输自定义 {@link BusinessPacket.Part} 类型时，使用该入口注册对应的 {@link PartCodec}。
      * Builder 已默认注册 {@link TextPart}、{@link FilePart} 的编解码器。</p>
      *
-     * @param configurer Payload 编解码器注册表配置器
+     * @param configurer {@link PartCodecRegistry} 配置器
      * @return 当前具体 Builder，用于继续链式配置
      */
-    public SELF payloadCodecRegistryConfigurer(PartCodecRegistryConfigurer configurer) {
-        configure("payload codec registry", () -> configurer.configure(payloadCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
+    public SELF partCodecRegistryConfigurer(PartCodecRegistryConfigurer configurer) {
+        configure(PartCodecRegistry.class.getSimpleName(), () -> configurer.configure(partCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
         return self();
     }
 
-    /** 配置业务流块编解码器及其存储策略。 */
+    /**
+     * 配置 {@link ChunkCodecRegistry}
+     *
+     * <p>当业务需要传输自定义 {@link BusinessStream.Chunk} 类型时，使用该入口注册对应的 {@link ChunkCodec}。
+     * Builder 已默认注册 {@link MediaChunk}、{@link FileChunk}、{@link TextChunk} 的编解码器。</p>
+     *
+     * @param configurer {@link ChunkCodecRegistry} 配置器
+     * @return 当前具体 Builder，用于继续链式配置
+     */
     public SELF chunkCodecRegistryConfigurer(ChunkCodecRegistryConfigurer configurer) {
-        configure("chunk codec registry", () -> configurer.configure(chunkCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
+        configure(ChunkCodecRegistry.class.getSimpleName(), () -> configurer.configure(chunkCodecRegistryBuilder, CodecRegistryHelper.INSTANCE));
         return self();
     }
 

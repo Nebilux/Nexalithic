@@ -19,6 +19,7 @@ package com.nebilux.nexalithic.core.io.codec;
 import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 
 /**
  * 矩阵模型编解码器
@@ -37,12 +38,14 @@ public abstract class NexalithicModelCodec {
         protected abstract int MaxOutstandingContextCount_Value();
     }
 
+    protected final SessionKey sessionKey;
     protected final int maxOutstandingContextCount;
 
-    protected NexalithicModelCodec(int maxOutstandingContextCount) {
+    protected NexalithicModelCodec(SessionKey sessionKey, int maxOutstandingContextCount) {
         if (maxOutstandingContextCount <= 0) {
             throw new IllegalArgumentException("maxOutstandingContextCount must be positive");
         }
+        this.sessionKey = sessionKey;
         this.maxOutstandingContextCount = maxOutstandingContextCount;
     }
 }

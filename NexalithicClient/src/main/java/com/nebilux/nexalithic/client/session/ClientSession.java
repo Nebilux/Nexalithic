@@ -68,7 +68,7 @@ public class ClientSession extends AbstractSession<ClientSession> {
         @Override
         public ChannelGroup<ClientSession> create(ClientSession session, SecretKeyContexts secretKeyContexts) {
             SessionSignalingChannel<ClientSession> signaling = new SessionSignalingChannel<>(loop, session,
-                    codecSupplier.createSignalingPacketFragmenter(), codecSupplier.createSignalingPacketAssembler(),
+                    codecSupplier.createSignalingPacketFragmenter(session), codecSupplier.createSignalingPacketAssembler(session),
                     secretKeyContexts.get(Kind.Signaling_Packet));
             EnumMap<Kind, SessionBusinessChannel<?, ClientSession>> business = new EnumMap<>(Kind.class);
             business.put(Kind.Business_Packet, new SessionBusinessChannel<>(Kind.Business_Packet, loop, session,

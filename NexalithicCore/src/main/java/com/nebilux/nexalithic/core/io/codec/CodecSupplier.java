@@ -54,50 +54,53 @@ public class CodecSupplier {
     private final int businessPacketAssembler_maxOutstandingContextCount;
     private final int businessStreamAssembler_maxOutstandingContextCount;
     private final long businessPacketAssembler_maxIdleTimeNanos;
+    private final long businessStreamAssembler_maxIdleTimeNanos;
+    private final PartCodecRegistry partCodecRegistry;
     private final ChunkCodecRegistry chunkCodecRegistry;
     private final TaskScheduler taskScheduler;
-    private final PartCodecRegistry partCodecRegistry;
-    private final TimeWheel<BusinessPacketAssembler> timeWheel;
+    private final TimeWheel<BusinessModelAssembler.CodecContext<?>> timeWheel;
 
-    public CodecSupplier(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules, TimeWheel<BusinessPacketAssembler> timeWheel) {
+    public CodecSupplier(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules,
+                         TimeWheel<BusinessModelAssembler.CodecContext<?>> timeWheel) {
         signalingPacketFragmenter_maxOutstandingContextCount = context.getOption(SignalingPacketFragmenter.OPTIONS.MaxOutstandingContextCount);
         businessPacketFragmenter_maxOutstandingContextCount = context.getOption(BusinessPacketFragmenter.OPTIONS.MaxOutstandingContextCount);
-        businessStreamFragmenter_maxOutstandingContextCount = context.getOption(BusinessPacketFragmenter.OPTIONS.MaxOutstandingContextCount);
+        businessStreamFragmenter_maxOutstandingContextCount = context.getOption(BusinessStreamFragmenter.OPTIONS.MaxOutstandingContextCount);
         signalingPacketAssembler_maxOutstandingContextCount = context.getOption(SignalingPacketAssembler.OPTIONS.MaxOutstandingContextCount);
         businessPacketAssembler_maxOutstandingContextCount = context.getOption(BusinessPacketAssembler.OPTIONS.MaxOutstandingContextCount);
         businessStreamAssembler_maxOutstandingContextCount = context.getOption(BusinessStreamAssembler.OPTIONS.MaxOutstandingContextCount);
         businessPacketAssembler_maxIdleTimeNanos = TimeUnit.NANOSECONDS.convert(context.getOption(BusinessPacketAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS);
+        businessStreamAssembler_maxIdleTimeNanos = TimeUnit.NANOSECONDS.convert(context.getOption(BusinessStreamAssembler.OPTIONS.MaxIdleTimeMillis), TimeUnit.MILLISECONDS);
+        partCodecRegistry = context.getModule(CodecResources.MODULES.PartCodecRegistry);
         chunkCodecRegistry = context.getModule(CodecResources.MODULES.ChunkCodecRegistry);
         taskScheduler = context.getModule(modules.TaskScheduler);
-        partCodecRegistry = context.getModule(BusinessPacketAssembler.MODULES.PayloadCodecRegistry);
         this.timeWheel = timeWheel;
     }
 
-    public SignalingPacketFragmenter createSignalingPacketFragmenter() {
-        return new SignalingPacketFragmenter(signalingPacketFragmenter_maxOutstandingContextCount);
+    public SignalingPacketFragmenter createSignalingPacketFragmenter(AbstractSession<?> session) {
+        return new SignalingPacketFragmenter(session.getSessionKey(), signalingPacketFragmenter_maxOutstandingContextCount);
     }
 
     public BusinessModelFragmenter<BusinessPacket> createBusinessPacketFragmenter(AbstractSession<?> session) {
-        return new BusinessPacketFragmenter(partCodecRegistry, businessPacketFragmenter_maxOutstandingContextCount,
-                fragmenterBusinessModelCodecCallbackFactory(session));
+        return new BusinessPacketFragmenter(session.getSessionKey(), businessPacketFragmenter_maxOutstandingContextCount, fragmenterBusinessModelCodecCallbackFactory(session), partCodecRegistry
+        );
     }
 
     public BusinessModelFragmenter<BusinessStream<?>> createBusinessStreamFragmenter(AbstractSession<?> session) {
-        return new BusinessStreamFragmenter(chunkCodecRegistry, businessStreamFragmenter_maxOutstandingContextCount, fragmenterBusinessModelCodecCallbackFactory(session));
+        return new BusinessStreamFragmenter(session.getSessionKey(), businessStreamFragmenter_maxOutstandingContextCount, fragmenterBusinessModelCodecCallbackFactory(session), chunkCodecRegistry);
     }
 
-    public SignalingPacketAssembler createSignalingPacketAssembler() {
-        return new SignalingPacketAssembler(signalingPacketAssembler_maxOutstandingContextCount);
+    public SignalingPacketAssembler createSignalingPacketAssembler(AbstractSession<?> session) {
+        return new SignalingPacketAssembler(session.getSessionKey(), signalingPacketAssembler_maxOutstandingContextCount);
     }
 
     public BusinessModelAssembler<BusinessPacket> createBusinessPacketAssembler(AbstractSession<?> session) {
-        return new BusinessPacketAssembler(partCodecRegistry, timeWheel,
-                businessPacketAssembler_maxOutstandingContextCount, businessPacketAssembler_maxIdleTimeNanos,
-                assemblerBusinessModelCodecCallbackFactory(session));
+        return new BusinessPacketAssembler(session.getSessionKey(), businessPacketAssembler_maxOutstandingContextCount, assemblerBusinessModelCodecCallbackFactory(session), businessPacketAssembler_maxIdleTimeNanos, partCodecRegistry, timeWheel);
     }
 
     public BusinessModelAssembler<BusinessStream<?>> createBusinessStreamAssembler(AbstractSession<?> session) {
-        return new BusinessStreamAssembler(chunkCodecRegistry, businessStreamAssembler_maxOutstandingContextCount, assemblerBusinessModelCodecCallbackFactory(session));
+        return new BusinessStreamAssembler(session.getSessionKey(), businessStreamAssembler_maxOutstandingContextCount,
+                assemblerBusinessModelCodecCallbackFactory(session), businessStreamAssembler_maxIdleTimeNanos,
+                chunkCodecRegistry, timeWheel);
     }
 
     protected BusinessModelCodecCallback.Factory fragmenterBusinessModelCodecCallbackFactory(AbstractSession<?> session) {

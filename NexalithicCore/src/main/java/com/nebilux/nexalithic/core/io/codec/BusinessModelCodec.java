@@ -16,6 +16,8 @@
 
 package com.nebilux.nexalithic.core.io.codec;
 
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
+
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -33,8 +35,8 @@ public abstract class BusinessModelCodec extends NexalithicModelCodec {
     protected final AtomicInteger outstandingContextCount = new AtomicInteger();
     protected final BusinessModelCodecCallback.Factory codecCallbackFactory;
 
-    protected BusinessModelCodec(int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount);
+    protected BusinessModelCodec(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
+        super(sessionKey, maxOutstandingContextCount);
         this.codecCallbackFactory = codecCallbackFactory;
     }
 

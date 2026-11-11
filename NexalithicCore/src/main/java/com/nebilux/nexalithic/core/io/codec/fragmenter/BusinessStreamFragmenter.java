@@ -17,10 +17,10 @@
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
 import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.internal.model.stream.StreamCodecAccess;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
-import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.stream.BusinessStream;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodec;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class BusinessStreamFragmenter extends BusinessModelFragmenter<BusinessStream<?>> {
     public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, BusinessStreamFragmenter.class);
-    public static class Options extends BusinessModelFragmenter.Options {
+    public static final class Options extends BusinessModelFragmenter.Options {
         private Options(Class<?> holder) {
             super(holder);
         }
@@ -63,8 +63,8 @@ public class BusinessStreamFragmenter extends BusinessModelFragmenter<BusinessSt
     private final ChunkCodecRegistry chunkCodecRegistry;
     private volatile Runnable outputAvailableCallback;
 
-    public BusinessStreamFragmenter(ChunkCodecRegistry chunkCodecRegistry, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount, codecCallbackFactory);
+    public BusinessStreamFragmenter(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory, ChunkCodecRegistry chunkCodecRegistry) {
+        super(sessionKey, maxOutstandingContextCount, codecCallbackFactory);
         this.chunkCodecRegistry = chunkCodecRegistry;
     }
 
@@ -96,8 +96,7 @@ public class BusinessStreamFragmenter extends BusinessModelFragmenter<BusinessSt
         private final boolean hasInput;
         private final AtomicBoolean inputReady = new AtomicBoolean(true);
         private C currentChunk;
-        private int chunkRemaining;
-        private boolean isComplete;
+        private int currentChunkRemaining;
 
         private StreamCodecContext(int modelSequence, BusinessModelCodecCallback codecCallback, BusinessStream<C> model, ChunkCodec<C> codec) {
             super(modelSequence, codecCallback, model);
@@ -123,94 +122,68 @@ public class BusinessStreamFragmenter extends BusinessModelFragmenter<BusinessSt
         }
 
         @Override
-        protected void writeExtraFirstFrame(LoopBuffer output) {
-            output.put(model().direction().code());
+        protected void writeExtraHeader(LoopBuffer output) {
+            output.unsafePut(model().direction().code());
             BusinessStream.Policy policy = model().policy();
-            output.put(policy.sequence().code());
+            output.unsafePut(policy.sequence().code());
             writeBuffering(output, policy.input());
             writeBuffering(output, policy.output());
-            output.put(codecId);
+            output.unsafePut(codecId);
         }
 
         @Override
-        protected void onFirstFrameCommitted(int advanced) {
-            if (!hasInput) {
-                isComplete = true;
-            }
-        }
-
-        @Override
-        protected void writeNextFrame(LoopBuffer output, int quota) throws IOException {
+        protected void writePayload(LoopBuffer output, int quota) throws IOException {
             if (!hasInput) {
                 return;
             }
-            int total = 0;
-            while (total < quota) {
+            while (quota > 0) {
                 if (currentChunk == null) {
-                    if (quota - total < CHUNK_METADATA_SIZE * MIN_HEADER_COUNT) {
+                    if (quota < CHUNK_METADATA_SIZE * MIN_HEADER_COUNT) {
                         break;
                     }
-                    inputReady.set(false);
                     C chunk = access.pollInputChunk();
                     if (chunk == null) {
+                        inputReady.set(false);
                         break;
+                    } else {
+                        inputReady.set(true);
                     }
-                    inputReady.set(true);
                     int length = encoder.prepare(chunk);
                     if (length < 0) {
                         throw new IOException("Negative encoded chunk length: " + length);
                     }
                     currentChunk = chunk;
-                    chunkRemaining = length;
+                    currentChunkRemaining = length;
                     output.put(currentChunk.sequence());
-                    output.put(chunkRemaining);
-                    total += CHUNK_METADATA_SIZE;
+                    output.put(currentChunkRemaining);
+                    quota -= CHUNK_METADATA_SIZE;
                 }
-                LoopBuffer.LimitedWritableView view = output.unsafeLimitedWritableView(Math.min(chunkRemaining, quota - total));
-                int before = view.remaining();
-                encoder.encode(view);
-                int written = before - view.remaining();
-                if (written < 0 || written > chunkRemaining) {
-                    throw new IOException("Chunk encoder consumed an invalid length");
+                if (currentChunkRemaining > 0) {
+                    int consumed = encode(encoder, currentChunkRemaining, output, quota);
+                    if (consumed == 0) {
+                        break;
+                    }
+                    currentChunkRemaining -= consumed;
+                    quota -= consumed;
                 }
-                chunkRemaining -= written;
-                total += written;
-                if (chunkRemaining > 0) {
-                    break;
-                } else if (chunkRemaining == 0) {
+                if (currentChunkRemaining == 0) {
                     if (!encoder.tryFinish()) {
                         throw new IOException("Chunk encoder did not finish at the declared length");
                     }
                     encoder.reset();
                     currentChunk = null;
-                } else {
-                    throw new IOException("Encoding error");
                 }
             }
         }
 
         @Override
-        protected boolean tryWriteLastFrame(LoopBuffer output) {
-            if (!hasInput || currentChunk != null || !access.isInputFinished()
-                    || output.writableBytes() < CodecFrame.HEADER_LENGTH) {
-                return false;
-            }
-            output.put(CodecFrame.packEnd(modelSequence()));
-            isComplete = true;
-            return true;
+        protected boolean hasPayload() {
+            return hasInput && (currentChunk != null || !access.isInputFinished());
         }
 
         @Override
         protected boolean isReady() {
-            if (!hasInput) {
-                return !isComplete;
-            }
-            return inputReady.get() || currentChunk != null || access.isInputFinished();
-        }
-
-        @Override
-        protected boolean isComplete() {
-            return isComplete;
+            return !hasInput || inputReady.get() || currentChunk != null || access.isInputFinished();
         }
 
         @Override

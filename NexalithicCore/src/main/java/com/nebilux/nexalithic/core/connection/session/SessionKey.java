@@ -17,6 +17,7 @@
 package com.nebilux.nexalithic.core.connection.session;
 
 import java.nio.ByteBuffer;
+import java.util.HexFormat;
 
 /**
  * 会话密钥
@@ -42,10 +43,15 @@ public sealed interface SessionKey permits SessionKey.Immutable, SessionKey.Muta
         return buffer;
     }
 
+    default String displayId() {
+        return HexFormat.of().toHexDigits(high()) + HexFormat.of().toHexDigits(low());
+    }
+
     /**
      * 不可变版本：用于存储在 Map 的 Key 中
      */
     final class Immutable implements SessionKey {
+        private static final String name = Immutable.class.getSimpleName();
         private final long high, low;
         private final int hashCode;
 
@@ -81,12 +87,18 @@ public sealed interface SessionKey permits SessionKey.Immutable, SessionKey.Muta
                     && this.high == other.high()
                     && this.low == other.low();
         }
+
+        @Override
+        public String toString() {
+            return name + "[" + displayId() + ']';
+        }
     }
 
     /**
      * 可变版本：仅限单线程内查询使用（如 ThreadLocal）
      */
     final class Mutable implements SessionKey {
+        private static final String name = Mutable.class.getSimpleName();
         private long high, low;
         private int hashCode;
 
@@ -121,6 +133,11 @@ public sealed interface SessionKey permits SessionKey.Immutable, SessionKey.Muta
             return obj instanceof SessionKey other
                     && this.high == other.high()
                     && this.low == other.low();
+        }
+
+        @Override
+        public String toString() {
+            return name + "[" + displayId() + ']';
         }
     }
 }

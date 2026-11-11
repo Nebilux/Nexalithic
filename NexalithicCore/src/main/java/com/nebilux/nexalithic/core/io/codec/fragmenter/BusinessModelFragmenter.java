@@ -16,11 +16,13 @@
 
 package com.nebilux.nexalithic.core.io.codec.fragmenter;
 
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodec;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
 import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
+import com.nebilux.nexalithic.core.model.business.codec.PayloadCodec;
 import org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,13 +51,13 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
     private CodecContext<M> activeContextCursor;
     private int activeContextCount;
 
-    protected BusinessModelFragmenter(int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount, codecCallbackFactory);
+    protected BusinessModelFragmenter(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
+        super(sessionKey, maxOutstandingContextCount, codecCallbackFactory);
         incomingContexts = new MpscArrayQueue<>(maxOutstandingContextCount);
     }
 
     @Override
-    public boolean feed(M model) {
+    public final boolean feed(M model) {
         int count;
         do {
             count = outstandingContextCount.get();
@@ -65,17 +67,20 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
         } while (!outstandingContextCount.compareAndSet(count, count + 1));
         CodecContext<M> context = null;
         try {
-            context = createCodecContext(model, nextModelSequence.getAndIncrement());
+            int modelSequence = nextModelSequence.incrementAndGet();
+            context = createCodecContext(model, modelSequence);
             if (incomingContexts.offer(context)) {
                 signalReadyOutput();
                 if (LOGGER_TRACE_ENABLED) {
-                    logger.trace("BusinessModelFragmenter feed model [{}]", model);
+                    logger.trace("accepted [{}] - [modelSequence: {}, correlationId: {}]",
+                            sessionKey, modelSequence, model.getCorrelationId());
                 }
                 return true;
             } else {
                 throw new RuntimeException("incomingContexts full");
             }
         } catch (Throwable throwable) {
+            outstandingContextCount.decrementAndGet();
             if (context != null) {
                 discardContext(context);
             }
@@ -84,7 +89,7 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
     }
 
     @Override
-    public boolean drain(LoopBuffer output) throws IOException {
+    public final boolean drain(LoopBuffer output) throws IOException {
         int initialWritable = output.writableBytes();
         draining: {
             boolean hasReadyContext = false;
@@ -97,9 +102,6 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
                             hasReadyContext = context.isReady();
                         }
                         break draining;
-                    }
-                    if (!context.isComplete()) {
-                        context.nextFrame(output);
                     }
                     if (context.isComplete()) {
                         completeContext(context);
@@ -129,8 +131,8 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
                         if (!hasReadyContext) {
                             hasReadyContext = context.isReady();
                         }
+                        activeContextCursor = next;
                     }
-                    activeContextCursor = next;
                 }
             } catch (Throwable throwable) {
                 if (context != null) {
@@ -145,18 +147,18 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
     }
 
     @Override
-    public boolean isEmpty() {
+    public final boolean isEmpty() {
         return outstandingContextCount.get() == 0;
     }
 
     @Override
-    public boolean isReady() {
+    public final boolean isReady() {
         return hasReadyContext.get();
     }
 
     /** 调用方须保证清理时不再有线程提交或排空上下文。 */
     @Override
-    public void clear() {
+    public final void clear() {
         hasReadyContext.set(false);
         for (CodecContext<M> context = takeInitialContext(); context != null; context = incomingContexts.poll()) {
             discardContext(context);
@@ -183,7 +185,9 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
         retireContext(context);
         context.complete();
         if (LOGGER_TRACE_ENABLED) {
-            logger.trace("BusinessModelFragmenter drain model [{}]", context.model());
+            M model = context.model();
+            logger.trace("completed [{}] - [modelSequence={}, correlationId={}, model: [{}]]",
+                    sessionKey, context.modelSequence(), model.getCorrelationId(), model);
         }
     }
 
@@ -239,6 +243,7 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
         /** 未加入活跃链表时均为 null；仅由所属 Loop 线程修改。 */
         private CodecContext<M> prev;
         private CodecContext<M> next;
+        private boolean complete;
         private boolean finished;
 
         protected CodecContext(int modelSequence, BusinessModelCodecCallback callback, M model) {
@@ -251,121 +256,68 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
             return model;
         }
 
-        /** 按模型头大小预留空间，写入 START 载荷后回填帧头。 */
         final boolean firstFrame(LoopBuffer output) throws IOException {
             int headerSize = headerSize();
-            if (headerSize <= 0 || headerSize > CodecFrame.MAX_PAYLOAD_LENGTH) {
-                throw new IOException("Invalid START header size: " + headerSize);
-            }
-            int required = CodecFrame.HEADER_LENGTH + headerSize;
-            if (output.writableBytes() < required) {
+            int surplus = output.writableBytes() - CodecFrame.HEADER_LENGTH - headerSize;
+            if (surplus < 0) {
                 return false;
             }
-            callback.onStarted(callbackTotalSize());
-            long start = output.getTail();
+            callback.onStarted(encodedTotalSize());
+            long advanceTailBefore = output.getTail();
+            output.advanceTail(CodecFrame.HEADER_LENGTH);
             try {
-                output.advanceTail(CodecFrame.HEADER_LENGTH);
-                writeFirst(output);
-                long end = output.getTail();
-                if (end - start != required) {
-                    throw new IOException("START frame payload length mismatch: " + headerSize);
-                }
-                output.setTail(start);
-                output.put(CodecFrame.packStart(modelSequence(), headerSize));
-                output.setTail(end);
-                onFirstFrameCommitted(headerSize);
-                callback.onAdvanced(headerSize);
-                return true;
-            } catch (Throwable failure) {
-                output.setTail(start);
-                throw failure;
-            }
-        }
-
-        /** 写入 DATA 载荷后回填帧头；终止帧由具体上下文处理。 */
-        final boolean nextFrame(LoopBuffer output) throws IOException {
-            if (isComplete() || output.writableBytes() <= CodecFrame.HEADER_LENGTH * MIN_HEADER_COUNT) {
-                return false;
-            }
-            long start = output.getTail();
-            try {
-                output.advanceTail(CodecFrame.HEADER_LENGTH);
-                writeNextFrame(output, Math.min(output.writableBytes(), CodecFrame.MAX_PAYLOAD_LENGTH));
-                long end = output.getTail();
-                int consumed = (int) (end - start - CodecFrame.HEADER_LENGTH);
-                if (consumed == 0) {
-                    output.setTail(start);
-                    return tryWriteLastFrame(output);
-                }
-                output.setTail(start);
-                output.put(CodecFrame.packData(modelSequence(), consumed));
-                output.setTail(end);
-                onNextFrameCommitted(consumed);
+                long writeHeaderBefore = output.getTail();
+                writeHeader(output);
+                writePayload(output, Math.min(surplus, CodecFrame.MAX_PAYLOAD_LENGTH - headerSize));
+                long writePayloadAfter = output.getTail();
+                output.setTail(advanceTailBefore);
+                int consumed = (int) (writePayloadAfter - writeHeaderBefore);
+                boolean hasPayload = hasPayload();
+                CodecFrame.Type frameType = hasPayload ? CodecFrame.Type.START : CodecFrame.Type.SINGLE;
+                output.unsafePut(CodecFrame.pack(frameType, modelSequence(), consumed));
+                output.setTail(writePayloadAfter);
+                onFirstFrameCommitted(frameType, consumed);
                 callback.onAdvanced(consumed);
-            } catch (Throwable failure) {
-                output.setTail(start);
-                throw failure;
+                complete = !hasPayload;
+            } catch (Throwable throwable) {
+                output.setTail(advanceTailBefore);
+                throw throwable;
             }
-            tryWriteLastFrame(output);
             return true;
         }
 
-        /** 未知解码总长度时返回负数。 */
-        protected long callbackTotalSize() {
-            return -1;
-        }
-
-        /** 子类模型头在共有字段之外占用的字节数。 */
-        protected abstract int extraHeaderSize();
-
-        /** 写入路径之后的模型专属字段。 */
-        protected abstract void writeExtraFirstFrame(LoopBuffer output) throws IOException;
-
-        /** 帧头与载荷均写入成功后调用。 */
-        protected void onFirstFrameCommitted(int advanced) {
-        }
-
-        /** 最多写入 {@code quota} 字节的 DATA 载荷；实际长度由缓冲区写入位置确定。 */
-        protected abstract void writeNextFrame(LoopBuffer output, int quota) throws IOException;
-
-        /** DATA 帧提交后更新模型自身的编码进度。 */
-        protected void onNextFrameCommitted(int advanced) {
-        }
-
-        /** DATA 后或暂无 DATA 时尝试写入模型终止帧。 */
-        protected boolean tryWriteLastFrame(LoopBuffer output) throws IOException {
-            return false;
-        }
-
-        /** 不执行完成回调的状态查询。 */
-        protected abstract boolean isComplete();
-
-        protected abstract boolean isReady();
-
-        protected void onComplete() {}
-
-        protected void onDiscard() {}
-
-        protected int headerSize() {
-            return COMMON_BASE_HEADER_SIZE + model().getPathDepth() * Short.BYTES + extraHeaderSize();
-        }
-
-        /** 写入共有模型头；子类可在指定位置补充自己的字段。 */
-        private void writeFirst(LoopBuffer output) throws IOException {
-            output.put(model().getCorrelationId());
-            output.put(model().getWay().code());
-            byte pathDepth = model().getPathDepth();
-            output.put(pathDepth);
-            if (pathDepth > 0) {
-                for (short value : model().getPath()) {
-                    output.put(value);
-                }
+        final boolean nextFrame(LoopBuffer output) throws IOException {
+            int surplus = output.writableBytes() - CodecFrame.HEADER_LENGTH;
+            if (surplus < 0) {
+                return false;
             }
-            writeExtraFirstFrame(output);
+            long advanceTailBefore = output.getTail();
+            output.advanceTail(CodecFrame.HEADER_LENGTH);
+            try {
+                long writePayloadBefore = output.getTail();
+                writePayload(output, Math.min(surplus, CodecFrame.MAX_PAYLOAD_LENGTH));
+                long writePayloadAfter = output.getTail();
+                output.setTail(advanceTailBefore);
+                int consumed = (int) (writePayloadAfter - writePayloadBefore);
+                boolean hasPayload = hasPayload();
+                if (consumed == 0 && hasPayload) {
+                    return false;
+                }
+                CodecFrame.Type frameType = hasPayload ? CodecFrame.Type.DATA : CodecFrame.Type.END;
+                output.unsafePut(CodecFrame.pack(frameType, modelSequence(), consumed));
+                output.setTail(writePayloadAfter);
+                onNextFrameCommitted(frameType, consumed);
+                callback.onAdvanced(consumed);
+                complete = !hasPayload;
+            } catch (Throwable failure) {
+                output.setTail(advanceTailBefore);
+                throw failure;
+            }
+            return true;
         }
 
         /** 成功完成时调用一次。 */
-        private void complete() {
+        final void complete() {
             if (finished) {
                 return;
             }
@@ -378,7 +330,7 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
         }
 
         /** 编码失败或清理时调用一次。 */
-        private void discard() {
+        final void discard() {
             if (finished) {
                 return;
             }
@@ -388,6 +340,60 @@ public abstract class BusinessModelFragmenter<M extends BusinessModel<?>> extend
             } finally {
                 callback.onDiscarded();
             }
+        }
+
+        final boolean isComplete() {
+            return complete;
+        }
+
+        abstract boolean isReady();
+
+        /** 未知总长度时返回负数。 */
+        protected long encodedTotalSize() {
+            return -1;
+        }
+
+        /** 子类模型头在共有字段之外占用的字节数。 */
+        protected abstract int extraHeaderSize();
+
+        /** 写入路径之后的模型专属字段。 */
+        protected abstract void writeExtraHeader(LoopBuffer output) throws IOException;
+
+        protected abstract void writePayload(LoopBuffer output, int quota) throws IOException;
+
+        protected abstract boolean hasPayload();
+
+        protected void onFirstFrameCommitted(CodecFrame.Type farmeType, int payloadLength) {}
+
+        protected void onNextFrameCommitted(CodecFrame.Type farmeType, int payloadLength) {}
+
+        protected void onComplete() {}
+
+        protected void onDiscard() {}
+
+        protected final int headerSize() {
+            return COMMON_BASE_HEADER_SIZE + model().getPathDepth() * Short.BYTES + extraHeaderSize();
+        }
+
+        protected static int encode(PayloadCodec.Encoder encoder, long remaining, LoopBuffer output, int quota) throws IOException {
+            quota = (int) Math.min(remaining, quota);
+            LoopBuffer.LimitedWritableView view = output.unsafeLimitedWritableView(quota);
+            encoder.encode(view);
+            return quota - view.remaining();
+        }
+
+        /** 写入共有模型头；子类可在指定位置补充自己的字段。 */
+        private void writeHeader(LoopBuffer output) throws IOException {
+            output.unsafePut(model().getCorrelationId());
+            output.unsafePut(model().getWay().code());
+            byte pathDepth = model().getPathDepth();
+            output.unsafePut(pathDepth);
+            if (pathDepth > 0) {
+                for (short value : model().getPath()) {
+                    output.unsafePut(value);
+                }
+            }
+            writeExtraHeader(output);
         }
     }
 }

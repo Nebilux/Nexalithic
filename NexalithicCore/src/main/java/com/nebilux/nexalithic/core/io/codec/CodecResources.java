@@ -20,13 +20,19 @@ import com.nebilux.nexalithic.core.NexalithicEndpoint;
 import com.nebilux.nexalithic.core.builder.NexalithicBuilderContext;
 import com.nebilux.nexalithic.core.builder.module.ModulesDefinition;
 import com.nebilux.nexalithic.core.builder.module.NexalithicModule;
+import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
+import com.nebilux.nexalithic.core.builder.option.OptionValidator;
+import com.nebilux.nexalithic.core.builder.option.OptionsDefinition;
 import com.nebilux.nexalithic.core.infra.recyclable.GenericWrapperPool;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStorageFactory;
 import com.nebilux.nexalithic.core.infra.recyclable.PoolStrategyFactory;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
+import com.nebilux.nexalithic.core.io.codec.assembler.BusinessModelAssembler;
 import com.nebilux.nexalithic.core.io.codec.assembler.BusinessPacketAssembler;
+import com.nebilux.nexalithic.core.io.codec.assembler.BusinessStreamAssembler;
 import com.nebilux.nexalithic.core.lifecycle.Lifecycle;
 import com.nebilux.nexalithic.core.lifecycle.SharedLifecycle;
+import com.nebilux.nexalithic.core.model.business.packet.codec.PartCodecRegistry;
 import com.nebilux.nexalithic.core.model.business.stream.codec.ChunkCodecRegistry;
 import org.jctools.queues.MpmcArrayQueue;
 
@@ -39,31 +45,55 @@ import java.util.concurrent.CompletionStage;
  * @since 0.4.0
  */
 public class CodecResources {
+    public static final Options OPTIONS = OptionsDefinition.initOptions(Options.class, CodecResources.class);
+    public static final class Options extends OptionsDefinition {
+        public final TimeWheel.Options TimeWheel = new TimeWheel.Options(holder) {
+            @Override
+            protected NexalithicOption<Integer> SlotCount() {
+                return defineOptionLazy(context -> {
+                    long maxIdleMillis = Math.max(
+                            context.getOption(BusinessPacketAssembler.OPTIONS.MaxIdleTimeMillis),
+                            context.getOption(BusinessStreamAssembler.OPTIONS.MaxIdleTimeMillis)
+                    );
+                    return Math.toIntExact(maxIdleMillis / context.getOption(OPTIONS.TimeWheel.TickMillis) + 1);
+                }, OptionValidator.positive());
+            }
+        };
+
+        private Options(Class<?> holder) {
+            super(holder);
+        }
+    }
+
     public static final Modules MODULES = new Modules();
     public static final class Modules extends ModulesDefinition {
+        public final NexalithicModule<PartCodecRegistry> PartCodecRegistry = defineModule(PartCodecRegistry.class);
         public final NexalithicModule<ChunkCodecRegistry> ChunkCodecRegistry = defineModule(ChunkCodecRegistry.class);
+        public final NexalithicModule<SharedLifecycle<TimeWheel<BusinessModelAssembler.CodecContext<?>>>> SharedTimeWheel =
+                defineModule(SharedLifecycle.class, null, TimeWheel.class.getSimpleName());
+
         private Modules() {
             super(CodecResources.class);
         }
     }
 
     private final CodecSupplier codecSupplier;
-    private final SharedLifecycle<TimeWheel<BusinessPacketAssembler>> assemblyWheel;
+    private final SharedLifecycle<TimeWheel<BusinessModelAssembler.CodecContext<?>>> assemblyWheel;
 
     public CodecResources(NexalithicBuilderContext context, NexalithicEndpoint.Modules modules) {
-        assemblyWheel = context.getModule(BusinessPacketAssembler.MODULES.SharedTimeWheel,
+        assemblyWheel = context.getModule(MODULES.SharedTimeWheel,
                 () -> new SharedLifecycle<>(new TimeWheel<>(
-                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.TickMillis),
-                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.SlotCount),
-                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.TickQuotaShift),
-                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.WaitQueue_ChunkSize),
+                        context.getOption(OPTIONS.TimeWheel.TickMillis),
+                        context.getOption(OPTIONS.TimeWheel.SlotCount),
+                        context.getOption(OPTIONS.TimeWheel.TickQuotaShift),
+                        context.getOption(OPTIONS.TimeWheel.WaitQueue_ChunkSize),
                         new GenericWrapperPool<>(
                                 PoolStorageFactory.bounded(MpmcArrayQueue::new,
-                                        context.getOption(BusinessPacketAssembler.OPTIONS.TimeWheel.WrapperPool_Capacity)),
+                                        context.getOption(OPTIONS.TimeWheel.WrapperPool_Capacity)),
                                 PoolStrategyFactory.alwaysCreate(),
-                                TimeWheel.ScheduleWrapper<BusinessPacketAssembler>::new
+                                TimeWheel.ScheduleWrapper<BusinessModelAssembler.CodecContext<?>>::new
                         ),
-                        BusinessPacketAssembler.class.getSimpleName()
+                        CodecResources.class.getSimpleName()
                 )));
         codecSupplier = new CodecSupplier(context, modules, assemblyWheel.component());
     }

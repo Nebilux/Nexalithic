@@ -16,12 +16,21 @@
 
 package com.nebilux.nexalithic.core.io.codec.assembler;
 
+import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
+import com.nebilux.nexalithic.core.builder.option.OptionValidator;
+import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
+import com.nebilux.nexalithic.core.infra.timer.TimerContext;
+import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodec;
 import com.nebilux.nexalithic.core.io.codec.BusinessModelCodecCallback;
 import com.nebilux.nexalithic.core.io.codec.CodecFrame;
 import com.nebilux.nexalithic.core.model.business.BusinessModel;
+import com.nebilux.nexalithic.core.model.business.codec.PayloadCodec;
 import org.jctools.queues.SpmcArrayQueue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Map;
@@ -34,17 +43,37 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author Reonvia
  * @since 0.5.0
  */
-public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends BusinessModelCodec implements ModelAssembler<M> {
+public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends BusinessModelCodec implements ModelAssembler<M>, TimerCoordinator<BusinessModelAssembler.CodecContext<?>> {
+    protected static abstract class Options extends BusinessModelCodec.Options {
+        public final NexalithicOption<Long> MaxIdleTimeMillis = defineOption(
+                30_000L, OptionValidator.positive()
+        );
+
+        protected Options(Class<?> holder) {
+            super(holder);
+        }
+    }
+
+    private static final Logger logger = LoggerFactory.getLogger(BusinessModelAssembler.class);
+    private static final boolean LOGGER_TRACE_ENABLED = logger.isTraceEnabled();
+
     private final Map<Integer, CodecContext<M>> assemblingContext = new ConcurrentHashMap<>();
     private final SpmcArrayQueue<M> completedModel;
+    private final TimeWheel<CodecContext<?>> timeWheel;
+    private final long maxIdleTimeNanos;
     private volatile M pendingModel;
     /** 以下状态由所属 Loop 线程修改 */
-    private CodecContext<M> blockedContext;
     private Runnable outputAvailableCallback;
 
-    protected BusinessModelAssembler(int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory) {
-        super(maxOutstandingContextCount, codecCallbackFactory);
+    protected BusinessModelAssembler(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory,
+                                     long maxIdleTimeNanos, TimeWheel<CodecContext<?>> timeWheel) {
+        super(sessionKey, maxOutstandingContextCount, codecCallbackFactory);
+        if (maxIdleTimeNanos <= 0) {
+            throw new IllegalArgumentException("maxIdleTimeNanos must be positive");
+        }
         completedModel = new SpmcArrayQueue<>(maxOutstandingContextCount);
+        this.maxIdleTimeNanos = maxIdleTimeNanos;
+        this.timeWheel = timeWheel;
     }
 
     /** 输出队列恢复容量后，由所属 Loop 重新处理已缓存的输入。 */
@@ -53,7 +82,7 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
     }
 
     @Override
-    public boolean feed(LoopBuffer source) throws IOException {
+    public final boolean feed(LoopBuffer source) throws IOException {
         int initialReadable = source.readableBytes();
         if (pendingModel != null) {
             synchronized (this) {
@@ -63,20 +92,6 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
                     }
                     pendingModel = null;
                 }
-            }
-        }
-        if (blockedContext != null) {
-            CodecContext<M> blocked = blockedContext;
-            try {
-                if (!blocked.flushPending()) {
-                    return false;
-                }
-                blockedContext = null;
-            } catch (Throwable failure) {
-                blockedContext = null;
-                assemblingContext.remove(blocked.modelSequence(), blocked);
-                blocked.discard();
-                throw failure;
             }
         }
         while (source.readableBytes() >= CodecFrame.HEADER_LENGTH) {
@@ -98,47 +113,60 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
                 break;
             }
             CodecContext<M> context = assemblingContext.get(modelSequence);
+            long readBefore = source.getHead();
             try {
-                if (context == null) {
-                    if (!frameType.isStart()) {
+                boolean firstFrame = frameType.isSingle() || frameType.isStart();
+                if (firstFrame) {
+                    if (context != null) {
                         throw new IOException("Invalid model sequence " + modelSequence);
                     }
-                    context = onFirstFrame(modelSequence, source, payloadLength);
-                    if (context.isComplete()) {
-                        context.complete();
-                    } else {
-                        if (assemblingContext.size() >= maxOutstandingContextCount) {
-                            throw new IOException("Too many outstanding business model contexts");
-                        }
-                        assemblingContext.put(modelSequence, context);
-                        onContextRegistered(context);
-                    }
-                    if (!offerModel(context)) {
-                        break;
-                    }
+                    context = onFirstFrame(modelSequence, source, payloadLength, frameType);
                 } else {
-                    if (!context.nextFrame(frameType, source, payloadLength)) {
-                        blockedContext = context;
-                        break;
+                    if (context == null) {
+                        throw new IOException("Invalid model sequence " + modelSequence);
                     }
-                    if (context.isComplete()) {
-                        context.complete();
-                        assemblingContext.remove(modelSequence, context);
-                        if (!offerModel(context)) {
-                            break;
-                        }
+                    context.nextFrame(source, payloadLength, frameType);
+                }
+                long readAfter = source.getHead();
+                int surplus = payloadLength - (int) (readAfter - readBefore);
+                boolean complete = context.isComplete();
+                boolean retryFrame = surplus > 0 || ((frameType.isSingle() || frameType.isEnd()) && !complete);
+                if (retryFrame) {
+                    source.markTail();
+                    source.setTail(readAfter - CodecFrame.HEADER_LENGTH);
+                    source.unsafePut(CodecFrame.pack(switch (frameType) {
+                        case SINGLE, END -> CodecFrame.Type.END;
+                        case START, DATA -> CodecFrame.Type.DATA;
+                    }, modelSequence, surplus));
+                    source.resetTail();
+                    source.advanceHead(-CodecFrame.HEADER_LENGTH);
+                }
+                if (firstFrame && !complete) {
+                    if (assemblingContext.size() >= maxOutstandingContextCount) {
+                        throw new IOException("Too many outstanding business model contexts");
                     }
+                    assemblingContext.put(modelSequence, context);
+                    timeWheel.schedule(context, this);
+                } else if (complete && !firstFrame) {
+                    assemblingContext.remove(modelSequence, context);
+                }
+                if (complete) {
+                    context.complete();
+                    if (LOGGER_TRACE_ENABLED) {
+                        M model = context.model();
+                        logger.trace("completed [{}] - [modelSequence={}, correlationId={}, model: [{}]]",
+                                sessionKey, modelSequence, model.getCorrelationId(), model);
+                    }
+                }
+                boolean canContinue = !(complete || (firstFrame && deliverOnFirstFrame())) || deliveredModel(context);
+                if (retryFrame || !canContinue) {
+                    break;
                 }
             } catch (Throwable failure) {
+                source.setHead(readBefore + payloadLength);
                 if (context != null) {
                     assemblingContext.remove(modelSequence, context);
-                    if (blockedContext == context) {
-                        blockedContext = null;
-                    }
                     context.discard();
-                }
-                if (failure instanceof RuntimeException runtime) {
-                    throw new IOException("Business frame decoding failed", runtime);
                 }
                 throw failure;
             }
@@ -147,28 +175,26 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
     }
 
     @Override
-    public M drain() {
+    public final M drain() {
         M model = completedModel.poll();
-        if (model != null) {
-            boolean retry;
-            synchronized (this) {
+        boolean retry;
+        synchronized (this) {
+            if (model == null) {
+                model = pendingModel;
+                pendingModel = null;
+                retry = model != null;
+            } else {
                 retry = pendingModel != null;
             }
-            if (retry && outputAvailableCallback != null) {
-                outputAvailableCallback.run();
-            }
-            return model;
         }
-        synchronized (this) {
-            model = pendingModel;
-            pendingModel = null;
+        if (retry && outputAvailableCallback != null) {
+            outputAvailableCallback.run();
         }
         return model;
     }
 
     @Override
-    public void clear() {
-        blockedContext = null;
+    public final void clear() {
         for (CodecContext<M> context : assemblingContext.values()) {
             context.discard();
         }
@@ -179,27 +205,49 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
         completedModel.clear();
     }
 
+    @Override
+    public final long getExpiryTimeNanos(TimerContext<CodecContext<?>> timer) {
+        return timer.target().lastActiveTimeNanos + maxIdleTimeNanos;
+    }
+
+    @Override
+    public final boolean isCancelled(TimerContext<CodecContext<?>> timer) {
+        CodecContext<?> context = timer.target();
+        return context.finished || context.isComplete()
+                || assemblingContext.get(context.modelSequence()) != context;
+    }
+
+    @Override
+    public final boolean onExpiryTrigger(TimerContext<CodecContext<?>> timer) {
+        CodecContext<?> context = timer.target();
+        synchronized (context) {
+            if (isCancelled(timer)) {
+                return true;
+            }
+            if (System.nanoTime() < context.lastActiveTimeNanos + maxIdleTimeNanos) {
+                return false;
+            }
+            if (assemblingContext.remove(context.modelSequence(), context)) {
+                context.discard();
+            }
+            return true;
+        }
+    }
+
     protected final Runnable outputAvailableCallback() {
         return outputAvailableCallback;
     }
 
-    protected final CodecContext<M> getContext(int modelSequence) {
-        return assemblingContext.get(modelSequence);
-    }
+    /** 模型尚未解码完成时，是否在首帧后交付给上层。 */
+    protected abstract boolean deliverOnFirstFrame();
 
-    protected final boolean removeContext(int modelSequence, CodecContext<M> context) {
-        return assemblingContext.remove(modelSequence, context);
-    }
+    protected abstract CodecContext<M> createCodecContext(int modelSequence, BusinessModel.Way way, short[] path, long correlationId, LoopBuffer input, int surplus) throws IOException;
 
-    /** 未完成的上下文进入映射后调用。 */
-    protected void onContextRegistered(CodecContext<M> context) throws IOException {
-    }
-
-    protected CodecContext<M> onFirstFrame(int modelSequence, LoopBuffer input, int payloadLength) throws IOException {
-        int surplus = payloadLength - COMMON_BASE_HEADER_SIZE;
-        if (surplus < 0) {
+    private CodecContext<M> onFirstFrame(int modelSequence, LoopBuffer input, int surplus, CodecFrame.Type frameType) throws IOException {
+        if ((surplus -= COMMON_BASE_HEADER_SIZE) < 0) {
             throw new IOException("Business START payload is too short");
         }
+        long readHeaderBefore = input.getHead();
         long correlationId = input.unsafeGetLong();
         BusinessModel.Way way = BusinessModel.Way.from(input.unsafeGetShort());
         byte pathDepth = input.unsafeGetByte();
@@ -213,26 +261,30 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
         for (int i = 0; i < pathDepth; i++) {
             path[i] = input.unsafeGetShort();
         }
+        long readExtraHeaderBefore = input.getHead();
         CodecContext<M> context = createCodecContext(modelSequence, way, path, correlationId, input, surplus);
-        context.firstFrame(payloadLength);
+        long readExtraHeaderAfter = input.getHead();
+        context.firstFrame(input, surplus - (int) (readExtraHeaderAfter - readExtraHeaderBefore), frameType, (int) (readExtraHeaderAfter - readHeaderBefore));
+        if (LOGGER_TRACE_ENABLED) {
+            logger.trace("accepted [{}] - [modelSequence: {}, correlationId: {}]",
+                    sessionKey, modelSequence, correlationId);
+        }
         return context;
     }
 
-    protected abstract CodecContext<M> createCodecContext(int modelSequence, BusinessModel.Way way, short[] path, long correlationId, LoopBuffer input, int surplus) throws IOException;
-
-    private boolean offerModel(CodecContext<M> context) {
-        M model = context.model();
-        if (model == null || context.delivered) {
+    private boolean deliveredModel(CodecContext<M> context) {
+        if (context.delivered) {
             return true;
         }
+        M model = Objects.requireNonNull(context.model(), "deliverable model");
         context.delivered = true;
-        if (completedModel.offer(model)) {
-            return true;
+        boolean queued = completedModel.offer(model);
+        if (!queued) {
+            synchronized (this) {
+                pendingModel = model;
+            }
         }
-        synchronized (this) {
-            pendingModel = model;
-        }
-        return false;
+        return queued;
     }
 
     /**
@@ -243,48 +295,43 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
      */
     public abstract static class CodecContext<M extends BusinessModel<?>> extends Context {
         private final BusinessModelCodecCallback callback;
+        private volatile boolean complete;
+        private volatile boolean finished;
         private boolean delivered;
-        private boolean finished;
+        private volatile long lastActiveTimeNanos = System.nanoTime();
 
         protected CodecContext(int modelSequence, BusinessModelCodecCallback callback) {
             super(modelSequence);
             this.callback = callback;
         }
 
-        protected boolean flushPending() {
-            return true;
-        }
-
-        protected abstract M model();
-
-        final void firstFrame(int advanced) {
+        final void firstFrame(LoopBuffer input, int quota, CodecFrame.Type frameType, int headerSize) throws IOException {
             callback.onStarted(callbackTotalSize());
-            callback.onAdvanced(advanced);
+            int consumed = decodePayload(input, quota);
+            lastActiveTimeNanos = System.nanoTime();
+            callback.onAdvanced(consumed + headerSize);
+            if (frameType.isSingle() && consumed == quota) {
+                complete = tryCompleteDecoding();
+            }
         }
 
-        final boolean nextFrame(CodecFrame.Type type, LoopBuffer input, int quota) throws IOException {
-            long start = input.getHead();
-            boolean accepted = readNextFrame(type, input, quota);
-            callback.onAdvanced(input.getHead() - start);
-            return accepted;
+        final synchronized void nextFrame(LoopBuffer input, int quota, CodecFrame.Type frameType) throws IOException {
+            if (finished) {
+                throw new IOException("Business model context is no longer active");
+            }
+            int consumed = decodePayload(input, quota);
+            if (consumed > 0) {
+                lastActiveTimeNanos = System.nanoTime();
+            }
+            callback.onAdvanced(consumed);
+            if (frameType.isEnd() && consumed == quota) {
+                complete = tryCompleteDecoding();
+            }
         }
 
-        /** 未知解码总长度时返回负数。 */
-        protected long callbackTotalSize() {
-            return -1;
-        }
+        abstract M model();
 
-        protected abstract boolean readNextFrame(CodecFrame.Type type, LoopBuffer input, int quota) throws IOException;
-
-        protected abstract boolean isComplete();
-
-        protected void onComplete() {
-        }
-
-        protected void onDiscard() {
-        }
-
-        private void complete() {
+        final void complete() {
             if (finished) {
                 return;
             }
@@ -297,7 +344,7 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
             }
         }
 
-        protected final synchronized void discard() {
+        final synchronized void discard() {
             if (finished) {
                 return;
             }
@@ -307,6 +354,40 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
             } finally {
                 callback.onDiscarded();
             }
+        }
+
+        final boolean isComplete() {
+            return complete;
+        }
+
+        /** 未知解码总长度时返回负数。 */
+        protected long callbackTotalSize() {
+            return -1;
+        }
+
+        /** 解码当前帧中的模型载荷；调用方会校验是否恰好消耗 {@code quota} 字节。 */
+        protected abstract void readPayload(LoopBuffer input, int quota) throws IOException;
+
+        /** SINGLE 或 END 的载荷解码完毕后校验并结束模型。 */
+        protected abstract boolean tryCompleteDecoding() throws IOException;
+
+        protected void onComplete() {
+        }
+
+        protected void onDiscard() {
+        }
+
+        protected static int decode(PayloadCodec.Decoder<?> decoder, long remaining, LoopBuffer input, int quota) throws IOException {
+            quota = (int) Math.min(remaining, quota);
+            LoopBuffer.LimitedReadableView view = input.unsafeLimitedReadableView(quota);
+            decoder.decode(view);
+            return quota - view.remaining();
+        }
+
+        private int decodePayload(LoopBuffer input, int quota) throws IOException {
+            long readPayloadBefore = input.getHead();
+            readPayload(input, quota);
+            return (int) (input.getHead() - readPayloadBefore);
         }
     }
 }
