@@ -20,6 +20,7 @@ import com.nebilux.nexalithic.core.builder.option.NexalithicOption;
 import com.nebilux.nexalithic.core.builder.option.OptionValidator;
 import com.nebilux.nexalithic.core.connection.session.SessionKey;
 import com.nebilux.nexalithic.core.infra.buffer.LoopBuffer;
+import com.nebilux.nexalithic.core.infra.concurrent.atomic.AtomicAdmissionQueue;
 import com.nebilux.nexalithic.core.infra.timer.TimeWheel;
 import com.nebilux.nexalithic.core.infra.timer.TimerContext;
 import com.nebilux.nexalithic.core.infra.timer.TimerCoordinator;
@@ -36,6 +37,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * 业务模型汇编器的类型基类。
@@ -61,9 +63,11 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
     private final SpmcArrayQueue<M> completedModel;
     private final TimeWheel<CodecContext<?>> timeWheel;
     private final long maxIdleTimeNanos;
+    private final AtomicAdmissionQueue<CodecContext<?>> expiredContexts = new AtomicAdmissionQueue<>(new ConcurrentLinkedQueue<>());
     private volatile M pendingModel;
     /** 以下状态由所属 Loop 线程修改 */
     private Runnable outputAvailableCallback;
+    private Runnable timeoutAvailableCallback;
 
     protected BusinessModelAssembler(SessionKey sessionKey, int maxOutstandingContextCount, BusinessModelCodecCallback.Factory codecCallbackFactory,
                                      long maxIdleTimeNanos, TimeWheel<CodecContext<?>> timeWheel) {
@@ -78,7 +82,42 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
 
     /** 输出队列恢复容量后，由所属 Loop 重新处理已缓存的输入。 */
     public final void onOutputAvailable(Runnable callback) {
-        outputAvailableCallback = Objects.requireNonNull(callback, "outputAvailableCallback");
+        outputAvailableCallback = callback;
+    }
+
+    /** 到期上下文入队后唤醒所属 Loop。 */
+    public final void onTimeoutAvailable(Runnable callback) {
+        timeoutAvailableCallback = callback;
+    }
+
+    /** 仅由所属 Loop 调用；处理时间轮投递的上下文。 */
+    public final void processExpiredContexts() {
+        for (CodecContext<?> context; (context = expiredContexts.poll()) != null;) {
+            try {
+                if (assemblingContext.get(context.modelSequence()) != context || context.finished || context.isComplete()) {
+                    continue;
+                }
+                if (System.nanoTime() < context.lastActiveTimeNanos + maxIdleTimeNanos) {
+                    try {
+                        timeWheel.schedule(context, this);
+                    } catch (Throwable failure) {
+                        assemblingContext.remove(context.modelSequence(), context);
+                        try {
+                            context.discard();
+                        } catch (Throwable discardFailure) {
+                            failure.addSuppressed(discardFailure);
+                        }
+                        throw failure;
+                    }
+                    continue;
+                }
+                if (assemblingContext.remove(context.modelSequence(), context)) {
+                    context.discard();
+                }
+            } catch (Throwable throwable) {
+                logger.error("Assembly timeout processing failed, modelSequence={}", context.modelSequence(), throwable);
+            }
+        }
     }
 
     @Override
@@ -195,6 +234,8 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
 
     @Override
     public final void clear() {
+        expiredContexts.close();
+        expiredContexts.drain(context -> {});
         for (CodecContext<M> context : assemblingContext.values()) {
             context.discard();
         }
@@ -220,18 +261,17 @@ public abstract class BusinessModelAssembler<M extends BusinessModel<?>> extends
     @Override
     public final boolean onExpiryTrigger(TimerContext<CodecContext<?>> timer) {
         CodecContext<?> context = timer.target();
-        synchronized (context) {
-            if (isCancelled(timer)) {
-                return true;
-            }
-            if (System.nanoTime() < context.lastActiveTimeNanos + maxIdleTimeNanos) {
-                return false;
-            }
-            if (assemblingContext.remove(context.modelSequence(), context)) {
-                context.discard();
-            }
+        if (isCancelled(timer)) {
             return true;
         }
+        if (System.nanoTime() < context.lastActiveTimeNanos + maxIdleTimeNanos) {
+            return false;
+        }
+        if (!expiredContexts.offer(context)) {
+            return true;
+        }
+        timeoutAvailableCallback.run();
+        return true;
     }
 
     protected final Runnable outputAvailableCallback() {

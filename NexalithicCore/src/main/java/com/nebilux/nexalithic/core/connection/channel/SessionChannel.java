@@ -158,9 +158,10 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
         return advanced;
     }
 
-    /** 输出队列腾出容量后，由所属 Loop 重试已解密或已接收的缓冲数据。 */
+    /** 由所属 Loop 处理待办读工作，并重试已解密或已接收的缓冲数据。 */
     public final void retryBufferedRead() throws IOException, InvalidAlgorithmParameterException, IllegalBlockSizeException, ShortBufferException, BadPaddingException, InvalidKeyException {
         checkInEventLoop();
+        beforeBufferedReadRetry();
         if (readCipheBuffer != null) {
             processBufferedInput();
         }
@@ -182,6 +183,8 @@ public abstract class SessionChannel<M extends NexalithicModel, S extends Abstra
     protected void onBytesWrite(long bytes) {}
 
     protected void onBytesRead(long bytes) {}
+
+    protected void beforeBufferedReadRetry() {}
 
     @Override
     protected void onClose(Binding<SocketChannel> binding) {

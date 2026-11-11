@@ -41,11 +41,15 @@ public class SessionBusinessChannel<M extends BusinessModel<?>, S extends Abstra
     private final DynamicRateController.RateState rateState = new DynamicRateController.RateState();
     private final LongAdder readBytesWindow = new LongAdder();
     private final LongAdder writeBytesWindow = new LongAdder();
+    private final BusinessModelAssembler<M> businessAssembler;
 
     public SessionBusinessChannel(Kind kind, SessionLoop<?, ? super SessionChannel<M, S>> ownerLoop, S ownerSession,
                                   BusinessModelFragmenter<M> fragmenter, BusinessModelAssembler<M> assembler, SecretKeyContext secretKeyContext) {
         super(kind, ownerLoop, ownerSession, fragmenter, assembler, secretKeyContext);
-        assembler.onOutputAvailable(() -> ownerLoop.postReadRetry(this));
+        businessAssembler = assembler;
+        Runnable assemblerAction = () -> ownerLoop.postReadRetry(this);
+        assembler.onOutputAvailable(assemblerAction);
+        assembler.onTimeoutAvailable(assemblerAction);
         if (fragmenter instanceof BusinessStreamFragmenter streamFragmenter) {
             streamFragmenter.onOutputAvailable(() -> {
                 if (getState() == State.Opened) {
@@ -53,6 +57,11 @@ public class SessionBusinessChannel<M extends BusinessModel<?>, S extends Abstra
                 }
             });
         }
+    }
+
+    @Override
+    protected void beforeBufferedReadRetry() {
+        businessAssembler.processExpiredContexts();
     }
 
     public void updateReadRate(long rate) {
